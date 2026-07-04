@@ -1,0 +1,431 @@
+/* ============ Reset & base ============ */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--dark-bg);
+  color: var(--dark-text);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; }
+button, input, select, textarea { font-family: inherit; }
+.mono { font-family: 'IBM Plex Mono', monospace; }
+.boot-loading { padding: 80px; text-align: center; color: #8A8DA0; font-family: 'IBM Plex Mono', monospace; }
+
+/* ============ Theme variable sets ============ */
+:root,
+[data-theme="default"] {
+  --dark-bg: #0A0A14;
+  --dark-card: #14162A;
+  --dark-card-2: #1B1E38;
+  --dark-border: rgba(255,255,255,0.08);
+  --dark-text: #F2F2F7;
+  --dark-text-dim: #8A8DA0;
+
+  --accent-1: #6C63FF; /* indigo - primary */
+  --accent-2: #34C77B; /* green */
+  --accent-3: #E8963C; /* orange */
+  --accent-4: #4FA6D9; /* blue */
+  --on-accent-1: #0A0A14; /* text color guaranteed readable on top of --accent-1 */
+
+  --sidebar-bg: #0A0A14;
+}
+[data-theme="maritime"] {
+  --dark-bg: #0F2A33;
+  --dark-card: #163944;
+  --dark-card-2: #1E4753;
+  --dark-border: rgba(255,255,255,0.08);
+  --dark-text: #EAF3F4;
+  --dark-text-dim: #9BB6BB;
+
+  --accent-1: #C79A5B; /* gold */
+  --accent-2: #6FA8AA; /* aqua */
+  --accent-3: #B8C4CC; /* light blue-grey */
+  --accent-4: #2A5A6E; /* navy */
+  --on-accent-1: #0A0A14;
+
+  --sidebar-bg: #0B222A;
+}
+[data-theme="emerald"] {
+  --dark-bg: #12261A;
+  --dark-card: #1B3A26;
+  --dark-card-2: #234830;
+  --dark-border: rgba(255,255,255,0.08);
+  --dark-text: #EFFAF2;
+  --dark-text-dim: #9FC2AC;
+
+  --accent-1: #6FBF7F; /* forest */
+  --accent-2: #C7E36B; /* lime */
+  --accent-3: #D9EFC8; /* pale green */
+  --accent-4: #3FBF7F;
+  --on-accent-1: #0A0A14;
+
+  --sidebar-bg: #0E1F15;
+}
+[data-theme="arctic"] {
+  --dark-bg: #0F2320;
+  --dark-card: #16332E;
+  --dark-card-2: #1E403A;
+  --dark-border: rgba(255,255,255,0.08);
+  --dark-text: #EAF7F3;
+  --dark-text-dim: #93B8AF;
+
+  --accent-1: #8FE0C9; /* mint */
+  --accent-2: #E8A93C; /* warm yellow */
+  --accent-3: #5FB6A0; /* teal (was identical to --dark-card, made badge text invisible) */
+  --accent-4: #5FB6A0;
+  --on-accent-1: #0A0A14;
+
+  --sidebar-bg: #0B1C19;
+}
+[data-theme="palladian"] {
+  --dark-bg: #2B3242;
+  --dark-card: #3A4356;
+  --dark-card-2: #454F65;
+  --dark-border: rgba(255,255,255,0.10);
+  --dark-text: #F5F1E8;
+  --dark-text-dim: #B7BAC9;
+
+  --accent-1: #E0895A; /* flame */
+  --accent-2: #EDE8DE; /* cream */
+  --accent-3: #EDE4D2; /* warm white */
+  --accent-4: #7B92C9; /* blue */
+  --on-accent-1: #0A0A14;
+
+  --sidebar-bg: #232938;
+}
+[data-theme="neon"] {
+  --dark-bg: #0A0A0A;
+  --dark-card: #141414;
+  --dark-card-2: #1C1C1C;
+  --dark-border: rgba(255,255,255,0.10);
+  --dark-text: #F5F5F5;
+  --dark-text-dim: #8A8A8A;
+
+  --accent-1: #C6E92F; /* lime */
+  --accent-2: #FFFFFF;
+  --accent-3: #8A8A8A;
+  --accent-4: #C6E92F;
+  --on-accent-1: #0A0A14;
+
+  --sidebar-bg: #000000;
+}
+[data-theme="clean"] {
+  --dark-bg: #FFFFFF;
+  --dark-card: #F5F6F8;
+  --dark-card-2: #ECEEF2;
+  --dark-border: rgba(18,20,28,0.10);
+  --dark-text: #12141C;
+  --dark-text-dim: #7A7F8C;
+
+  --accent-1: #12141C;
+  --accent-2: #9CA3AF;
+  --accent-3: #4F5563;
+  --accent-4: #6B7280;
+  --on-accent-1: #FFFFFF; /* accent-1 is near-black for this theme, so its own text must be light */
+
+  --sidebar-bg: #FFFFFF;
+}
+
+/* Light surface (Dashboard / Budget main content) stays constant across themes for consistency */
+:root {
+  --light-bg: #F3F4F7;
+  --light-card: #FFFFFF;
+  --light-border: rgba(18,20,28,0.08);
+  --light-text: #12141C;
+  --light-text-dim: #8A8DA0;
+
+  --positive: #22B573;
+  --negative: #E5484D;
+
+  /* Fixed (non-theme) accents for the light surface (Dashboard/Budget) and other spots
+     where a dark-theme accent could wash out against a background it wasn't designed for
+     (e.g. Neon Lime's bright lime accent is unreadable on a white card). */
+  --light-accent-1: #6C63FF;
+  --light-accent-2: #4FA6D9;
+  --manual-accent: #E8963C;
+
+  --radius-lg: 22px;
+  --radius-md: 14px;
+  --radius-sm: 9px;
+}
+[data-theme="clean"] {
+  /* Clean White theme: dark-surface pages also go light, for a fully bright app */
+  --dark-bg: #FFFFFF;
+  --dark-card: #F5F6F8;
+  --dark-card-2: #ECEEF2;
+  --dark-text: #12141C;
+  --dark-text-dim: #7A7F8C;
+  --sidebar-bg: #FAFAFB;
+}
+
+/* ============ App shell ============ */
+#app { min-height: 100vh; }
+.shell {
+  display: flex;
+  min-height: 100vh;
+}
+.sidebar {
+  width: 220px;
+  flex: none;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--dark-border);
+  display: flex;
+  flex-direction: column;
+  padding: 22px 14px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+.sidebar-logo {
+  font-weight: 800;
+  font-size: 20px;
+  color: var(--dark-text);
+  padding: 6px 10px 26px;
+  letter-spacing: -0.01em;
+}
+.nav-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; flex: 1; }
+.nav-item {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--dark-text-dim);
+  font-size: 14px; font-weight: 500;
+  cursor: pointer;
+  border: none; background: none; width: 100%; text-align: left;
+}
+.nav-item .nav-icon { font-size: 16px; width: 18px; text-align: center; }
+.nav-item:hover { background: var(--dark-card); color: var(--dark-text); }
+.nav-item.active { background: var(--accent-1); color: var(--on-accent-1); font-weight: 600; }
+
+.sidebar-footer { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--dark-border); }
+.privacy-toggle {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  background: none; border: 1px solid var(--dark-border); cursor: pointer;
+  color: var(--dark-text-dim); font-size: 13px; font-weight: 500; width: 100%;
+}
+.privacy-toggle:hover { color: var(--dark-text); border-color: var(--dark-text-dim); }
+.privacy-toggle.on { color: var(--accent-1); border-color: var(--accent-1); }
+
+.main { flex: 1; min-width: 0; }
+.page { padding: 34px 40px 60px; min-height: 100vh; }
+.page.surface-light { background: var(--light-bg); color: var(--light-text); }
+.page.surface-dark { background: var(--dark-bg); color: var(--dark-text); }
+
+.page-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+.page-title { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; margin: 0; }
+.page-subtitle { font-size: 14px; margin-top: 4px; opacity: 0.65; }
+.icon-btn-round {
+  width: 42px; height: 42px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--light-border); background: var(--light-card);
+  cursor: pointer; font-size: 16px;
+}
+.surface-dark .icon-btn-round { background: var(--dark-card); border-color: var(--dark-border); }
+
+/* ============ Generic card / component atoms ============ */
+.card {
+  background: var(--light-card);
+  border: 1px solid var(--light-border);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+}
+.surface-dark .card { background: var(--dark-card); border-color: var(--dark-border); }
+.card-dark { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius-lg); padding: 22px; color: var(--dark-text); }
+.card-nested { background: rgba(128,128,128,0.08); border-radius: var(--radius-md); padding: 16px; }
+
+.eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.55; margin-bottom: 6px; }
+.big-number { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; }
+.positive { color: var(--positive); }
+.negative { color: var(--negative); }
+.accent-text { color: var(--accent-1); }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 14px; font-weight: 600;
+  padding: 11px 18px; border-radius: var(--radius-sm);
+  border: 1px solid var(--light-border);
+  background: var(--light-card); color: var(--light-text);
+  cursor: pointer; white-space: nowrap;
+}
+.surface-dark .btn { background: var(--dark-card-2); border-color: var(--dark-border); color: var(--dark-text); }
+.btn:hover { filter: brightness(1.08); }
+.btn.primary { background: var(--accent-1); border-color: var(--accent-1); color: var(--on-accent-1); }
+.btn.full { width: 100%; padding: 15px; font-size: 15px; }
+.btn.ghost { background: none; }
+.btn.danger { color: var(--negative); }
+.btn.small { padding: 7px 12px; font-size: 12.5px; }
+
+input, select, textarea {
+  background-color: var(--light-card);
+  border: 1.5px solid var(--light-border);
+  color: var(--light-text);
+  font-size: 14px;
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.surface-dark input, .surface-dark select, .surface-dark textarea,
+.modal input, .modal select, .modal textarea {
+  background-color: var(--dark-card-2); border-color: var(--dark-border); color: var(--dark-text);
+}
+input::placeholder, textarea::placeholder { opacity: 0.45; }
+/* Native <select> arrows look inconsistent across browsers/themes — replace with one flat
+   custom chevron so every dropdown matches the rest of the app's flat, rounded aesthetic. */
+select {
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  cursor: pointer;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238A8DA0' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent-1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-1) 18%, transparent);
+}
+label.field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; opacity: 0.7; margin-bottom: 2px; }
+label.field span.label-text { font-weight: 500; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 14px; border-radius: 999px;
+  background: var(--dark-card-2); border: 1px solid var(--dark-border);
+  font-size: 13.5px; font-weight: 600; white-space: nowrap;
+}
+.surface-light .chip { background: var(--light-card); border-color: var(--light-border); box-shadow: 0 1px 2px rgba(0,0,0,0.04); }
+.chip-scroll { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.chip-scroll::-webkit-scrollbar { height: 5px; }
+.chip-scroll::-webkit-scrollbar-thumb { background: var(--dark-border); border-radius: 10px; }
+
+.badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; }
+.toggle { position: relative; width: 42px; height: 24px; border-radius: 999px; background: var(--dark-card-2); border: 1px solid var(--dark-border); cursor: pointer; flex: none; }
+.toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform 0.15s ease; }
+.toggle.on { background: var(--accent-1); border-color: var(--accent-1); }
+.toggle.on::after { transform: translateX(18px); }
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(6,6,10,0.6);
+  display: flex; align-items: center; justify-content: center; z-index: 100; padding: 24px;
+}
+.modal {
+  background: var(--dark-card); border: 1px solid var(--dark-border);
+  border-radius: var(--radius-lg); padding: 26px; width: 100%; max-width: 480px;
+  max-height: 88vh; overflow-y: auto; color: var(--dark-text);
+}
+.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.modal-title { font-size: 18px; font-weight: 700; }
+.close-x { background: none; border: none; font-size: 18px; color: var(--dark-text-dim); cursor: pointer; padding: 4px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+.form-grid .span-2 { grid-column: 1 / -1; }
+.modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+.modal-actions .btn { flex: 1; }
+
+.color-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch-dot { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; flex: none; }
+.swatch-dot.selected { border-color: var(--dark-text); box-shadow: 0 0 0 2px var(--dark-card); }
+.color-picker-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.swatch-custom { position: relative; overflow: hidden; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
+.swatch-custom input[type="color"] { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); border: none; padding: 0; cursor: pointer; opacity: 0; }
+
+.empty-state { text-align: center; padding: 50px 20px; }
+.empty-state .emoji { font-size: 38px; margin-bottom: 12px; }
+.empty-state .title { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+.empty-state .sub { opacity: 0.6; font-size: 13.5px; }
+
+.accordion { border: 1px solid var(--dark-border); border-radius: var(--radius-lg); margin-bottom: 12px; overflow: hidden; background: var(--dark-card); }
+.accordion-head { display: flex; align-items: center; gap: 12px; padding: 18px 20px; cursor: pointer; }
+.accordion-head .acc-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--dark-card-2); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+.accordion-head .acc-title { font-weight: 700; font-size: 15px; flex: 1; }
+.accordion-head .chevron { opacity: 0.5; transition: transform 0.15s ease; }
+.accordion.open .chevron { transform: rotate(180deg); }
+.accordion-body { padding: 0 20px 20px; border-top: 1px solid var(--dark-border); padding-top: 16px; }
+
+.tab-row { display: flex; gap: 4px; background: var(--dark-card); border-radius: var(--radius-md); padding: 5px; margin-bottom: 20px; }
+.tab-btn { flex: 1; padding: 10px; border-radius: 10px; border: none; background: none; color: var(--dark-text-dim); font-weight: 600; font-size: 13.5px; cursor: pointer; }
+.tab-btn.active { background: var(--dark-bg); color: var(--dark-text); }
+[data-theme="clean"] .tab-btn.active,
+[data-theme="palladian"] .tab-btn.active { background: var(--accent-1); color: var(--on-accent-1); }
+
+.row-flex { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.stack-gap-8 > * + * { margin-top: 8px; }
+.stack-gap-12 > * + * { margin-top: 12px; }
+.stack-gap-16 > * + * { margin-top: 16px; }
+.stack-gap-24 > * + * { margin-top: 24px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 900px) {
+  .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .sidebar { width: 76px; }
+  .sidebar-logo { text-align: center; padding: 6px 0 20px; font-size: 0; }
+  .sidebar-logo::before { content: "T"; font-size: 20px; font-weight: 800; }
+  .nav-item span.label { display: none; }
+  .page { padding: 22px; }
+  table.data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* Phone: the sidebar becomes a fixed bottom tab bar (icon + tiny label per page, like a native
+   app), and cards/text tighten up so nothing overflows a ~375px-wide screen. Placed after the
+   900px block so its rules win at narrower widths where both queries match. */
+@media (max-width: 640px) {
+  .shell { flex-direction: column; }
+  .sidebar {
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0;
+    width: 100%; height: auto;
+    flex-direction: row; align-items: stretch;
+    padding: 4px 2px calc(4px + env(safe-area-inset-bottom));
+    border-right: none; border-top: 1px solid var(--dark-border);
+    z-index: 50;
+  }
+  .sidebar-logo { display: none; }
+  .nav-list { flex-direction: row; flex: 1; gap: 0; justify-content: space-around; }
+  .nav-item {
+    flex-direction: column; flex: 1; align-items: center; justify-content: center;
+    gap: 2px; padding: 6px 2px; border-radius: var(--radius-sm);
+    font-size: 9.5px; text-align: center;
+  }
+  .nav-item .nav-icon { font-size: 18px; width: auto; }
+  .nav-item span.label { display: block; }
+  .sidebar-footer {
+    flex-direction: column; border-top: none; padding-top: 0;
+    justify-content: center; align-items: center; gap: 0; flex: 0 0 58px;
+  }
+  .privacy-toggle {
+    flex-direction: column; gap: 2px; padding: 6px 2px; border: none;
+    font-size: 9px; width: auto; align-items: center;
+  }
+  .privacy-toggle .toggle { width: 30px; height: 18px; }
+  .privacy-toggle .toggle::after { width: 14px; height: 14px; }
+  .privacy-toggle.on .toggle::after { transform: translateX(12px); }
+
+  .main { min-width: 0; }
+  .page { padding: 16px 14px calc(84px + env(safe-area-inset-bottom)); }
+  .page-title { font-size: 24px; }
+  .page-subtitle { font-size: 12.5px; }
+  .card, .card-dark, .card-nested { padding: 14px; }
+  .big-number { font-size: 27px; }
+  .eyebrow { font-size: 10px; }
+  .grid-3, .grid-2 { gap: 8px; }
+  .icon-btn-round { width: 34px; height: 34px; font-size: 14px; }
+
+  /* The overflow this is meant to fix: rows (broker/asset/transaction lines, ...) packing a
+     logo + name + value + action buttons in one line with no wrap previously ran wider than
+     the viewport and got clipped at the edge. Letting flex children shrink and wrap keeps
+     everything on-screen instead. */
+  .row-flex { flex-wrap: wrap; row-gap: 6px; }
+  .row-flex > div { min-width: 0; }
+}
+
+.institution-icon { width: 30px; height: 30px; border-radius: 8px; object-fit: cover; flex: none; }
+.institution-icon.emoji { display: flex; align-items: center; justify-content: center; font-size: 15px; background: var(--accent-3); }
+
+table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.data-table th { text-align: left; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.55; padding: 8px 10px; font-weight: 600; }
+table.data-table td { padding: 10px; border-top: 1px solid var(--dark-border); vertical-align: middle; }
+table.data-table th.num, table.data-table td.num { text-align: right; }
+
+
+::selection { background: var(--accent-1); color: var(--on-accent-1); }

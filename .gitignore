@@ -1,0 +1,7 @@
+.DS_Store
+/Content/
+/Logos/
+.claude/
+trackr-data.json
+trackr-asset-prices.csv
+trackr-budget-transactions.xls
