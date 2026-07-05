@@ -4198,6 +4198,8 @@ function settingsGithubSyncHtml() {
           </div>
           <button class="btn small" onclick="disconnectGithubSync()">Disconnect</button>
         </div>
+        <div style="font-size:12px;opacity:.6;margin-top:10px;">If this device's data should replace what's currently in the repo (e.g. this is the device with your real, existing data), use:</div>
+        <button class="btn small" style="margin-top:8px;" onclick="pushGithubSyncOverwrite()">⬆ Push this device's data (overwrite the repo)</button>
       </div>
     ` : `
       <div class="card-nested" style="margin-bottom:16px;">
@@ -4213,38 +4215,59 @@ function settingsGithubSyncHtml() {
         <label class="field"><span class="label-text">Repository name</span><input id="gh-repo" placeholder="e.g. trackr-data"></label>
         <label class="field span-2"><span class="label-text">Personal access token</span><input id="gh-token" type="password" placeholder="github_pat_…"></label>
       </div>
-      <button class="btn primary" onclick="connectGithubSync()">🔄 Connect &amp; sync</button>
+      <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
+        <button class="btn primary" onclick="connectGithubSync()">🔄 Connect (pull existing data, if any)</button>
+        <button class="btn" onclick="connectGithubSync(true)">⬆ Connect &amp; push THIS device's data instead</button>
+      </div>
+      <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Use the second button on whichever device holds your real, existing data (e.g. an index.html you'd been using directly) — it overwrites the repo with what's here instead of pulling from it.</div>
     `}
     <div id="gh-sync-status" style="margin-top:10px;font-size:12.5px;"></div>`;
 }
-async function connectGithubSync() {
+async function connectGithubSync(forcePush) {
   const owner = document.getElementById('gh-owner').value.trim();
   const repo = document.getElementById('gh-repo').value.trim();
   const token = document.getElementById('gh-token').value.trim();
   const status = document.getElementById('gh-sync-status');
   if (!owner || !repo || !token) { if (status) status.textContent = 'Fill in all three fields.'; return; }
   saveGhSyncConfig({ owner, repo, token, path: 'trackr-data.json' });
-  if (status) status.textContent = 'Connecting…';
+  if (status) status.textContent = forcePush ? 'Pushing…' : 'Connecting…';
   try {
     const remote = await ghFetchData();
     ghLastSha = remote.sha;
-    if (remote.json) {
+    if (remote.json && !forcePush) {
       data = remote.json;
       migrateCryptoModel();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } else {
-      // Seed the repo with this device's current data — pushed directly (not via save())
-      // so a real repo/token problem surfaces here instead of being silently swallowed.
+      // Push this device's current data as-is — pushed directly (not via save()) so a real
+      // repo/token problem surfaces here instead of being silently swallowed.
       data.updatedAt = new Date().toISOString();
       recordHistorySnapshot();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      ghLastSha = await ghPushData(data, null);
+      ghLastSha = await ghPushData(data, remote.sha);
     }
     startSyncPolling();
     render();
   } catch (e) {
     clearGhSyncConfig();
     if (status) status.textContent = "Couldn't connect — check the username, repo name, and token, then try again.";
+  }
+}
+/* Manual override for a device that's already connected — e.g. you connected the wrong way
+   round the first time, or want to force this device's current data to become authoritative
+   again after experimenting on another device. */
+async function pushGithubSyncOverwrite() {
+  const status = document.getElementById('gh-sync-status');
+  if (status) status.textContent = 'Pushing…';
+  try {
+    const remote = await ghFetchData();
+    data.updatedAt = new Date().toISOString();
+    recordHistorySnapshot();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    ghLastSha = await ghPushData(data, remote ? remote.sha : null);
+    if (status) status.textContent = '✓ Pushed — this device\'s data is now what the repo has.';
+  } catch (e) {
+    if (status) status.textContent = "Couldn't push — check your connection and try again.";
   }
 }
 function disconnectGithubSync() {
