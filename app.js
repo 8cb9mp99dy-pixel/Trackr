@@ -410,6 +410,12 @@ const COMMON_COINGECKO_IDS = {
 };
 
 function migrateCryptoModel() {
+  // Must run before anything below — cleanupGhostCryptoBrokers() (called later in this same
+  // function) reads data.cryptoExchangeCash via cryptoBrokerNames(), so a save from before this
+  // field existed (e.g. restored from an older GitHub Sync commit) would throw here otherwise,
+  // aborting migration entirely and leaving the app unable to render.
+  if (!Array.isArray(data.trades)) data.trades = [];
+  if (!Array.isArray(data.cryptoExchangeCash)) data.cryptoExchangeCash = [];
   if (data.settings.eurUsdRate == null) data.settings.eurUsdRate = 1.08;
   if (data.settings.eurUsdRateAuto == null) data.settings.eurUsdRateAuto = true;
   if (data.settings.eurUsdRateUpdatedAt === undefined) data.settings.eurUsdRateUpdatedAt = null;
@@ -988,7 +994,7 @@ function cryptoBrokerNames() {
   const names = new Set();
   data.cryptoLots.forEach(l => { if (l.broker) names.add(l.broker); });
   data.cryptoAssets.forEach(c => (c.snapshots || []).forEach(r => { if (r.broker) names.add(r.broker); }));
-  data.cryptoExchangeCash.forEach(c => { if (c.exchange) names.add(c.exchange); });
+  (data.cryptoExchangeCash || []).forEach(c => { if (c.exchange) names.add(c.exchange); });
   return Array.from(names);
 }
 function cryptoExchangeCashFor(name) {
@@ -1000,7 +1006,7 @@ function cryptoExchangeCashValueEUR(name) {
   return entry ? toEUR(entry.amount, entry.currency) : 0;
 }
 // Same "uninvested cash counts toward value/net worth, never toward P&L" rule as broker cash.
-function totalCryptoExchangeCash() { return data.cryptoExchangeCash.reduce((s, c) => s + toEUR(c.amount, c.currency), 0); }
+function totalCryptoExchangeCash() { return (data.cryptoExchangeCash || []).reduce((s, c) => s + toEUR(c.amount, c.currency), 0); }
 function cryptoValueForBrokerName(name) {
   const key = name.trim().toLowerCase();
   let total = 0;
