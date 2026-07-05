@@ -950,20 +950,38 @@ function cryptoValueForBrokerName(name) {
 /* Per-coin breakdown at one exchange — the crypto equivalent of positionsByBroker(), needed
    because a coin's snapshot/lot rows (not a single asset-level record) are what actually carry
    the exchange name, and one coin can be split across several exchanges at once. */
+/* Same position shape as derivedCryptoPositions() (id, brokerId, ticker, name, logo, assetType,
+   quantity, avgPrice, currentPrice, manualPrice, currency, cryptoRef) so this per-exchange
+   breakdown can be rendered with positionRowHtml() — the exact same row component the Stocks &
+   ETFs Brokers card uses — giving crypto exchanges the identical look (avg vs. now price, value,
+   gain/loss %, edit/refresh/delete) instead of a simplified bespoke row. avgPrice is blended
+   just from this exchange's own rows (mirroring cryptoAssetStats' EUR/USD blending), not the
+   coin's overall average across every exchange. */
 function cryptoHoldingsAtExchange(name) {
   const key = name.trim().toLowerCase();
+  const rate = data.settings.eurUsdRate || 1.08;
   const rows = [];
   data.cryptoAssets.forEach(c => {
     const price = cryptoMarketPrice(c.symbol, 'EUR') || 0;
-    let qty = 0;
-    if (c.mode === 'snapshot') {
-      (c.snapshots || []).forEach(r => { if ((r.broker || '').trim().toLowerCase() === key) qty += r.quantity; });
-    } else {
-      data.cryptoLots.filter(l => l.symbol === c.symbol && (l.broker || '').trim().toLowerCase() === key).forEach(l => qty += l.quantity);
+    const matches = c.mode === 'snapshot'
+      ? (c.snapshots || []).filter(r => (r.broker || '').trim().toLowerCase() === key)
+      : data.cryptoLots.filter(l => l.symbol === c.symbol && (l.broker || '').trim().toLowerCase() === key);
+    let qty = 0, investedEUR = 0, investedUSD = 0;
+    matches.forEach(r => {
+      qty += r.quantity;
+      const paid = r.amountPaid != null ? r.amountPaid : r.quantity * r.price;
+      if (r.currency === 'USD') investedUSD += paid; else investedEUR += paid;
+    });
+    if (qty > 0) {
+      const blendedCostEUR = investedEUR + investedUSD / rate;
+      rows.push({
+        id: 'cryptoexch_' + c.symbol, brokerId: null, ticker: c.symbol, name: c.name, logo: c.logo,
+        assetType: 'Crypto', quantity: qty, avgPrice: qty ? blendedCostEUR / qty : 0,
+        currentPrice: price, manualPrice: null, currency: 'EUR', cryptoRef: c.symbol,
+      });
     }
-    if (qty > 0) rows.push({ symbol: c.symbol, name: c.name, logo: c.logo, quantity: qty, value: qty * price });
   });
-  return rows.sort((a, b) => b.value - a.value);
+  return rows.sort((a, b) => positionValue(b) - positionValue(a));
 }
 function toggleCryptoExchangeExpand(name) { ui.openCryptoExchange = ui.openCryptoExchange === name ? null : name; render(); }
 function deleteCryptoExchange(name) {
@@ -2839,11 +2857,7 @@ function renderCryptoTab() {
             ${expanded ? `
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">
                 <div class="stack-gap-8">
-                  ${x.holdings.map(h => `
-                    <div class="card-nested" style="display:flex;align-items:center;justify-content:space-between;">
-                      <div style="display:flex;align-items:center;gap:8px;">${assetLogoHtml(h.logo, 'Crypto', 22)}<span style="font-size:13px;">${escHtml(h.symbol)} <span style="opacity:.55;">${fmtQty(h.quantity)}</span></span></div>
-                      <div style="display:flex;align-items:center;gap:8px;"><span style="font-weight:700;font-size:13px;">${fmtMoney(h.value)}</span><button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" title="Edit ${escHtml(h.symbol)}" onclick="openCryptoAssetEditor('${h.symbol}')">✎</button></div>
-                    </div>`).join('') || '<div style="opacity:.5;font-size:13px;">No holdings here.</div>'}
+                  ${x.holdings.map(h => positionRowHtml(h)).join('') || '<div style="opacity:.5;font-size:13px;">No holdings here.</div>'}
                 </div>
               </div>
             ` : ''}
