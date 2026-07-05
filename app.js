@@ -509,6 +509,9 @@ function migrateBudgetTransactions() {
     if (t.location == null) t.location = '';
     if (t.description == null) t.description = '';
     if (t.logo == null) t.logo = '';
+    // Existing transactions predate account-linking — left unlinked (accountId: null) rather
+    // than guessed, so no account balance jumps retroactively from a migration.
+    if (t.accountId === undefined) t.accountId = null;
   });
 }
 
@@ -825,10 +828,16 @@ function monthLabel(d) { return d.toLocaleDateString('en-US', { month: 'long', y
 // combine multiple accounts must convert each one to EUR first (toEUR(), defined below with
 // the rest of the investments currency handling) — summing raw balances across a EUR and a USD
 // account previously treated both as if they were the same currency.
-function bankTotal() { return data.accounts.filter(a => a.visibleInTotals).reduce((s, a) => s + toEUR(a.balance, a.currency), 0); }
-function bankAvailable() { return data.accounts.filter(a => a.visibleInTotals).reduce((s, a) => s + toEUR(a.balance - pocketsTotalFor(a), a.currency), 0); }
+// Pockets are money set aside IN ADDITION TO the account's own balance (not a slice carved out
+// of it) — e.g. a checking balance of €599 plus €1,000 saved toward a goal is €1,599 total, not
+// a confusing "-€400 available". So both the account total and "available" include pockets;
+// "available" no longer means "balance minus what's earmarked" the way a stock broker's cash
+// does — here it's simply the account's full worth.
+function bankTotal() { return data.accounts.filter(a => a.visibleInTotals).reduce((s, a) => s + toEUR(a.balance + pocketsTotalFor(a), a.currency), 0); }
+function bankAvailable() { return bankTotal(); }
 function pocketsTotalFor(acc) { return (acc.pockets || []).reduce((s, p) => s + p.amountSaved, 0); }
 function pocketsTotal() { return data.accounts.reduce((s, a) => s + toEUR(pocketsTotalFor(a), a.currency), 0); }
+function accountTotal(acc) { return acc.balance + pocketsTotalFor(acc); }
 
 /* Converts an amount from `currency` into EUR — the single currency every aggregate total in
    the app (portfolio value, category/broker totals, sort order) is expressed in, same anchor
@@ -839,6 +848,17 @@ function toEUR(amount, currency) {
   if (!currency || currency === 'EUR') return amount;
   if (currency === 'USD') return amount / (data.settings.eurUsdRate || 1.08);
   return amount;
+}
+/* Converts between any two of the app's currencies via EUR as the anchor (same convention as
+   toEUR — GBP/CHF have no live rate, so they pass through at face value rather than throwing).
+   Needed because a budget transaction's own currency can differ from the bank account it's
+   linked to (see applyTxToAccountBalance). */
+function convertCurrency(amount, fromCcy, toCcy) {
+  if (fromCcy === toCcy) return amount;
+  const eur = toEUR(amount, fromCcy);
+  if (!toCcy || toCcy === 'EUR') return eur;
+  if (toCcy === 'USD') return eur * (data.settings.eurUsdRate || 1.08);
+  return eur;
 }
 
 function positionPrice(p) { return p.manualPrice != null ? p.manualPrice : p.currentPrice; }
@@ -1283,8 +1303,8 @@ function renderDashboard() {
   const pl = portfolioPL(), plPct = portfolioPLPct();
   const netWorth = netWorthTotal();
 
-  const accountChips = data.accounts.filter(a => a.visibleInTotals).slice().sort((a, b) => toEUR(b.balance, b.currency) - toEUR(a.balance, a.currency)).map(a => `
-    <span class="chip">${accountIconHtml(a, 16)} ${escHtml(a.name)} <span class="${a.balance >= 0 ? 'positive' : 'negative'}">${fmtMoney(a.balance, a.currency)}</span></span>
+  const accountChips = data.accounts.filter(a => a.visibleInTotals).slice().sort((a, b) => toEUR(accountTotal(b), b.currency) - toEUR(accountTotal(a), a.currency)).map(a => `
+    <span class="chip">${accountIconHtml(a, 16)} ${escHtml(a.name)} <span class="${accountTotal(a) >= 0 ? 'positive' : 'negative'}">${fmtMoney(accountTotal(a), a.currency)}</span></span>
   `).join('');
 
   const income = monthIncome(now), expenses = monthExpenses(now), balance = income - expenses;
@@ -1514,8 +1534,8 @@ function renderAccounts() {
   const active = data.accounts.filter(a => a.visibleInTotals).length;
   const hidden = data.accounts.length - active;
   const total = bankTotal(), avail = bankAvailable(), pockets = pocketsTotal();
-  const sortedAccounts = data.accounts.slice().sort((a, b) => toEUR(b.balance, b.currency) - toEUR(a.balance, a.currency));
-  const chips = sortedAccounts.map(a => `<span class="chip">${accountIconHtml(a, 16)} ${escHtml(a.name)} <span>${fmtMoney(a.balance, a.currency)}</span></span>`).join('');
+  const sortedAccounts = data.accounts.slice().sort((a, b) => toEUR(accountTotal(b), b.currency) - toEUR(accountTotal(a), a.currency));
+  const chips = sortedAccounts.map(a => `<span class="chip">${accountIconHtml(a, 16)} ${escHtml(a.name)} <span>${fmtMoney(accountTotal(a), a.currency)}</span></span>`).join('');
 
   return `
   <div class="page surface-dark">
@@ -1568,7 +1588,7 @@ function accountCardHtml(acc) {
       </div>
     </div>
     <div class="row-flex" style="margin-top:14px;">
-      <div><div class="eyebrow">Total</div><div style="font-weight:700;font-size:17px;">${fmtMoney(acc.balance, acc.currency)}</div></div>
+      <div><div class="eyebrow">Total</div><div style="font-weight:700;font-size:17px;">${fmtMoney(accountTotal(acc), acc.currency)}</div></div>
       ${pocketsTot > 0 ? `<div style="text-align:right;"><div class="eyebrow">In pockets</div><div style="font-weight:700;font-size:17px;color:var(--accent-1);">${fmtMoney(pocketsTot, acc.currency)}</div></div>` : ''}
     </div>
     ${expanded ? accountExpandedHtml(acc) : ''}
@@ -1577,7 +1597,7 @@ function accountCardHtml(acc) {
 
 function accountExpandedHtml(acc) {
   const pocketsTot = pocketsTotalFor(acc);
-  const avail = acc.balance - pocketsTot;
+  const avail = accountTotal(acc);
   return `
     <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--dark-border);">
       <div class="grid-2" style="margin-bottom:14px;">
@@ -1937,6 +1957,7 @@ function txRowDisplayHtml(t) {
   const cat = categoryById(t.type === 'income' ? 'income' : 'expense', t.categoryId);
   const subcat = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null;
   const pm = paymentMethodById(t.paymentMethodId);
+  const acc = t.accountId ? accountById(t.accountId) : null;
   const label = t.comment || (cat ? cat.name : '—');
   const catLabel = subcat ? `${cat.name} · ${subcat.name}` : (cat ? cat.name : '');
   const subtitle = t.comment ? catLabel : (pm ? pm.name : '');
@@ -1946,7 +1967,7 @@ function txRowDisplayHtml(t) {
         ${txAvatarHtml(t)}
         <div>
           <div style="font-weight:600;font-size:14px;">${escHtml(label)}${t.nature === 'Fixed' ? ' <span style="font-size:11px;opacity:.5;">🔄</span>' : ''}${t.impact === 'positive' ? ' <span style="font-size:11px;" title="Positive impact">🙂</span>' : t.impact === 'negative' ? ' <span style="font-size:11px;" title="Negative impact">🙁</span>' : ''}</div>
-          <div style="font-size:12px;opacity:.55;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}</div>
+          <div style="font-size:12px;opacity:.55;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}${acc ? ' · ' + escHtml(acc.name) : ''}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
@@ -2021,7 +2042,25 @@ function cashflowBarsHtml(monthDate) {
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--negative);margin-right:5px;"></span>Expenses</span>
     </div>`;
 }
-function deleteBudgetTx(id) { data.budgetTransactions = data.budgetTransactions.filter(t => t.id !== id); save(); render(); }
+/* Keeps a linked account's balance in sync with its transactions, while still letting the
+   balance be corrected by hand (Update balance…) whenever needed — a transaction's effect is
+   just added/subtracted on top of whatever the balance currently is, not recomputed from
+   scratch. sign=1 applies the transaction (income adds, expense subtracts); sign=-1 reverses it
+   (used before re-applying an edited transaction, and before deleting one), so editing the
+   amount/account/type of an existing transaction, or deleting it, never double-counts. */
+function applyTxToAccountBalance(record, sign) {
+  if (!record || !record.accountId) return;
+  const acc = accountById(record.accountId);
+  if (!acc) return;
+  const converted = convertCurrency(record.amount, record.currency, acc.currency);
+  acc.balance += sign * (record.type === 'income' ? converted : -converted);
+}
+function deleteBudgetTx(id) {
+  const t = data.budgetTransactions.find(x => x.id === id);
+  if (t) applyTxToAccountBalance(t, -1);
+  data.budgetTransactions = data.budgetTransactions.filter(t => t.id !== id);
+  save(); render();
+}
 
 /* ---- Category editor (shared between Budget>Categories and Settings>Categories) ----
    Item 3/6: every category and subcategory shows a clickable emoji (opens a picker) and is
@@ -2239,7 +2278,7 @@ function removePaymentMethod(id) { data.paymentMethods = data.paymentMethods.fil
    (name-suggestions, logo, location, description) that doesn't fit well crammed N-at-a-time.
    The same modal/payload serves both "Add" (no id) and "Edit" (existing id) — item 1. ---- */
 function blankTxDraft() {
-  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', currency: data.settings.defaultCurrency, amount: '', date: new Date().toISOString().slice(0, 10), comment: '', location: '', description: '', logo: '', impact: '' };
+  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: '', currency: data.settings.defaultCurrency, amount: '', date: new Date().toISOString().slice(0, 10), comment: '', location: '', description: '', logo: '', impact: '' };
 }
 function openTxForm(id) {
   const existing = id ? data.budgetTransactions.find(t => t.id === id) : null;
@@ -2290,6 +2329,12 @@ window.__modalRenderers.tx = function (payload) {
         <select onchange="updateTxField('paymentMethodId',this.value)">
           <option value="">Select…</option>
           ${data.paymentMethods.map(pm => `<option value="${pm.id}" ${payload.paymentMethodId === pm.id ? 'selected' : ''}>${pm.icon || ''} ${escHtml(pm.name)}</option>`).join('')}
+        </select>
+      </label>
+      <label class="field"><span class="label-text">Account <span style="opacity:.6;">(optional — keeps its balance in sync)</span></span>
+        <select onchange="updateTxField('accountId',this.value)">
+          <option value="">None</option>
+          ${data.accounts.map(a => `<option value="${a.id}" ${payload.accountId === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}
         </select>
       </label>
       <label class="field"><span class="label-text">Personal impact <span style="opacity:.6;">(optional)</span></span>
@@ -2348,7 +2393,7 @@ function applyTxSuggestion(name) {
   const p = ui.modal.payload;
   Object.assign(p, {
     comment: name, type: match.type, categoryId: match.categoryId, subCategoryId: match.subCategoryId || '',
-    paymentMethodId: match.paymentMethodId || '', nature: match.nature, currency: match.currency,
+    paymentMethodId: match.paymentMethodId || '', accountId: match.accountId || '', nature: match.nature, currency: match.currency,
     location: match.location || '', description: match.description || '', logo: match.logo || '', impact: match.impact || '',
   });
   ui.txSuggestions = [];
@@ -2367,15 +2412,21 @@ function saveTxForm() {
   }
   const record = {
     id: p.id || uid('tx'), date: p.date, type: p.type, categoryId: p.categoryId, subCategoryId: p.subCategoryId || null,
-    nature: p.nature, paymentMethodId: p.paymentMethodId || null, currency: p.currency, amount: Math.abs(parseFloat(p.amount)),
+    nature: p.nature, paymentMethodId: p.paymentMethodId || null, accountId: p.accountId || null, currency: p.currency, amount: Math.abs(parseFloat(p.amount)),
     comment, location: (p.location || '').trim(), description: (p.description || '').trim(), logo, impact: p.impact || '',
   };
+  // Reverse whatever this transaction previously did to its linked account's balance before
+  // applying its new effect — otherwise editing the amount/account/type would double-count.
   if (p.id) {
     const idx = data.budgetTransactions.findIndex(t => t.id === p.id);
-    if (idx !== -1) data.budgetTransactions[idx] = record;
+    if (idx !== -1) {
+      applyTxToAccountBalance(data.budgetTransactions[idx], -1);
+      data.budgetTransactions[idx] = record;
+    }
   } else {
     data.budgetTransactions.push(record);
   }
+  applyTxToAccountBalance(record, 1);
   save(); closeModal();
 }
 /* ===================== Investments ===================== */
@@ -4074,6 +4125,7 @@ const BUDGET_TX_EXPORT_COLUMNS = {
   'Type': { width: 75, type: 'String', value: t => t.type },
   'Nature': { width: 90, type: 'String', value: t => t.nature },
   'Payment Method': { width: 125, type: 'String', value: t => (paymentMethodById(t.paymentMethodId) || {}).name || '' },
+  'Account': { width: 130, type: 'String', value: t => (t.accountId && accountById(t.accountId) || {}).name || '' },
   'Personal Impact': { width: 100, type: 'String', value: t => t.impact === 'positive' ? 'Positive' : t.impact === 'negative' ? 'Negative' : '' },
   'Location': { width: 130, type: 'String', value: t => t.location || '' },
   'Description': { width: 220, type: 'String', value: t => t.description || '' },
