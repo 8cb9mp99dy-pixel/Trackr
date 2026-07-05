@@ -337,31 +337,62 @@ function startSyncPolling() {
     } catch (e) { /* offline or GitHub unreachable for a moment — retried automatically next tick */ }
   }, 30000);
 }
+/* Compares local (localStorage) against remote (GitHub) by updatedAt and keeps whichever is
+   actually newer — NEVER overwrites local data with remote just because remote exists. A push
+   that silently failed (rate limit, revoked token, offline for a moment — save() only logs
+   these, it doesn't retry) previously left GitHub stale; the old code adopted that stale copy
+   unconditionally on every reload, wiping out everything typed since the last successful push.
+   If local turns out to be the one that's ahead (or GitHub had nothing yet), it's pushed up so
+   the two reconcile instead of drifting further apart. */
 async function load() {
-  let loadedFromRemote = false;
+  let localData = null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) localData = JSON.parse(raw);
+  } catch (e) {}
+
+  let remoteData = null, remoteSha = null, remoteFetchFailed = false;
   if (loadGhSyncConfig()) {
     try {
       const remote = await ghFetchData();
-      ghLastSha = remote.sha;
-      if (remote.json) {
-        data = remote.json;
-        migrateCryptoModel();
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
-        loadedFromRemote = true;
-      }
-    } catch (e) { console.error('GitHub sync unreachable, falling back to local data', e); }
-  }
-  if (!loadedFromRemote) {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) throw new Error('no data');
-      data = JSON.parse(raw);
-      migrateCryptoModel();
+      remoteData = remote.json;
+      remoteSha = remote.sha;
     } catch (e) {
-      data = defaultData();
+      console.error('GitHub sync unreachable, falling back to local data', e);
+      remoteFetchFailed = true;
     }
-    await save(); // persists locally + seeds GitHub (if configured) the first time
   }
+
+  const remoteIsNewer = !!(remoteData && remoteData.updatedAt && (!localData || !localData.updatedAt || remoteData.updatedAt > localData.updatedAt));
+  const inSync = !!(remoteData && localData && remoteData.updatedAt === localData.updatedAt);
+
+  if (remoteIsNewer) {
+    // Extra safety net: keep a copy of what was here before adopting remote data, recoverable
+    // via localStorage.getItem('trackr-v1-backup') in the browser console if remote ever turns
+    // out to be wrong (e.g. a clock issue makes stale data look newer than it is).
+    if (localData) { try { localStorage.setItem(STORAGE_KEY + '-backup', JSON.stringify(localData)); } catch (e) {} }
+    data = remoteData;
+    ghLastSha = remoteSha;
+  } else if (localData) {
+    data = localData;
+    ghLastSha = remoteSha;
+  } else if (remoteData) {
+    data = remoteData;
+    ghLastSha = remoteSha;
+  } else {
+    data = defaultData();
+  }
+  try {
+    migrateCryptoModel();
+  } catch (e) { console.error('Migration failed', e); }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+
+  // Reconcile: if local was kept (not remote) and it actually differs from what's on GitHub,
+  // push it up so a future load on another device doesn't regress either.
+  if (loadGhSyncConfig() && !remoteIsNewer && !inSync && !remoteFetchFailed) {
+    await save();
+  }
+
   applyTheme();
   render();
   if (data.settings.eurUsdRateAuto !== false && eurUsdRateIsStale()) fetchEurUsdRate();
