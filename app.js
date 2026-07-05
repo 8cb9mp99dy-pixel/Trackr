@@ -2495,7 +2495,7 @@ function brokersCardHtml(opts) {
             </div>
             ${expanded ? `
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">
-                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">💶 Cash</div><div style="font-weight:700;font-size:13px;">${fmtMoney(b.cashBalance, b.cashCurrency)}</div></div></div>` : ''}
+                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">💶 Cash</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(b.cashBalance, b.cashCurrency)}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" onclick="openBrokerForm('${b.id}')">✎</button>` : ''}</div></div></div>` : ''}
                 <div class="stack-gap-8">
                   ${positions.map(p => positionRowHtml(p)).join('') || '<div style="opacity:.5;font-size:13px;">No positions here yet.</div>'}
                 </div>
