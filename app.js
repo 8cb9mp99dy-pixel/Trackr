@@ -267,6 +267,7 @@ let ui = {
   emojiPickerOpen: null, // key of category/subcategory/payment-method with its icon picker open
   addingSubcatFor: null, // category id currently showing the "+ Sub-category" input
   txSuggestions: [], // name-match suggestions live-patched while typing in the tx form
+  supabaseSetupSqlOpen: false, // Settings → Supabase Sync: whether the setup SQL is expanded
 };
 
 function uid(prefix) { return prefix + '_' + Math.random().toString(36).slice(2, 9); }
@@ -276,74 +277,69 @@ function uid(prefix) { return prefix + '_' + Math.random().toString(36).slice(2,
 const BUDGET_MIN_MONTH = new Date(2026, 6, 1);
 
 /* ===================== Persistence ===================== */
-/* GitHub-as-a-database sync: a private GitHub repo (see Settings > GitHub Sync) holds this
-   app's entire data as one JSON file, read/written via GitHub's Contents API. This is entirely
-   separate from where the app's *code* lives (a public repo/GitHub Pages is fine — it never
-   contains any personal data); only this device's own owner/repo/token config, kept in its own
-   localStorage key (never synced anywhere), decides which private repo it talks to. Works from
-   anywhere with internet — no local server to run, no same-WiFi requirement. */
-const GH_SYNC_KEY = 'trackr-github-sync';
-function loadGhSyncConfig() {
-  try { return JSON.parse(localStorage.getItem(GH_SYNC_KEY)); } catch (e) { return null; }
+/* Supabase sync: your own Supabase project stores this app's entire data as one JSON row,
+   read/written through two narrow Postgres functions (see SUPABASE_SETUP_SQL below) rather than
+   the raw table directly — the table itself has no public access at all, only get_trackr_data/
+   set_trackr_data do, and only for the row matching your secret code's hash. This is entirely
+   separate from where the app's *code* lives (GitHub Pages, no personal data there); only this
+   device's own url/anon key/secret, kept in its own localStorage key (never synced anywhere),
+   decides which project + row it talks to. Works from anywhere with internet, no local server. */
+const SUPABASE_SYNC_KEY = 'trackr-supabase-sync';
+function loadSupabaseSyncConfig() {
+  try { return JSON.parse(localStorage.getItem(SUPABASE_SYNC_KEY)); } catch (e) { return null; }
 }
-function saveGhSyncConfig(cfg) { localStorage.setItem(GH_SYNC_KEY, JSON.stringify(cfg)); }
-function clearGhSyncConfig() { localStorage.removeItem(GH_SYNC_KEY); }
-/* atob/btoa are Latin1-only — this round-trips real UTF-8 (accents, emoji in category icons,
-   transaction names, ...) through them safely. */
-function utf8ToBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
-function base64ToUtf8(b64) { return decodeURIComponent(escape(atob(b64.replace(/\n/g, '')))); }
-let ghLastSha = null; // GitHub requires the file's current sha to accept the next update
-async function ghFetchData() {
-  const cfg = loadGhSyncConfig();
+function saveSupabaseSyncConfig(cfg) { localStorage.setItem(SUPABASE_SYNC_KEY, JSON.stringify(cfg)); }
+function clearSupabaseSyncConfig() { localStorage.removeItem(SUPABASE_SYNC_KEY); }
+async function supabaseRpc(fn, body) {
+  const cfg = loadSupabaseSyncConfig();
   if (!cfg) return null;
-  const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURIComponent(cfg.path)}`, {
-    headers: { 'Authorization': `Bearer ${cfg.token}`, 'Accept': 'application/vnd.github+json' },
+  const res = await fetch(`${cfg.url}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: { 'apikey': cfg.anonKey, 'Authorization': `Bearer ${cfg.anonKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
-  if (res.status === 404) return { json: null, sha: null };
-  if (!res.ok) throw new Error('GitHub API error ' + res.status);
-  const body = await res.json();
-  return { json: JSON.parse(base64ToUtf8(body.content)), sha: body.sha };
+  if (!res.ok) throw new Error('Supabase API error ' + res.status + ': ' + (await res.text()).slice(0, 200));
+  return res.json();
 }
-async function ghPushData(jsonData, sha) {
-  const cfg = loadGhSyncConfig();
+async function supabaseFetchData() {
+  const cfg = loadSupabaseSyncConfig();
   if (!cfg) return null;
-  const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURIComponent(cfg.path)}`, {
-    method: 'PUT',
-    headers: { 'Authorization': `Bearer ${cfg.token}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: 'Update Trackr data', content: utf8ToBase64(JSON.stringify(jsonData)), sha: sha || undefined }),
-  });
-  if (!res.ok) throw new Error('GitHub API error ' + res.status);
-  return (await res.json()).content.sha;
+  return supabaseRpc('get_trackr_data', { secret: cfg.secret }); // the row's data (jsonb), or null
+}
+async function supabasePushData(jsonData) {
+  const cfg = loadSupabaseSyncConfig();
+  if (!cfg) return;
+  await supabaseRpc('set_trackr_data', { secret: cfg.secret, new_data: jsonData });
 }
 let syncPollTimer = null;
-/* Every 30s, pick up changes saved from another device (e.g. an edit made on the iPhone while
-   this tab is also open) without needing a manual refresh. Skips the swap while a modal is open
-   so an in-progress edit is never yanked out from under the user; last-write-wins via
+/* Every 8s, pick up changes saved from another device (e.g. an edit made on the iPhone while
+   this tab is also open) without needing a manual refresh — a plain database row is cheap to
+   poll often, unlike the old GitHub-based sync (which also grew a new commit on every save, and
+   only checked every 30s to stay within GitHub's request patterns). Skips the swap while a modal
+   is open so an in-progress edit is never yanked out from under the user; last-write-wins via
    data.updatedAt (an ISO string, so plain string comparison already sorts chronologically). */
 function startSyncPolling() {
   if (syncPollTimer) return;
   syncPollTimer = setInterval(async () => {
     if (ui.modal) return;
     try {
-      const remote = await ghFetchData();
-      if (!remote) return;
-      ghLastSha = remote.sha;
-      if (remote.json && remote.json.updatedAt && (!data.updatedAt || remote.json.updatedAt > data.updatedAt)) {
-        data = remote.json;
+      const remote = await supabaseFetchData();
+      if (remote && remote.updatedAt && (!data.updatedAt || remote.updatedAt > data.updatedAt)) {
+        data = remote;
         migrateCryptoModel();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         render();
       }
-    } catch (e) { /* offline or GitHub unreachable for a moment — retried automatically next tick */ }
-  }, 30000);
+    } catch (e) { /* offline or Supabase unreachable for a moment — retried automatically next tick */ }
+  }, 8000);
 }
-/* Compares local (localStorage) against remote (GitHub) by updatedAt and keeps whichever is
-   actually newer — NEVER overwrites local data with remote just because remote exists. A push
-   that silently failed (rate limit, revoked token, offline for a moment — save() only logs
-   these, it doesn't retry) previously left GitHub stale; the old code adopted that stale copy
-   unconditionally on every reload, wiping out everything typed since the last successful push.
-   If local turns out to be the one that's ahead (or GitHub had nothing yet), it's pushed up so
-   the two reconcile instead of drifting further apart. */
+/* Compares local (localStorage) against remote (Supabase) by updatedAt and keeps whichever is
+   actually newer — NEVER overwrites local data with remote just because remote exists (this is
+   the exact lesson learned from a real data-loss incident with the old GitHub-based sync: a
+   push that silently failed left the remote copy stale, and unconditionally adopting "whatever
+   is remote" on the next load wiped out everything typed since). If local turns out to be the
+   one that's ahead (or Supabase had nothing yet), it's pushed up so the two reconcile instead of
+   drifting further apart. */
 async function load() {
   let localData = null;
   try {
@@ -351,14 +347,12 @@ async function load() {
     if (raw) localData = JSON.parse(raw);
   } catch (e) {}
 
-  let remoteData = null, remoteSha = null, remoteFetchFailed = false;
-  if (loadGhSyncConfig()) {
+  let remoteData = null, remoteFetchFailed = false;
+  if (loadSupabaseSyncConfig()) {
     try {
-      const remote = await ghFetchData();
-      remoteData = remote.json;
-      remoteSha = remote.sha;
+      remoteData = await supabaseFetchData();
     } catch (e) {
-      console.error('GitHub sync unreachable, falling back to local data', e);
+      console.error('Supabase sync unreachable, falling back to local data', e);
       remoteFetchFailed = true;
     }
   }
@@ -372,13 +366,10 @@ async function load() {
     // out to be wrong (e.g. a clock issue makes stale data look newer than it is).
     if (localData) { try { localStorage.setItem(STORAGE_KEY + '-backup', JSON.stringify(localData)); } catch (e) {} }
     data = remoteData;
-    ghLastSha = remoteSha;
   } else if (localData) {
     data = localData;
-    ghLastSha = remoteSha;
   } else if (remoteData) {
     data = remoteData;
-    ghLastSha = remoteSha;
   } else {
     data = defaultData();
   }
@@ -387,9 +378,9 @@ async function load() {
   } catch (e) { console.error('Migration failed', e); }
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
 
-  // Reconcile: if local was kept (not remote) and it actually differs from what's on GitHub,
+  // Reconcile: if local was kept (not remote) and it actually differs from what's in Supabase,
   // push it up so a future load on another device doesn't regress either.
-  if (loadGhSyncConfig() && !remoteIsNewer && !inSync && !remoteFetchFailed) {
+  if (loadSupabaseSyncConfig() && !remoteIsNewer && !inSync && !remoteFetchFailed) {
     await save();
   }
 
@@ -398,7 +389,7 @@ async function load() {
   if (data.settings.eurUsdRateAuto !== false && eurUsdRateIsStale()) fetchEurUsdRate();
   fetchCryptoPrices();
   fetchAssetPrices();
-  if (loadGhSyncConfig()) startSyncPolling();
+  if (loadSupabaseSyncConfig()) startSyncPolling();
 }
 
 /* Upgrades pre-existing saves (Crypto tracked as aggregated `positions`) to the
@@ -648,10 +639,10 @@ async function save() {
   recordHistorySnapshot();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
   catch (e) { console.error('save failed', e); }
-  if (loadGhSyncConfig()) {
+  if (loadSupabaseSyncConfig()) {
     try {
-      ghLastSha = await ghPushData(data, ghLastSha);
-    } catch (e) { console.error('GitHub sync push failed, changes stay local for now', e); }
+      await supabasePushData(data);
+    } catch (e) { console.error('Supabase sync push failed, changes stay local for now', e); }
   }
 }
 
@@ -3928,7 +3919,7 @@ function deleteTrade(id) {
 
 /* ===================== Settings ===================== */
 const SETTINGS_SECTIONS = [
-  { id: 'githubsync', icon: '🔄', title: 'GitHub Sync (iPhone access)' },
+  { id: 'supabasesync', icon: '🔄', title: 'Supabase Sync (iPhone access)' },
   { id: 'appearance', icon: '🎨', title: 'Appearance & Colors' },
   { id: 'display', icon: '🖥️', title: 'Display Preferences' },
   { id: 'categories', icon: '🏷️', title: 'Categories' },
@@ -3940,7 +3931,7 @@ const SETTINGS_SECTIONS = [
   { id: 'about', icon: 'ℹ️', title: 'About' },
 ];
 const SETTINGS_BODY = {
-  githubsync: settingsGithubSyncHtml,
+  supabasesync: settingsSupabaseSyncHtml,
   appearance: settingsAppearanceHtml,
   display: settingsDisplayHtml,
   categories: () => categoryEditorHtml(),
@@ -4364,101 +4355,148 @@ function settingsAboutHtml() {
       </tbody>
     </table>`;
 }
-/* GitHub-as-a-database: config (owner/repo/token) is entered separately on every device and
-   kept in that device's own localStorage only (see GH_SYNC_KEY) — never part of the synced
-   data itself, since a device needs it before it can even reach GitHub. Connecting pulls
-   whatever's already in the repo if it exists, or seeds the repo from this device's current
-   data if the repo is still empty — so the same "Connect" button handles both "this is the
-   first device" and "join a repo another device already seeded" without a separate flow. */
-function settingsGithubSyncHtml() {
-  const cfg = loadGhSyncConfig();
+/* One-time SQL the user runs in their own Supabase project's SQL editor. The table itself is
+   never exposed directly (no policy grants it any access at all) — only these two functions
+   are, and only to the row whose id is the SHA-256 hash of the caller's secret, so knowing the
+   project URL + anon key alone (both visible in this device's browser storage, same exposure
+   as the old GitHub token) isn't enough to read or overwrite anything without also knowing the
+   secret. The raw secret itself is never stored, only its hash. */
+const SUPABASE_SETUP_SQL = `create extension if not exists pgcrypto;
+
+create table if not exists trackr_data (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table trackr_data enable row level security;
+
+create or replace function get_trackr_data(secret text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  select data into result from trackr_data where id = encode(digest(secret, 'sha256'), 'hex');
+  return result;
+end;
+$$;
+
+create or replace function set_trackr_data(secret text, new_data jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into trackr_data (id, data, updated_at)
+  values (encode(digest(secret, 'sha256'), 'hex'), new_data, now())
+  on conflict (id) do update set data = excluded.data, updated_at = excluded.updated_at;
+end;
+$$;
+
+grant execute on function get_trackr_data(text) to anon;
+grant execute on function set_trackr_data(text, jsonb) to anon;`;
+function toggleSupabaseSetupSql() { ui.supabaseSetupSqlOpen = !ui.supabaseSetupSqlOpen; render(); }
+/* Config (url/anon key/secret) is entered separately on every device and kept in that device's
+   own localStorage only (see SUPABASE_SYNC_KEY) — never part of the synced data itself, since a
+   device needs it before it can even reach Supabase. Connecting pulls whatever's already stored
+   under this secret if it exists, or seeds it from this device's current data if nothing's
+   there yet — so the same "Connect" button handles both "this is the first device" and "join
+   data another device already seeded" without a separate flow. */
+function settingsSupabaseSyncHtml() {
+  const cfg = loadSupabaseSyncConfig();
   return `
     <div style="opacity:.65;font-size:13px;margin-bottom:16px;">
-      Sync your data between devices (e.g. this Mac and your iPhone) through a private GitHub repo — no server to run, works from anywhere with internet. Your data only goes to the private repo below; it's never public.
+      Sync your data between devices (e.g. this Mac and your iPhone) through your own Supabase project — no server to run, works from anywhere with internet, and checks for changes every few seconds instead of every 30.
     </div>
     ${cfg ? `
       <div class="card-nested" style="margin-bottom:16px;">
         <div class="row-flex">
           <div>
             <div style="font-weight:700;">🔄 Connected</div>
-            <div style="font-size:12.5px;opacity:.6;margin-top:2px;">${escHtml(cfg.owner)}/${escHtml(cfg.repo)}</div>
+            <div style="font-size:12.5px;opacity:.6;margin-top:2px;">${escHtml(cfg.url)}</div>
           </div>
-          <button class="btn small" onclick="disconnectGithubSync()">Disconnect</button>
+          <button class="btn small" onclick="disconnectSupabaseSync()">Disconnect</button>
         </div>
-        <div style="font-size:12px;opacity:.6;margin-top:10px;">If this device's data should replace what's currently in the repo (e.g. this is the device with your real, existing data), use:</div>
-        <button class="btn small" style="margin-top:8px;" onclick="pushGithubSyncOverwrite()">⬆ Push this device's data (overwrite the repo)</button>
+        <div style="font-size:12px;opacity:.6;margin-top:10px;">If this device's data should replace what's currently stored (e.g. this is the device with your real, existing data), use:</div>
+        <button class="btn small" style="margin-top:8px;" onclick="pushSupabaseSyncOverwrite()">⬆ Push this device's data (overwrite)</button>
       </div>
     ` : `
       <div class="card-nested" style="margin-bottom:16px;">
         <div style="font-weight:700;margin-bottom:8px;">One-time setup</div>
         <ol style="font-size:12.5px;opacity:.75;margin:0 0 12px;padding-left:18px;line-height:1.6;">
-          <li>On <strong>github.com</strong>, create a new <strong>private</strong> repository just for this data (e.g. "trackr-data") — an empty repo is fine, don't add a README.</li>
-          <li>Go to <strong>github.com/settings/personal-access-tokens/new</strong>, create a fine-grained token scoped to <strong>only that repository</strong>, with <strong>Contents: Read and write</strong> permission.</li>
-          <li>Enter the details below, on every device you want synced (this Mac, your iPhone, ...).</li>
+          <li>Create a free project at <strong>supabase.com</strong>.</li>
+          <li>Open the <strong>SQL Editor</strong> (left sidebar) and run the setup script below — once.</li>
+          <li>Go to <strong>Project Settings → API</strong>, copy the <strong>Project URL</strong> and the <strong>anon public</strong> key.</li>
+          <li>Pick your own secret code (like a password — the longer and more random, the better) and enter everything below, on every device you want synced.</li>
         </ol>
+        <button type="button" class="btn small" onclick="toggleSupabaseSetupSql()">${ui.supabaseSetupSqlOpen ? 'Hide' : 'Show'} setup SQL</button>
+        ${ui.supabaseSetupSqlOpen ? `<pre style="font-size:10.5px;background:var(--dark-card-2);padding:10px;border-radius:var(--radius-sm);overflow:auto;margin-top:8px;white-space:pre-wrap;user-select:all;">${escHtml(SUPABASE_SETUP_SQL)}</pre>` : ''}
       </div>
       <div class="form-grid" style="margin-bottom:12px;">
-        <label class="field"><span class="label-text">GitHub username</span><input id="gh-owner" placeholder="e.g. arthurlm05"></label>
-        <label class="field"><span class="label-text">Repository name</span><input id="gh-repo" placeholder="e.g. trackr-data"></label>
-        <label class="field span-2"><span class="label-text">Personal access token</span><input id="gh-token" type="password" placeholder="github_pat_…"></label>
+        <label class="field span-2"><span class="label-text">Project URL</span><input id="sb-url" placeholder="https://xxxxxxxxxxxx.supabase.co"></label>
+        <label class="field span-2"><span class="label-text">Anon public key</span><input id="sb-anon-key" type="password" placeholder="eyJhbGciOi…"></label>
+        <label class="field span-2"><span class="label-text">Your secret code</span><input id="sb-secret" type="password" placeholder="A long, private code only you know"></label>
       </div>
       <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
-        <button class="btn primary" onclick="connectGithubSync()">🔄 Connect (pull existing data, if any)</button>
-        <button class="btn" onclick="connectGithubSync(true)">⬆ Connect &amp; push THIS device's data instead</button>
+        <button class="btn primary" onclick="connectSupabaseSync()">🔄 Connect (pull existing data, if any)</button>
+        <button class="btn" onclick="connectSupabaseSync(true)">⬆ Connect &amp; push THIS device's data instead</button>
       </div>
-      <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Use the second button on whichever device holds your real, existing data (e.g. an index.html you'd been using directly) — it overwrites the repo with what's here instead of pulling from it.</div>
+      <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Use the second button on whichever device holds your real, existing data — it overwrites what's stored with what's here instead of pulling from it.</div>
     `}
-    <div id="gh-sync-status" style="margin-top:10px;font-size:12.5px;"></div>`;
+    <div id="sb-sync-status" style="margin-top:10px;font-size:12.5px;"></div>`;
 }
-async function connectGithubSync(forcePush) {
-  const owner = document.getElementById('gh-owner').value.trim();
-  const repo = document.getElementById('gh-repo').value.trim();
-  const token = document.getElementById('gh-token').value.trim();
-  const status = document.getElementById('gh-sync-status');
-  if (!owner || !repo || !token) { if (status) status.textContent = 'Fill in all three fields.'; return; }
-  saveGhSyncConfig({ owner, repo, token, path: 'trackr-data.json' });
+async function connectSupabaseSync(forcePush) {
+  const url = document.getElementById('sb-url').value.trim().replace(/\/+$/, '');
+  const anonKey = document.getElementById('sb-anon-key').value.trim();
+  const secret = document.getElementById('sb-secret').value.trim();
+  const status = document.getElementById('sb-sync-status');
+  if (!url || !anonKey || !secret) { if (status) status.textContent = 'Fill in all three fields.'; return; }
+  saveSupabaseSyncConfig({ url, anonKey, secret });
   if (status) status.textContent = forcePush ? 'Pushing…' : 'Connecting…';
   try {
-    const remote = await ghFetchData();
-    ghLastSha = remote.sha;
-    if (remote.json && !forcePush) {
-      data = remote.json;
+    const remote = await supabaseFetchData();
+    if (remote && !forcePush) {
+      data = remote;
       migrateCryptoModel();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } else {
       // Push this device's current data as-is — pushed directly (not via save()) so a real
-      // repo/token problem surfaces here instead of being silently swallowed.
+      // URL/key/secret problem surfaces here instead of being silently swallowed.
       data.updatedAt = new Date().toISOString();
       recordHistorySnapshot();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      ghLastSha = await ghPushData(data, remote.sha);
+      await supabasePushData(data);
     }
     startSyncPolling();
     render();
   } catch (e) {
-    clearGhSyncConfig();
-    if (status) status.textContent = "Couldn't connect — check the username, repo name, and token, then try again.";
+    clearSupabaseSyncConfig();
+    if (status) status.textContent = "Couldn't connect — check the project URL, anon key, and that you ran the setup SQL, then try again.";
   }
 }
 /* Manual override for a device that's already connected — e.g. you connected the wrong way
    round the first time, or want to force this device's current data to become authoritative
    again after experimenting on another device. */
-async function pushGithubSyncOverwrite() {
-  const status = document.getElementById('gh-sync-status');
+async function pushSupabaseSyncOverwrite() {
+  const status = document.getElementById('sb-sync-status');
   if (status) status.textContent = 'Pushing…';
   try {
-    const remote = await ghFetchData();
     data.updatedAt = new Date().toISOString();
     recordHistorySnapshot();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    ghLastSha = await ghPushData(data, remote ? remote.sha : null);
-    if (status) status.textContent = '✓ Pushed — this device\'s data is now what the repo has.';
+    await supabasePushData(data);
+    if (status) status.textContent = '✓ Pushed — this device\'s data is now what Supabase has.';
   } catch (e) {
     if (status) status.textContent = "Couldn't push — check your connection and try again.";
   }
 }
-function disconnectGithubSync() {
-  clearGhSyncConfig();
+function disconnectSupabaseSync() {
+  clearSupabaseSyncConfig();
   if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
   render();
 }

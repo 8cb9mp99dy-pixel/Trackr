@@ -50,11 +50,12 @@ app at once.
 
 The app's *code* (this repo) can be hosted publicly for free via GitHub
 Pages — it's just the program, it never contains any of your actual data.
-Your real data syncs separately through a **private** GitHub repo, in
-**Settings → GitHub Sync**: create a private repo just for your data and a
-fine-grained access token scoped to only that repo, enter them once on each
-device, and every device you connect reads/writes the same private repo —
-no server to run, works from anywhere with internet.
+Your real data syncs separately through your own **Supabase** project, in
+**Settings → Supabase Sync**: create a free Supabase project, run the
+one-time setup SQL shown in that Settings section, copy the Project URL and
+anon public key, and pick your own secret code. Enter all three on every
+device you want synced — no server to run, works from anywhere with
+internet, and checks for changes every few seconds.
 
 ## How to update it
 
