@@ -237,6 +237,10 @@ function defaultData() {
     // Leveraged/derivative trades (futures, CFDs, options, forex, ...) — tracked separately from
     // the Investments page since these are margin/collateral positions, not outright ownership.
     trades: [],
+    // Uninvested cash sitting at a crypto exchange (e.g. idle EUR/USDT on Binance) — the crypto
+    // equivalent of a broker's cashBalance, kept separate since exchanges are free-text names,
+    // not data.brokers records.
+    cryptoExchangeCash: [],
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
     // (today's entry is updated in place every time something changes; past days are frozen).
     // Starts empty — no fabricated history — and grows for real as you use the app.
@@ -463,6 +467,7 @@ function migrateCryptoModel() {
 function migrateTradingModel() {
   if (!Array.isArray(data.trades)) data.trades = [];
   if (!data.settings.assetTypeColors) data.settings.assetTypeColors = {};
+  if (!Array.isArray(data.cryptoExchangeCash)) data.cryptoExchangeCash = [];
 }
 
 /* Reconciles existing saves against BUDGET_CATEGORIES_TEMPLATE / DEFAULT_PAYMENT_METHODS by
@@ -899,10 +904,10 @@ function allInvestmentPositions() { return derivedAssetPositions().concat(derive
 // as accounts/positions/transactions, fixed the same way (convert each to EUR before adding).
 function totalBrokerCash() { return data.brokers.reduce((s, b) => s + toEUR(b.cashBalance || 0, b.cashCurrency), 0); }
 function investedTotal() { return allInvestmentPositions().reduce((s, p) => s + positionCost(p), 0); }
-// Total value includes uninvested broker cash (it's real money at the broker); P&L doesn't,
-// since cash has no cost basis — including it there would inflate P&L by the cash balance.
-function portfolioValue() { return allInvestmentPositions().reduce((s, p) => s + positionValue(p), 0) + totalBrokerCash(); }
-function portfolioPL() { return (portfolioValue() - totalBrokerCash()) - investedTotal(); }
+// Total value includes uninvested broker/exchange cash (it's real money sitting there); P&L
+// doesn't, since cash has no cost basis — including it there would inflate P&L by the balance.
+function portfolioValue() { return allInvestmentPositions().reduce((s, p) => s + positionValue(p), 0) + totalBrokerCash() + totalCryptoExchangeCash(); }
+function portfolioPL() { return (portfolioValue() - totalBrokerCash() - totalCryptoExchangeCash()) - investedTotal(); }
 function portfolioPLPct() { const inv = investedTotal(); return inv ? (portfolioPL() / inv * 100) : 0; }
 function netWorthTotal() { return bankTotal() + portfolioValue(); }
 
@@ -932,8 +937,19 @@ function cryptoBrokerNames() {
   const names = new Set();
   data.cryptoLots.forEach(l => { if (l.broker) names.add(l.broker); });
   data.cryptoAssets.forEach(c => (c.snapshots || []).forEach(r => { if (r.broker) names.add(r.broker); }));
+  data.cryptoExchangeCash.forEach(c => { if (c.exchange) names.add(c.exchange); });
   return Array.from(names);
 }
+function cryptoExchangeCashFor(name) {
+  const key = name.trim().toLowerCase();
+  return data.cryptoExchangeCash.find(c => (c.exchange || '').trim().toLowerCase() === key);
+}
+function cryptoExchangeCashValueEUR(name) {
+  const entry = cryptoExchangeCashFor(name);
+  return entry ? toEUR(entry.amount, entry.currency) : 0;
+}
+// Same "uninvested cash counts toward value/net worth, never toward P&L" rule as broker cash.
+function totalCryptoExchangeCash() { return data.cryptoExchangeCash.reduce((s, c) => s + toEUR(c.amount, c.currency), 0); }
 function cryptoValueForBrokerName(name) {
   const key = name.trim().toLowerCase();
   let total = 0;
@@ -945,7 +961,7 @@ function cryptoValueForBrokerName(name) {
       data.cryptoLots.filter(l => l.symbol === c.symbol && (l.broker || '').trim().toLowerCase() === key).forEach(l => total += l.quantity * price);
     }
   });
-  return total;
+  return total + cryptoExchangeCashValueEUR(name);
 }
 /* Per-coin breakdown at one exchange — the crypto equivalent of positionsByBroker(), needed
    because a coin's snapshot/lot rows (not a single asset-level record) are what actually carry
@@ -2785,11 +2801,13 @@ function deleteBroker(id) {
 /* ===================== Crypto tab ===================== */
 function cryptoPortfolioTotals() {
   const stats = data.cryptoAssets.map(c => cryptoAssetStats(c.symbol));
-  const value = stats.reduce((s, x) => s + x.marketValueEUR, 0);
+  const coinsValue = stats.reduce((s, x) => s + x.marketValueEUR, 0);
+  const cash = totalCryptoExchangeCash();
+  const value = coinsValue + cash;
   const invested = stats.reduce((s, x) => s + x.blendedCostEUR, 0);
-  const pl = value - invested;
+  const pl = coinsValue - invested;
   const plPct = invested ? (pl / invested * 100) : 0;
-  return { value, invested, pl, plPct };
+  return { value, invested, pl, plPct, cash };
 }
 
 /* Mirrors the Stocks & ETFs tab's structure exactly (quick actions → Brokers-equivalent card
@@ -2816,6 +2834,7 @@ function renderCryptoTab() {
       <div id="crypto-total-pl" class="${t.pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${t.pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(t.pl))} (${fmtPct(Math.abs(t.plPct), false)})</div>
       <div style="font-size:12.5px;opacity:.55;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         <span>Invested: <span id="crypto-total-invested">${fmtMoney(t.invested)}</span></span>
+        ${t.cash > 0 ? `<span>·</span><span>Cash: <span id="crypto-total-cash">${fmtMoney(t.cash)}</span></span>` : ''}
         <span>·</span>
         ${rateEditOpen ? `
           <span style="display:inline-flex;gap:6px;align-items:center;">
@@ -2837,16 +2856,24 @@ function renderCryptoTab() {
     <datalist id="crypto-broker-list">${brokerSuggestions.map(b => `<option value="${escHtml(b)}">`).join('')}</datalist>
 
     <div class="card-dark" style="margin-bottom:20px;">
-      <div class="row-flex" style="margin-bottom:14px;"><div style="font-weight:700;">Exchanges</div></div>
+      <div class="row-flex" style="margin-bottom:14px;">
+        <div style="font-weight:700;">Exchanges</div>
+        <button class="btn small" onclick="openCryptoExchangeCashForm('')">+ Add cash</button>
+      </div>
       <div class="stack-gap-12">
         ${exchangeRows.map(x => {
           const expanded = ui.openCryptoExchange === x.name;
           const safeName = escHtml(x.name).replace(/'/g, "\\'");
+          const cashEntry = cryptoExchangeCashFor(x.name);
+          const hasCash = !!cashEntry && cashEntry.amount > 0;
           return `<div class="card-nested">
             <div class="row-flex">
               <div style="display:flex;align-items:center;gap:10px;">${logoImg(x.logo, 30)}<div>
                 <div style="font-weight:600;font-size:13.5px;">${escHtml(x.name)}</div>
-                <div style="font-size:11.5px;opacity:.55;">${x.holdings.length} coin${x.holdings.length !== 1 ? 's' : ''}</div>
+                <div style="font-size:11.5px;opacity:.55;">
+                  ${x.holdings.length} coin${x.holdings.length !== 1 ? 's' : ''}${hasCash ? ` · ${fmtMoney(cashEntry.amount, cashEntry.currency)} cash` : ''}
+                  ${hasCash && cashEntry.interestBearing ? `<span class="badge" style="background:rgba(34,181,115,0.18);color:var(--positive);margin-left:4px;">${cashEntry.interestRate}% APY</span>` : ''}
+                </div>
               </div></div>
               <div style="display:flex;align-items:center;gap:8px;">
                 <div style="font-weight:700;font-size:13.5px;">${fmtMoney(x.value)}</div>
@@ -2856,14 +2883,18 @@ function renderCryptoTab() {
             </div>
             ${expanded ? `
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">
+                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">💶 Cash</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(cashEntry.amount, cashEntry.currency)}</div><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" onclick="openCryptoExchangeCashForm('${safeName}')">✎</button></div></div></div>` : ''}
                 <div class="stack-gap-8">
                   ${x.holdings.map(h => positionRowHtml(h)).join('') || '<div style="opacity:.5;font-size:13px;">No holdings here.</div>'}
                 </div>
               </div>
             ` : ''}
-            <button class="btn small" style="margin-top:10px;" onclick="openCryptoAssetForm('${safeName}')">+ Add crypto</button>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button class="btn small" onclick="openCryptoAssetForm('${safeName}')">+ Add crypto</button>
+              <button class="btn small" onclick="openCryptoExchangeCashForm('${safeName}')">${hasCash ? '✎ Edit cash' : '+ Add cash'}</button>
+            </div>
           </div>`;
-        }).join('') || '<div style="opacity:.5;font-size:13px;">No exchanges yet — add a coin below.</div>'}
+        }).join('') || '<div style="opacity:.5;font-size:13px;">No exchanges yet — add a coin or some cash below.</div>'}
       </div>
     </div>
 
@@ -2945,6 +2976,59 @@ function saveCryptoAssetEditForm(symbol) {
     data.cryptoLots.forEach(l => { if (l.symbol === symbol) l.symbol = newSymbol; });
     if (ui.cryptoDisplayCcy && symbol in ui.cryptoDisplayCcy) { ui.cryptoDisplayCcy[newSymbol] = ui.cryptoDisplayCcy[symbol]; delete ui.cryptoDisplayCcy[symbol]; }
   }
+  save(); closeModal();
+}
+
+/* Cash sitting at a crypto exchange (e.g. idle EUR/USDT) — the crypto equivalent of a broker's
+   cashBalance/cashInterestBearing/cashInterestRate, kept in data.cryptoExchangeCash since
+   exchanges are free-text names, not data.brokers records. The exchange name itself is editable
+   here too (with the same datalist suggestions as adding a coin) so this same form doubles as
+   "add cash to an existing exchange" and "add a brand-new cash-only exchange". */
+function openCryptoExchangeCashForm(exchangeName) {
+  ui.modal = { type: 'cryptoExchangeCash', payload: { exchange: exchangeName || '' } };
+  render();
+}
+window.__modalRenderers.cryptoExchangeCash = function (payload) {
+  const existing = payload.exchange ? cryptoExchangeCashFor(payload.exchange) : null;
+  return `
+    <div class="modal-head"><div class="modal-title">${existing ? 'Edit' : 'Add'} exchange cash</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="form-grid" style="margin-bottom:16px;">
+      <label class="field span-2"><span class="label-text">Exchange</span><input id="cec-exchange" list="crypto-broker-list" value="${escHtml(payload.exchange || '')}" placeholder="e.g. Binance"></label>
+      <label class="field"><span class="label-text">Amount</span><input id="cec-amount" type="number" step="0.01" value="${existing ? existing.amount : ''}"></label>
+      <label class="field"><span class="label-text">Currency</span><select id="cec-currency">
+        <option value="EUR" ${!existing || existing.currency === 'EUR' ? 'selected' : ''}>EUR</option>
+        <option value="USD" ${existing && existing.currency === 'USD' ? 'selected' : ''}>USD</option>
+      </select></label>
+    </div>
+    <div class="row-flex" style="padding-top:4px;margin-bottom:12px;">
+      <span class="label-text" style="font-size:13px;">Interest-bearing</span>
+      <div class="toggle ${existing && existing.interestBearing ? 'on' : ''}" id="cec-interest-on" onclick="this.classList.toggle('on'); document.getElementById('cec-rate').disabled = !this.classList.contains('on');"></div>
+    </div>
+    <label class="field"><span class="label-text">Interest rate (% APY)</span><input id="cec-rate" type="number" step="0.01" placeholder="e.g. 4" value="${existing && existing.interestRate != null ? existing.interestRate : ''}" ${existing && existing.interestBearing ? '' : 'disabled'}></label>
+    <div class="modal-actions" style="margin-top:16px;">
+      ${existing ? `<button class="btn danger ghost" onclick="deleteCryptoExchangeCash('${escHtml(payload.exchange).replace(/'/g, "\\'")}')">🗑 Remove</button>` : ''}
+      <button class="btn primary" onclick="saveCryptoExchangeCashForm('${existing ? escHtml(payload.exchange).replace(/'/g, "\\'") : ''}')">✓ Save</button>
+    </div>`;
+};
+function saveCryptoExchangeCashForm(previousName) {
+  const exchange = document.getElementById('cec-exchange').value.trim();
+  const amount = parseFloat(document.getElementById('cec-amount').value);
+  if (!exchange || isNaN(amount)) return;
+  const currency = document.getElementById('cec-currency').value;
+  const interestBearing = document.getElementById('cec-interest-on').classList.contains('on');
+  const rateRaw = document.getElementById('cec-rate').value;
+  const interestRate = rateRaw === '' ? null : parseFloat(rateRaw);
+  let entry = previousName ? cryptoExchangeCashFor(previousName) : null;
+  if (entry) {
+    Object.assign(entry, { exchange, amount, currency, interestBearing, interestRate });
+  } else {
+    data.cryptoExchangeCash.push({ id: uid('cec'), exchange, amount, currency, interestBearing, interestRate });
+  }
+  save(); closeModal();
+}
+function deleteCryptoExchangeCash(exchangeName) {
+  const key = exchangeName.trim().toLowerCase();
+  data.cryptoExchangeCash = data.cryptoExchangeCash.filter(c => (c.exchange || '').trim().toLowerCase() !== key);
   save(); closeModal();
 }
 
