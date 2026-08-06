@@ -293,13 +293,33 @@ function clearSupabaseSyncConfig() { localStorage.removeItem(SUPABASE_SYNC_KEY);
 async function supabaseRpc(fn, body) {
   const cfg = loadSupabaseSyncConfig();
   if (!cfg) return null;
-  const res = await fetch(`${cfg.url}/rest/v1/rpc/${fn}`, {
-    method: 'POST',
-    headers: { 'apikey': cfg.anonKey, 'Authorization': `Bearer ${cfg.anonKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error('Supabase API error ' + res.status + ': ' + (await res.text()).slice(0, 200));
-  return res.json();
+  let res;
+  try {
+    res = await fetch(`${cfg.url}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { 'apikey': cfg.anonKey, 'Authorization': `Bearer ${cfg.anonKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (networkErr) {
+    const err = new Error('Network error reaching Supabase.');
+    err.kind = 'network';
+    throw err;
+  }
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = text;
+    try { detail = JSON.parse(text).message || detail; } catch (e) {}
+    const err = new Error(detail || res.statusText || ('HTTP ' + res.status));
+    err.status = res.status;
+    throw err;
+  }
+  // Functions with no return value (set_trackr_data returns SQL void) come back with an empty
+  // body (PostgREST sends 204 No Content) — res.ok is true, but there's nothing to JSON.parse,
+  // and calling res.json() on an empty body throws. Only get_trackr_data returns real content
+  // (the stored jsonb, or the JSON literal `null` when nothing's stored yet for this secret) —
+  // an empty database is a valid, non-error outcome, not a parse failure.
+  if (!text) return null;
+  return JSON.parse(text);
 }
 async function supabaseFetchData() {
   const cfg = loadSupabaseSyncConfig();
@@ -4450,6 +4470,19 @@ function settingsSupabaseSyncHtml() {
     `}
     <div id="sb-sync-status" style="margin-top:10px;font-size:12.5px;"></div>`;
 }
+/* Turns a thrown supabaseRpc error into a message that tells you what's actually wrong instead
+   of one generic "couldn't connect" — distinguishes bad key, missing function/wrong URL, missing
+   grants, and plain network failure, and always includes the HTTP status so a real problem can
+   be diagnosed from the Settings screen alone, without needing curl. */
+function supabaseSyncErrorMessage(e, action) {
+  action = action || 'connect';
+  if (e && e.kind === 'network') return "Couldn't reach Supabase — check the project URL and your internet connection.";
+  if (e && e.status === 401) return `Couldn't ${action} — anon key rejected (401 Unauthorized). Double-check you copied the anon public key correctly.`;
+  if (e && e.status === 403) return `Couldn't ${action} — permission denied (403). Make sure the setup SQL's GRANT EXECUTE statements ran.`;
+  if (e && e.status === 404) return `Couldn't ${action} — endpoint not found (404). Check the project URL, and that you ran the setup SQL (get_trackr_data/set_trackr_data must exist).`;
+  if (e && e.status) return `Couldn't ${action} — Supabase returned an error (${e.status}). ${(e.message || '').slice(0, 200)}`.trim();
+  return `Couldn't ${action} — check the project URL, anon key, and that you ran the setup SQL, then try again.`;
+}
 async function connectSupabaseSync(forcePush) {
   const url = document.getElementById('sb-url').value.trim().replace(/\/+$/, '');
   const anonKey = document.getElementById('sb-anon-key').value.trim();
@@ -4464,19 +4497,23 @@ async function connectSupabaseSync(forcePush) {
       data = remote;
       migrateCryptoModel();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      if (status) status.textContent = '✓ Connected — pulled existing data from Supabase.';
     } else {
       // Push this device's current data as-is — pushed directly (not via save()) so a real
-      // URL/key/secret problem surfaces here instead of being silently swallowed.
+      // URL/key/secret problem surfaces here instead of being silently swallowed. A null/empty
+      // remote here is expected on first setup, not an error — it just means this is the first
+      // device to connect, so its data seeds Supabase instead of pulling from it.
       data.updatedAt = new Date().toISOString();
       recordHistorySnapshot();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       await supabasePushData(data);
+      if (status) status.textContent = remote ? "✓ Connected — this device's data now overwrites Supabase." : "✓ Connected — Supabase was empty, seeded it with this device's data.";
     }
     startSyncPolling();
     render();
   } catch (e) {
     clearSupabaseSyncConfig();
-    if (status) status.textContent = "Couldn't connect — check the project URL, anon key, and that you ran the setup SQL, then try again.";
+    if (status) status.textContent = supabaseSyncErrorMessage(e, 'connect');
   }
 }
 /* Manual override for a device that's already connected — e.g. you connected the wrong way
@@ -4492,7 +4529,7 @@ async function pushSupabaseSyncOverwrite() {
     await supabasePushData(data);
     if (status) status.textContent = '✓ Pushed — this device\'s data is now what Supabase has.';
   } catch (e) {
-    if (status) status.textContent = "Couldn't push — check your connection and try again.";
+    if (status) status.textContent = supabaseSyncErrorMessage(e, 'push');
   }
 }
 function disconnectSupabaseSync() {
