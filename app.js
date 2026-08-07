@@ -132,6 +132,20 @@ const DEFAULT_PAYMENT_METHODS = [
   { id: 'pm_dd', name: 'Direct Debit', icon: '📝' },
 ];
 function cloneJson(v) { return JSON.parse(JSON.stringify(v)); }
+/* Fills in whatever's missing from `value` using `def`'s shape, recursively — plain objects are
+   merged key by key (existing values always win, missing keys get the default), arrays and
+   anything else are only replaced when entirely absent (arrays hold real data, not schema, so
+   they're never merged item-by-item). Used to make old saves forward-compatible with new fields
+   automatically: see migrateCryptoModel(). */
+function deepDefaults(value, def) {
+  if (Array.isArray(def)) return Array.isArray(value) ? value : cloneJson(def);
+  if (def && typeof def === 'object') {
+    const out = (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
+    Object.keys(def).forEach(k => { out[k] = deepDefaults(out[k], def[k]); });
+    return out;
+  }
+  return value === undefined ? def : value;
+}
 
 /* ===================== Default data ===================== */
 function defaultData() {
@@ -421,18 +435,17 @@ const COMMON_COINGECKO_IDS = {
 };
 
 function migrateCryptoModel() {
-  // Must run before anything below — cleanupGhostCryptoBrokers() (called later in this same
-  // function) reads data.cryptoExchangeCash via cryptoBrokerNames(), so a save from before this
-  // field existed (e.g. restored from an older GitHub Sync commit) would throw here otherwise,
-  // aborting migration entirely and leaving the app unable to render.
-  if (!Array.isArray(data.trades)) data.trades = [];
-  if (!Array.isArray(data.cryptoExchangeCash)) data.cryptoExchangeCash = [];
-  if (data.settings.eurUsdRate == null) data.settings.eurUsdRate = 1.08;
-  if (data.settings.eurUsdRateAuto == null) data.settings.eurUsdRateAuto = true;
-  if (data.settings.eurUsdRateUpdatedAt === undefined) data.settings.eurUsdRateUpdatedAt = null;
-  if (!data.settings.twelveDataApiKey) data.settings.twelveDataApiKey = '449bd06556804d5086f156ca66a74e12';
+  // Must run before anything below — several migrations/reads further down (e.g.
+  // cleanupGhostCryptoBrokers() reading data.cryptoExchangeCash via cryptoBrokerNames()) assume
+  // every field from defaultData() already exists. Backfilling every field's *shape* here in one
+  // place — rather than a separate `if (!data.newField) data.newField = ...` line per feature —
+  // is what makes old saves (e.g. restored from an old sync snapshot, or predating a feature
+  // entirely) forward-compatible automatically: adding a field to defaultData() is now enough on
+  // its own, there's nothing extra to remember. Two real crashes came from exactly this class of
+  // gap (a field a save predates, read before anything had backfilled it), so this replaces
+  // fixing it field-by-field with fixing the category of bug once.
+  data = deepDefaults(data, defaultData());
   // Replace fabricated demo history/watchlist from earlier versions with real tracking.
-  if (!Array.isArray(data.history)) data.history = [];
   delete data.netWorthHistory;
   delete data.watchlist;
   if (!data.cryptoLots) {
@@ -1288,8 +1301,20 @@ function svgArea(points, opts) {
 }
 
 /* ===================== Root render ===================== */
+/* Wraps the actual render in a try/catch so a bug anywhere in a page renderer (today's or a
+   future one) shows a recoverable screen instead of a blank/stuck page — your data in
+   localStorage (and Supabase, if connected) is untouched either way, since rendering never
+   writes anything back; this only guards against a display crash, not a data-loss one. */
 function render() {
   const app = document.getElementById('app');
+  try {
+    renderApp(app);
+  } catch (e) {
+    console.error('Render failed', e);
+    renderCrashScreen(app, e);
+  }
+}
+function renderApp(app) {
   const pageRenderers = {
     dashboard: renderDashboard,
     accounts: renderAccounts,
@@ -1325,6 +1350,29 @@ function render() {
     </div>
     ${renderModal()}
   `;
+}
+function renderCrashScreen(app, e) {
+  app.innerHTML = `
+    <div style="max-width:520px;margin:60px auto;padding:28px;text-align:center;font-family:inherit;">
+      <div style="font-size:38px;margin-bottom:10px;">⚠️</div>
+      <h2 style="margin:0 0 10px;">Something went wrong</h2>
+      <p style="opacity:.7;font-size:14px;line-height:1.6;margin:0 0 20px;">
+        Trackr hit an unexpected error while displaying this page. Nothing was lost — your data
+        is still safe in this browser${loadSupabaseSyncConfig() ? ' and in Supabase' : ''}.
+      </p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:18px;">
+        <button class="btn primary" onclick="location.reload()">Reload</button>
+        <button class="btn" onclick="ui.page='dashboard';ui.modal=null;render();">Go to Dashboard</button>
+        <button class="btn" onclick="downloadRawDataBackup()">Download a backup of my data</button>
+      </div>
+      <pre style="text-align:left;font-size:11px;opacity:.5;background:rgba(128,128,128,.1);padding:10px;border-radius:8px;overflow:auto;max-height:160px;">${escHtml(String((e && e.stack) || e))}</pre>
+    </div>`;
+}
+function downloadRawDataBackup() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'trackr-backup.json'; a.click();
+  URL.revokeObjectURL(url);
 }
 
 function goPage(page) { ui.page = page; ui.modal = null; render(); }
