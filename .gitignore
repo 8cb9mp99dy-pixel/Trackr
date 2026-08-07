@@ -5,3 +5,5 @@
 trackr-data.json
 trackr-asset-prices.csv
 trackr-budget-transactions.xls
+backup.json
+trackr-backup*.json
