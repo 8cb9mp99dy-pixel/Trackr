@@ -194,9 +194,19 @@ button, input, select, textarea { font-family: inherit; }
   cursor: pointer;
   border: none; background: none; width: 100%; text-align: left;
 }
-.nav-item .nav-icon { font-size: 16px; width: 18px; text-align: center; }
+.nav-item .nav-icon { position: relative; font-size: 16px; width: 18px; text-align: center; }
 .nav-item:hover { background: var(--dark-card); color: var(--dark-text); }
 .nav-item.active { background: var(--accent-1); color: var(--on-accent-1); font-weight: 600; }
+/* Small badge on the Settings nav icon, mirroring the full sidebar-footer sync indicator — the
+   only one of the two actually visible on a phone (see the max-width:640px rule further down),
+   since the bottom tab bar has no room for the text version. Purely visual (see
+   settingsNavItemOnClick() in app.js for how the tap itself is handled) — it sits inside the
+   Settings nav-item's own <button>, and a <button> can't validly contain another one. */
+.nav-sync-badge {
+  position: absolute; top: -2px; right: 6px;
+  width: 8px; height: 8px; border-radius: 50%;
+  pointer-events: none;
+}
 
 .sidebar-footer { display: flex; flex-direction: column; gap: 6px; padding-top: 10px; border-top: 1px solid var(--dark-border); }
 .privacy-toggle {
@@ -393,6 +403,12 @@ label.field span.label-text { font-weight: 500; }
     flex-direction: column; border-top: none; padding-top: 0;
     justify-content: center; align-items: center; gap: 0; flex: 0 0 58px;
   }
+  /* No room for the text sync indicator in a 58px-tall bottom-bar segment shared with the
+     privacy toggle — it overflowed off the edge of the screen. The Settings icon's small badge
+     dot (see .nav-sync-badge) is the only sync indicator visible at this width. !important is
+     needed here: the element also carries an inline display:flex (set in app.js), which beats a
+     plain class rule regardless of media query. */
+  .sync-indicator-sidebar { display: none !important; }
   .privacy-toggle {
     flex-direction: column; gap: 2px; padding: 6px 2px; border: none;
     font-size: 9px; width: auto; align-items: center;

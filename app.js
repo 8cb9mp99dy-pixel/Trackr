@@ -265,6 +265,41 @@ function defaultData() {
 
 /* ===================== State ===================== */
 let data = null;
+/* Tracks the state of Supabase sync itself, separate from `data` — never persisted, since it
+   describes this tab's current connection status, not app content. `conflict` is set (to
+   {serverData, serverUpdatedAt}) when a push was rejected by the server-side stale-write guard;
+   see supabasePushData(). Task 2 (visible sync status) will extend this further. */
+let syncState = {
+  conflict: null,
+  lastSuccessAt: null,     // ISO string — last time a fetch or push actually reached Supabase and succeeded
+  lastError: null,         // {message, status, kind} from the most recent failed attempt, or null
+  consecutiveFailures: 0,  // resets to 0 on any success; drives the "several failures" warning state
+};
+/* A conflict-reporting call to Supabase (HTTP-wise) still succeeded — the connection and the RPC
+   itself worked, it just refused to write. That's tracked separately via syncState.conflict, so
+   it's deliberately NOT routed through here: recordSyncSuccess() specifically means "the app is
+   able to talk to Supabase right now," which is what the visible sync indicator is about. */
+/* These are the only two places syncState's success/failure fields ever change, so the visible
+   sync indicator's before/after check lives right here rather than in each of their many callers
+   (save(), connectSupabaseSync, the poll, ...) — a caller-by-caller approach is exactly how this
+   bug happened the first time: save() re-rendered on its own conflict field changing, but had no
+   idea recordSyncSuccess() might also be resolving a stale warning, so the indicator could get
+   stuck on-screen showing "Sync issue" indefinitely after the underlying problem had already
+   resolved, with nothing left to ever repaint it. syncStatusState() is defined further down this
+   file but callable here regardless — function declarations are hoisted. */
+function recordSyncSuccess() {
+  const before = syncStatusState();
+  syncState.lastSuccessAt = new Date().toISOString();
+  syncState.lastError = null;
+  syncState.consecutiveFailures = 0;
+  if (syncStatusState() !== before) render();
+}
+function recordSyncFailure(err) {
+  const before = syncStatusState();
+  syncState.lastError = { message: (err && err.message) || 'Unknown error', status: err && err.status, kind: err && err.kind };
+  syncState.consecutiveFailures = (syncState.consecutiveFailures || 0) + 1;
+  if (syncStatusState() !== before) render();
+}
 let ui = {
   page: 'dashboard',
   budgetTab: 'transactions',
@@ -335,15 +370,95 @@ async function supabaseRpc(fn, body) {
   if (!text) return null;
   return JSON.parse(text);
 }
-async function supabaseFetchData() {
+/* Shared low-level fetch — returns {data, updated_at} (or null if nothing's stored yet for this
+   secret), and persists cfg.lastSeenUpdatedAt as a side effect whenever a row exists. updated_at
+   is the row's own server-side timestamp, set by Postgres via now() on every write — it's the
+   authoritative token the stale-write guard in supabasePushData() compares against, deliberately
+   separate from data.updatedAt (a field inside the payload itself, client-set, purely
+   informational). Both supabaseFetchData() (callers that only want the payload) and
+   supabasePushData()'s no-known-baseline path (which also needs the payload, to recognize real
+   remote content rather than push blindly over it) go through this single fetch. */
+async function supabaseFetchRow() {
   const cfg = loadSupabaseSyncConfig();
   if (!cfg) return null;
-  return supabaseRpc('get_trackr_data', { secret: cfg.secret }); // the row's data (jsonb), or null
+  let result;
+  try {
+    result = await supabaseRpc('get_trackr_data', { secret: cfg.secret });
+  } catch (e) {
+    recordSyncFailure(e);
+    throw e;
+  }
+  recordSyncSuccess(); // reaching here means the read itself succeeded, regardless of row content
+  if (result && result.updated_at) {
+    cfg.lastSeenUpdatedAt = result.updated_at;
+    saveSupabaseSyncConfig(cfg);
+  }
+  return result;
 }
-async function supabasePushData(jsonData) {
+async function supabaseFetchData() {
+  const row = await supabaseFetchRow();
+  return row ? row.data : null;
+}
+/* Pushes local data to Supabase. By default this is a compare-and-swap: the server refuses the
+   write (and reports a conflict instead of writing) if its stored row was updated more recently
+   than the updated_at this device last saw — see set_trackr_data's expected_updated_at parameter.
+   Pass {force: true} to skip that check entirely (expected_updated_at = null), which is what the
+   explicit "push this device's data, overwrite" actions use. Returns {ok:true} on success, or
+   {ok:false, conflict:true, serverData, serverUpdatedAt} if the server rejected the write —
+   callers must NOT silently discard local changes or silently adopt serverData; see save()'s
+   conflict handling and resolveSyncConflictKeepLocal/resolveSyncConflictUseRemote. */
+async function supabasePushData(jsonData, opts) {
   const cfg = loadSupabaseSyncConfig();
-  if (!cfg) return;
-  await supabaseRpc('set_trackr_data', { secret: cfg.secret, new_data: jsonData });
+  if (!cfg) return { ok: true };
+  const force = !!(opts && opts.force);
+  let expectedUpdatedAt = null;
+  if (!force) {
+    if (cfg.lastSeenUpdatedAt == null) {
+      // This device has no established baseline (a config saved before this field existed, or a
+      // load() whose initial fetch failed) — it genuinely doesn't know whether jsonData reflects,
+      // predates, or conflicts with whatever's really on the server. A fetch-then-push alone
+      // doesn't settle that: the server would happily accept the write the instant nothing races
+      // the fetch, even if the just-fetched remote holds real, different work from another device
+      // — silently clobbering it. Comparing jsonData.updatedAt against the remote's wouldn't catch
+      // this either: save() always re-stamps jsonData.updatedAt to "now" right before calling this,
+      // so local would trivially look newer almost every time regardless of whether its content
+      // actually reflects the remote's changes. So: if the fetch reveals the remote has anything
+      // at all, treat it as a conflict — same as a write the server itself rejected, routed
+      // through the same resolution UI — rather than deciding unilaterally that local should win.
+      // Only a genuinely empty remote (nothing to compare against) is safe to push into directly.
+      const remoteRow = await supabaseFetchRow();
+      if (remoteRow) {
+        // 'unverified': unlike the CAS rejection below, this isn't a confirmed divergence — we
+        // simply have no prior baseline to compare against, so we can't tell "genuinely different"
+        // from "byte-for-byte identical, just never confirmed." The resolution UI needs to know
+        // which case it's showing so it doesn't claim a conflict that might not actually exist.
+        return { ok: false, conflict: true, reason: 'unverified', serverData: remoteRow.data, serverUpdatedAt: remoteRow.updated_at };
+      }
+      expectedUpdatedAt = null; // confirmed empty — nothing to guard against
+    } else {
+      expectedUpdatedAt = cfg.lastSeenUpdatedAt;
+    }
+  }
+  let result;
+  try {
+    result = await supabaseRpc('set_trackr_data', { secret: cfg.secret, new_data: jsonData, expected_updated_at: expectedUpdatedAt });
+  } catch (e) {
+    recordSyncFailure(e);
+    throw e;
+  }
+  if (result && result.conflict) {
+    // 'rejected': a confirmed divergence — this device DID have a known baseline, and the server
+    // is reporting something changed since then. Deliberately NOT recordSyncSuccess() here: the
+    // connection worked, but the write itself didn't go through, and the visible sync indicator
+    // should reflect that (via syncState.conflict) rather than read as "all good."
+    return { ok: false, conflict: true, reason: 'rejected', serverData: result.server_data, serverUpdatedAt: result.server_updated_at };
+  }
+  recordSyncSuccess();
+  if (result && result.updated_at) {
+    cfg.lastSeenUpdatedAt = result.updated_at;
+    saveSupabaseSyncConfig(cfg);
+  }
+  return { ok: true };
 }
 let syncPollTimer = null;
 /* Every 8s, pick up changes saved from another device (e.g. an edit made on the iPhone while
@@ -355,7 +470,15 @@ let syncPollTimer = null;
 function startSyncPolling() {
   if (syncPollTimer) return;
   syncPollTimer = setInterval(async () => {
-    if (ui.modal) return;
+    // While a conflict is pending, freeze auto-sync entirely — otherwise this could silently
+    // adopt the other device's data a few seconds later on its own, which is exactly the kind of
+    // unasked-for overwrite the conflict banner exists to prevent. Resolving the conflict (either
+    // button) clears syncState.conflict and polling resumes normally next tick.
+    if (ui.modal || syncState.conflict) return;
+    // Success/failure tracking (and re-rendering the visible sync indicator if that changes what
+    // it shows) happens inside recordSyncSuccess()/recordSyncFailure() themselves — called from
+    // supabaseFetchData() below either way — so this tick doesn't need to duplicate that check;
+    // it only needs to handle its own specific job, adopting genuinely newer remote data.
     try {
       const remote = await supabaseFetchData();
       if (remote && remote.updatedAt && (!data.updatedAt || remote.updatedAt > data.updatedAt)) {
@@ -364,7 +487,7 @@ function startSyncPolling() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
         render();
       }
-    } catch (e) { /* offline or Supabase unreachable for a moment — retried automatically next tick */ }
+    } catch (e) { /* recorded by supabaseFetchRow() via recordSyncFailure() */ }
   }, 8000);
 }
 /* Compares local (localStorage) against remote (Supabase) by updatedAt and keeps whichever is
@@ -674,7 +797,15 @@ async function save() {
   catch (e) { console.error('save failed', e); }
   if (loadSupabaseSyncConfig()) {
     try {
-      await supabasePushData(data);
+      const result = await supabasePushData(data);
+      // A conflict means another device saved something newer since this one last synced — the
+      // write was refused, not applied. Local data (already saved above) is never touched or
+      // reverted, and the server's copy is never adopted automatically either; the user picks
+      // via resolveSyncConflictKeepLocal/resolveSyncConflictUseRemote. Re-render so a visible
+      // conflict state (if already showing) updates immediately.
+      const hadConflict = !!syncState.conflict;
+      syncState.conflict = (result && result.conflict) ? { serverData: result.serverData, serverUpdatedAt: result.serverUpdatedAt, reason: result.reason } : null;
+      if (hadConflict || syncState.conflict) render();
     } catch (e) { console.error('Supabase sync push failed, changes stay local for now', e); }
   }
 }
@@ -877,6 +1008,17 @@ function fmtPct(n, withSign) {
   return (withSign && n > 0 ? '+' : '') + n.toFixed(1) + '%';
 }
 function escHtml(s) { return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
+function timeAgo(iso) {
+  if (!iso) return null;
+  const sec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (sec < 10) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return `${Math.floor(hr / 24)}d ago`;
+}
 function fmtDate(d) {
   const dt = (d instanceof Date) ? d : new Date(d);
   return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -1333,12 +1475,13 @@ function renderApp(app) {
         <ul class="nav-list">
           ${NAV_ITEMS.map(item => `
             <li>
-              <button class="nav-item ${ui.page === item.id ? 'active' : ''}" onclick="goPage('${item.id}')">
-                <span class="nav-icon">${item.icon}</span><span class="label">${item.label}</span>
+              <button class="nav-item ${ui.page === item.id ? 'active' : ''}" onclick="${item.id === 'settings' ? settingsNavItemOnClick() : `goPage('${item.id}')`}">
+                <span class="nav-icon">${item.icon}${item.id === 'settings' ? navSyncBadgeHtml() : ''}</span><span class="label">${item.label}</span>
               </button>
             </li>`).join('')}
         </ul>
         <div class="sidebar-footer">
+          ${syncStatusIndicatorHtml()}
           <button class="privacy-toggle ${data.settings.privacyMode ? 'on' : ''}" onclick="togglePrivacy()">
             <div class="toggle ${data.settings.privacyMode ? 'on' : ''}"></div><span>${data.settings.privacyMode ? 'Hidden' : 'Visible'}</span>
           </button>
@@ -3995,6 +4138,7 @@ const SETTINGS_SECTIONS = [
   { id: 'notifications', icon: '🔔', title: 'Notifications' },
   { id: 'logos', icon: '🖼️', title: 'Logos & Images' },
   { id: 'exportdata', icon: '⬇️', title: 'Export Data' },
+  { id: 'backuprestore', icon: '💾', title: 'Backup & Restore' },
   { id: 'assetexport', icon: '💹', title: 'Asset List Export' },
   { id: 'about', icon: 'ℹ️', title: 'About' },
 ];
@@ -4007,6 +4151,7 @@ const SETTINGS_BODY = {
   notifications: settingsNotificationsHtml,
   logos: settingsLogosHtml,
   exportdata: settingsExportDataHtml,
+  backuprestore: settingsBackupRestoreHtml,
   assetexport: settingsAssetExportHtml,
   about: settingsAboutHtml,
 };
@@ -4168,6 +4313,98 @@ function downloadCSV(filename, header, rows) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
+}
+
+/* ===================== Full backup / restore ===================== */
+function settingsBackupRestoreHtml() {
+  return `
+    <div style="opacity:.65;font-size:13px;margin-bottom:16px;">
+      Download everything in this browser — accounts, transactions, crypto, trades, settings, all
+      of it — as one JSON file. This is the only real backup: if this browser's storage is ever
+      lost, or you want to move to a device you're not syncing via Supabase, this file is what
+      brings it back.
+    </div>
+    <div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+      <button class="btn primary" onclick="exportFullBackup()">⬇ Download backup (JSON)</button>
+      <button class="btn" onclick="triggerImportBackup()">⬆ Restore from backup</button>
+    </div>
+    <input type="file" id="import-backup-file" accept="application/json,.json" style="display:none;" onchange="handleImportBackupFile(this.files[0])">
+    <div style="font-size:11.5px;opacity:.55;">Restoring replaces everything currently in this browser. You'll see exactly what's in the file — and what it would overwrite — and have to confirm, before anything changes.</div>`;
+}
+function exportFullBackup() {
+  const ts = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `trackr-backup-${ts}.json`; a.click();
+  URL.revokeObjectURL(url);
+}
+function triggerImportBackup() { document.getElementById('import-backup-file').click(); }
+/* Rough counts used to summarize a backup in the confirm prompt below — not exhaustive, just
+   enough for a human to sanity-check "yes, that's roughly my data" (or "wait, that's way less
+   than I have now") before agreeing to overwrite anything. */
+function backupSummary(d) {
+  return {
+    accounts: Array.isArray(d.accounts) ? d.accounts.length : 0,
+    transactions: Array.isArray(d.budgetTransactions) ? d.budgetTransactions.length : 0,
+    cryptoAssets: Array.isArray(d.cryptoAssets) ? d.cryptoAssets.length : 0,
+    assets: Array.isArray(d.assets) ? d.assets.length : 0,
+    trades: Array.isArray(d.trades) ? d.trades.length : 0,
+    updatedAt: d.updatedAt || null,
+  };
+}
+async function handleImportBackupFile(file) {
+  const fileInput = document.getElementById('import-backup-file');
+  if (!file) return;
+  try {
+    const text = await file.text();
+    let parsed;
+    try { parsed = JSON.parse(text); }
+    catch (e) { throw new Error("This file isn't valid JSON."); }
+    // Deliberately not exhaustive — just enough that a random unrelated JSON file (or a CSV/Excel
+    // export mistakenly picked here) gets rejected clearly, rather than partially "succeeding"
+    // into something broken. Genuinely old/differently-shaped real backups are still accepted;
+    // migrateCryptoModel() below is what makes those safe (see its own comment — this is exactly
+    // the same defensive pass load() relies on for data restored from an old sync snapshot).
+    const looksValid = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      && Array.isArray(parsed.accounts) && Array.isArray(parsed.budgetTransactions)
+      && parsed.settings && typeof parsed.settings === 'object';
+    if (!looksValid) throw new Error("This doesn't look like a Trackr backup file — expected fields like accounts, budgetTransactions, and settings weren't found.");
+
+    const incoming = backupSummary(parsed);
+    const current = backupSummary(data);
+    const fmt = iso => iso ? new Date(iso).toLocaleString() : 'unknown date';
+    const message = `This will REPLACE everything currently in this browser with the backup file's data. This can't be undone unless you have another backup.\n\n`
+      + `File — last saved ${fmt(incoming.updatedAt)}:\n`
+      + `  ${incoming.accounts} accounts, ${incoming.transactions} transactions, ${incoming.cryptoAssets} crypto assets, ${incoming.assets} stocks/ETFs, ${incoming.trades} trades\n\n`
+      + `Currently in this browser — last saved ${fmt(current.updatedAt)}:\n`
+      + `  ${current.accounts} accounts, ${current.transactions} transactions, ${current.cryptoAssets} crypto assets, ${current.assets} stocks/ETFs, ${current.trades} trades\n\n`
+      + `Continue?`;
+    if (!confirm(message)) return;
+
+    // Safety net in case of a wrong choice above — recoverable via localStorage in the browser
+    // console, same pattern as the sync incidents' trackr-v1-backup.
+    const previousData = data;
+    try { localStorage.setItem(STORAGE_KEY + '-pre-import-backup', JSON.stringify(data)); } catch (e) {}
+    try {
+      data = parsed;
+      migrateCryptoModel();
+    } catch (migrationError) {
+      data = previousData; // roll back in memory — localStorage was never touched, still has the old data
+      throw new Error("This backup file couldn't be loaded — it may be corrupted or from an incompatible version. Nothing was changed.");
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    // Goes through the normal, CAS-guarded save() — not a forced overwrite — so if Supabase Sync
+    // is connected and another device has genuinely newer data there, this surfaces the same
+    // conflict resolution UI as any other save, rather than blindly clobbering it just because
+    // the user chose to restore a local file.
+    await save();
+    render();
+    alert('Backup restored.');
+  } catch (e) {
+    alert("Couldn't restore this backup — " + (e && e.message ? e.message : 'unknown error'));
+  } finally {
+    if (fileInput) fileInput.value = '';
+  }
 }
 /* A real, Excel-native file (SpreadsheetML — Excel's plain-XML format since Excel 2003) rather
    than just a renamed CSV. Needs no external library/CDN dependency (this app has no build
@@ -4429,7 +4666,10 @@ function settingsAboutHtml() {
    project URL + anon key alone (both visible in this device's browser storage, same exposure
    as the old GitHub token) isn't enough to read or overwrite anything without also knowing the
    secret. The raw secret itself is never stored, only its hash. */
-const SUPABASE_SETUP_SQL = `create extension if not exists pgcrypto;
+const SUPABASE_SETUP_SQL = `-- Safe to run on a fresh project or re-run on an existing one — every
+-- statement below is idempotent (CREATE ... IF NOT EXISTS, or DROP ... IF
+-- EXISTS immediately before CREATE).
+create extension if not exists pgcrypto;
 
 create table if not exists trackr_data (
   id text primary key,
@@ -4439,35 +4679,73 @@ create table if not exists trackr_data (
 
 alter table trackr_data enable row level security;
 
-create or replace function get_trackr_data(secret text)
+-- get_trackr_data also returns the row's own updated_at now (needed by the client to detect a
+-- conflicting write from another device) — dropped and recreated rather than CREATE OR REPLACE
+-- for an unambiguous migration regardless of the previous version's exact shape.
+drop function if exists get_trackr_data(text);
+
+create function get_trackr_data(secret text)
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   result jsonb;
 begin
-  select data into result from trackr_data where id = encode(digest(secret, 'sha256'), 'hex');
-  return result;
+  select jsonb_build_object('data', data, 'updated_at', updated_at)
+    into result
+    from trackr_data
+   where id = encode(digest(secret, 'sha256'), 'hex');
+  return result; -- null if nothing stored yet for this secret
 end;
 $$;
 
-create or replace function set_trackr_data(secret text, new_data jsonb)
-returns void
+-- set_trackr_data now takes expected_updated_at and refuses to write (returning a conflict
+-- marker instead) if the stored row was updated more recently than the caller last saw — this is
+-- the actual stale-write guard: it used to be enforced only client-side, which is exactly what
+-- let two past data-loss incidents happen. Pass expected_updated_at = null to force an overwrite
+-- regardless (the app's "push this device's data, overwrite" action does this).
+--
+-- Adding a parameter creates a *new* overload rather than replacing the old function, so the old
+-- 2-argument version is dropped explicitly below — leaving it in place would let any caller still
+-- using it bypass the guard entirely, since it has no expected_updated_at to check at all.
+drop function if exists set_trackr_data(text, jsonb);
+drop function if exists set_trackr_data(text, jsonb, timestamptz);
+
+create function set_trackr_data(secret text, new_data jsonb, expected_updated_at timestamptz default null)
+returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
+declare
+  row_id text := encode(digest(secret, 'sha256'), 'hex');
+  current_row trackr_data;
+  new_updated_at timestamptz := now();
 begin
+  select * into current_row from trackr_data where id = row_id;
+
+  if expected_updated_at is not null and current_row.updated_at is not null
+     and current_row.updated_at > expected_updated_at then
+    return jsonb_build_object(
+      'ok', false,
+      'conflict', true,
+      'server_updated_at', current_row.updated_at,
+      'server_data', current_row.data
+    );
+  end if;
+
   insert into trackr_data (id, data, updated_at)
-  values (encode(digest(secret, 'sha256'), 'hex'), new_data, now())
+  values (row_id, new_data, new_updated_at)
   on conflict (id) do update set data = excluded.data, updated_at = excluded.updated_at;
+
+  return jsonb_build_object('ok', true, 'updated_at', new_updated_at);
 end;
 $$;
 
 grant execute on function get_trackr_data(text) to anon;
-grant execute on function set_trackr_data(text, jsonb) to anon;`;
+grant execute on function set_trackr_data(text, jsonb, timestamptz) to anon;`;
 function toggleSupabaseSetupSql() { ui.supabaseSetupSqlOpen = !ui.supabaseSetupSqlOpen; render(); }
 /* Config (url/anon key/secret) is entered separately on every device and kept in that device's
    own localStorage only (see SUPABASE_SYNC_KEY) — never part of the synced data itself, since a
@@ -4482,6 +4760,25 @@ function settingsSupabaseSyncHtml() {
       Sync your data between devices (e.g. this Mac and your iPhone) through your own Supabase project — no server to run, works from anywhere with internet, and checks for changes every few seconds instead of every 30.
     </div>
     ${cfg ? `
+      ${syncState.conflict ? (syncState.conflict.reason === 'unverified' ? `
+        <div class="card-nested" style="margin-bottom:16px;border:1px solid var(--light-border, #999);">
+          <div style="font-weight:700;margin-bottom:6px;">🔄 Confirm this device's data</div>
+          <div style="font-size:12.5px;opacity:.75;margin-bottom:10px;line-height:1.5;">This device hasn't confirmed sync with Supabase yet (common right after an update, or after a brief connection hiccup) — Supabase already has something stored, but that doesn't necessarily mean it's different from what's here, just that this device can't automatically confirm it matches. Pick whichever should win to be safe:</div>
+          <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
+            <button class="btn primary" onclick="resolveSyncConflictKeepLocal()">Keep this device's version</button>
+            <button class="btn" onclick="resolveSyncConflictUseRemote()">Use Supabase's version</button>
+          </div>
+        </div>
+      ` : `
+        <div class="card-nested" style="margin-bottom:16px;border:1px solid var(--light-warn, #E5A94D);">
+          <div style="font-weight:700;margin-bottom:6px;">⚠️ Sync conflict</div>
+          <div style="font-size:12.5px;opacity:.75;margin-bottom:10px;line-height:1.5;">Another device saved changes since this device last synced, so this device's last save was refused (nothing was overwritten on either side). Choose which version to keep:</div>
+          <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
+            <button class="btn primary" onclick="resolveSyncConflictKeepLocal()">Keep this device's version</button>
+            <button class="btn" onclick="resolveSyncConflictUseRemote()">Use the other device's version</button>
+          </div>
+        </div>
+      `) : ''}
       <div class="card-nested" style="margin-bottom:16px;">
         <div class="row-flex">
           <div>
@@ -4554,7 +4851,10 @@ async function connectSupabaseSync(forcePush) {
       data.updatedAt = new Date().toISOString();
       recordHistorySnapshot();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      await supabasePushData(data);
+      // Always forced: either the user explicitly asked to overwrite, or the remote was empty
+      // and there's nothing meaningful to conflict with — either way this device's data should
+      // win outright, not go through the normal stale-write check.
+      await supabasePushData(data, { force: true });
       if (status) status.textContent = remote ? "✓ Connected — this device's data now overwrites Supabase." : "✓ Connected — Supabase was empty, seeded it with this device's data.";
     }
     startSyncPolling();
@@ -4574,16 +4874,132 @@ async function pushSupabaseSyncOverwrite() {
     data.updatedAt = new Date().toISOString();
     recordHistorySnapshot();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    await supabasePushData(data);
+    await supabasePushData(data, { force: true }); // explicit overwrite — always forced
+    syncState.conflict = null; // an explicit overwrite resolves any pending conflict by definition
     if (status) status.textContent = '✓ Pushed — this device\'s data is now what Supabase has.';
   } catch (e) {
     if (status) status.textContent = supabaseSyncErrorMessage(e, 'push');
   }
 }
+/* Conflict resolution: a save() was refused by the server because another device had already
+   saved something newer. Neither side is touched automatically — the user picks one of these. */
+async function resolveSyncConflictKeepLocal() {
+  const status = document.getElementById('sb-sync-status');
+  if (status) status.textContent = 'Pushing…';
+  try {
+    data.updatedAt = new Date().toISOString();
+    recordHistorySnapshot();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    await supabasePushData(data, { force: true });
+    syncState.conflict = null;
+    render();
+  } catch (e) {
+    if (status) status.textContent = supabaseSyncErrorMessage(e, 'push');
+  }
+}
+function resolveSyncConflictUseRemote() {
+  if (!syncState.conflict) return;
+  data = syncState.conflict.serverData;
+  migrateCryptoModel();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  const cfg = loadSupabaseSyncConfig();
+  if (cfg) { cfg.lastSeenUpdatedAt = syncState.conflict.serverUpdatedAt; saveSupabaseSyncConfig(cfg); }
+  syncState.conflict = null;
+  render();
+}
 function disconnectSupabaseSync() {
   clearSupabaseSyncConfig();
   if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
+  syncState.conflict = null;
   render();
 }
+
+const SYNC_WARN_AFTER_FAILURES = 3;
+const SYNC_WARN_AFTER_STALE_MS = 3 * 60 * 1000; // "a few minutes"
+/* null = sync isn't configured at all, so the indicator shows nothing rather than nagging users
+   who never set it up. 'conflict' takes priority over everything else — it needs a decision, not
+   just awareness. 'warning' covers both "hasn't reached Supabase in a while" and "several failed
+   attempts in a row", since either one means the visible sync status can no longer be trusted at
+   face value. 'ok' is the calm, default state. */
+function syncStatusState() {
+  if (!loadSupabaseSyncConfig()) return null;
+  if (syncState.conflict) return 'conflict';
+  const stale = !syncState.lastSuccessAt || (Date.now() - new Date(syncState.lastSuccessAt).getTime()) > SYNC_WARN_AFTER_STALE_MS;
+  const failing = syncState.consecutiveFailures >= SYNC_WARN_AFTER_FAILURES;
+  return (stale || failing) ? 'warning' : 'ok';
+}
+/* Persistent, always-on-screen (sidebar, every page) rather than tucked into Settings — a sync
+   failure silently going unnoticed for weeks is exactly the incident this exists to prevent. Reads
+   as a small muted dot+label when everything's fine; only gets visually louder for states that
+   actually need attention. Clicking it always opens the same detail/resolution modal. */
+function syncStatusIndicatorHtml() {
+  const state = syncStatusState();
+  if (!state) return '';
+  const label = state === 'conflict' ? 'Sync needs attention'
+    : state === 'warning' ? (syncState.lastSuccessAt ? `Sync issue — synced ${timeAgo(syncState.lastSuccessAt)}` : 'Sync issue — not synced yet')
+    : `Synced ${timeAgo(syncState.lastSuccessAt)}`;
+  const dotColor = state === 'ok' ? 'var(--accent-2, #34C77B)' : '#E8963C';
+  return `
+    <button class="sync-indicator-sidebar" onclick="openSyncStatusModal()" style="display:flex;align-items:center;gap:7px;width:100%;background:transparent;border:none;padding:6px 4px;margin-bottom:2px;cursor:pointer;font-family:inherit;font-size:11.5px;opacity:${state === 'ok' ? '.55' : '1'};color:inherit;text-align:left;">
+      <span style="width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:${dotColor};"></span>
+      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(label)}</span>
+    </button>`;
+}
+/* The above indicator lives in the sidebar footer, which becomes a fixed bottom tab bar on
+   phones (see styles.css's max-width:640px block) with no room for text — it would overflow off
+   the edge of the screen (verified: it does). This is the phone-width fallback: a small badge
+   dot on the Settings nav icon, independently clickable so a tap opens sync status directly.
+   Only rendered for states that need attention — like the sidebar version, a healthy sync shows
+   nothing extra here either. */
+function navSyncBadgeHtml() {
+  const state = syncStatusState();
+  if (!state || state === 'ok') return '';
+  const dotColor = state === 'conflict' ? '#E5484D' : '#E8963C';
+  // A <button> can't validly contain another <button> — nesting one here (this sits inside the
+  // Settings nav-item's own <button>) made the browser auto-close the outer button early,
+  // knocking its label out of the flex/font-size rules scoped to it entirely (this is exactly
+  // what caused the broken oversized "Settings" text found while checking the phone layout).
+  // Purely visual span instead — see settingsNavItemOnClick() for how the tap itself is handled.
+  return `<span class="nav-sync-badge" style="background:${dotColor};" aria-hidden="true"></span>`;
+}
+/* The Settings nav item's own tap target doubles as the sync-issue entry point on phones, where
+   there's no room for the sidebar's separate text indicator (see .sync-indicator-sidebar's
+   max-width:640px rule) — opens sync status directly instead of just navigating to the page, so
+   it's still one tap to the same detail/resolution modal the desktop indicator gives you. */
+function settingsNavItemOnClick() {
+  const state = syncStatusState();
+  return (state && state !== 'ok') ? 'openSyncStatusModal()' : "goPage('settings')";
+}
+function openSyncStatusModal() { ui.modal = { type: 'syncStatus' }; render(); }
+window.__modalRenderers.syncStatus = function () {
+  const state = syncStatusState();
+  if (state === 'conflict') {
+    const unverified = syncState.conflict.reason === 'unverified';
+    return `
+      <div class="modal-head"><div class="modal-title">${unverified ? "🔄 Confirm this device's data" : '⚠️ Sync conflict'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+      <div style="font-size:13px;opacity:.75;line-height:1.6;margin-bottom:16px;">
+        ${unverified
+          ? "This device hasn't confirmed sync with Supabase yet (common right after an update, or a brief connection hiccup) — Supabase already has something stored, but that doesn't necessarily mean it's different from what's here, just that this device can't automatically confirm it matches."
+          : "Another device saved changes since this device last synced, so this device's last save was refused (nothing was overwritten on either side)."}
+        Pick whichever should win:
+      </div>
+      <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
+        <button class="btn primary" onclick="resolveSyncConflictKeepLocal();closeModal();">Keep this device's version</button>
+        <button class="btn" onclick="resolveSyncConflictUseRemote();closeModal();">Use the other version</button>
+      </div>`;
+  }
+  const errorHtml = syncState.lastError ? `
+    <div class="card-nested" style="margin-top:12px;font-size:12px;">
+      <div style="font-weight:700;margin-bottom:4px;">Last error${syncState.lastError.status ? ` (HTTP ${syncState.lastError.status})` : ''}</div>
+      <div style="opacity:.7;">${escHtml(syncState.lastError.message || 'Unknown error')}</div>
+    </div>` : '';
+  return `
+    <div class="modal-head"><div class="modal-title">${state === 'warning' ? '⚠️ Sync issue' : '🔄 Sync status'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div style="font-size:13px;opacity:.75;line-height:1.6;">
+      Last successful sync: ${escHtml(syncState.lastSuccessAt ? timeAgo(syncState.lastSuccessAt) : 'never')}${syncState.consecutiveFailures ? ` · ${syncState.consecutiveFailures} failed attempt${syncState.consecutiveFailures === 1 ? '' : 's'} in a row` : ''}
+    </div>
+    ${errorHtml}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Close</button></div>`;
+};
 
 load();
