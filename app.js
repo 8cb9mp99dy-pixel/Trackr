@@ -304,7 +304,6 @@ let ui = {
   page: 'dashboard',
   budgetTab: 'transactions',
   budgetMonth: new Date(),
-  dashboardNetWorthPeriod: '6M',
   dashboardPortfolioPeriod: '1M',
   modal: null,        // {type, payload}
   openAccountId: null, // expanded account card
@@ -1548,11 +1547,7 @@ function renderDashboard() {
 
   const income = monthIncome(now), expenses = monthExpenses(now), balance = income - expenses;
 
-  const nwPoints = historyPoints(periodToDays(ui.dashboardNetWorthPeriod), 'netWorth');
   const pfPoints = historyPoints(periodToDays(ui.dashboardPortfolioPeriod), 'portfolioValue');
-  const thisMonthDelta = historyDeltaSince(new Date(now.getFullYear(), now.getMonth(), 1));
-  const thisYearDelta = historyDeltaSince(new Date(now.getFullYear(), 0, 1));
-  const allTimeDelta = data.history.length ? netWorth - data.history[0].netWorth : null;
 
   const byBroker = dashboardBrokerBreakdown();
   const byBrokerMax = Math.max(...byBroker.map(x => x.value), 1);
@@ -1594,21 +1589,6 @@ function renderDashboard() {
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(income)}</div></div><span style="font-size:20px;">📈</span></div></div>
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div><span style="font-size:20px;">📉</span></div></div>
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Balance</div><div style="font-size:20px;font-weight:700;color:var(--light-accent-2)">${fmtMoney(balance)}</div></div><span style="font-size:20px;">👛</span></div></div>
-    </div>
-
-    <div class="card" style="margin-bottom:20px;">
-      <div class="row-flex" style="margin-bottom:14px;">
-        <div style="font-weight:700;">NET WORTH EVOLUTION</div>
-        <div class="tab-row" style="margin:0;width:auto;">
-          ${['3M', '6M', 'All'].map(p => `<button class="tab-btn ${ui.dashboardNetWorthPeriod === p ? 'active' : ''}" style="padding:6px 14px;" onclick="setNwPeriod('${p}')">${p}</button>`).join('')}
-        </div>
-      </div>
-      ${trendChartOrPlaceholder(nwPoints, 150)}
-      <div class="grid-3" style="margin-top:14px;">
-        <div class="card-nested"><div class="eyebrow">This month</div><div style="font-weight:700;">${thisMonthDelta != null ? fmtMoney(thisMonthDelta) : '—'}</div></div>
-        <div class="card-nested"><div class="eyebrow">This year</div><div style="font-weight:700;">${thisYearDelta != null ? fmtMoney(thisYearDelta) : '—'}</div></div>
-        <div class="card-nested"><div class="eyebrow">All time</div><div style="font-weight:700;">${allTimeDelta != null ? fmtMoney(allTimeDelta) : '—'}</div></div>
-      </div>
     </div>
 
     <div class="card" style="margin-bottom:20px;">
@@ -1667,7 +1647,6 @@ function renderDashboard() {
     </div>
   </div>`;
 }
-function setNwPeriod(p) { ui.dashboardNetWorthPeriod = p; render(); }
 function setPfPeriod(p) { ui.dashboardPortfolioPeriod = p; render(); }
 
 function periodToDays(p) { return { '1D': 1, '1W': 7, '1M': 30, '3M': 90, '6M': 182, '1Y': 365, 'All': null }[p] ?? null; }
@@ -1675,16 +1654,6 @@ function historyPoints(days, key) {
   const hist = data.history || [];
   const filtered = days ? hist.filter(h => new Date(h.date).getTime() >= Date.now() - days * 86400000) : hist;
   return filtered.map(h => ({ label: fmtDate(h.date), value: h[key] }));
-}
-/* Finds the last recorded value strictly before cutoff and returns (current - that value),
-   or null if there's no real data from before that period yet (shown as "—", not a fake 0). */
-function historyDeltaSince(cutoffDate) {
-  const hist = data.history || [];
-  if (!hist.length) return null;
-  let base = null;
-  for (const h of hist) { if (new Date(h.date) < cutoffDate) base = h; else break; }
-  if (!base) return null;
-  return hist[hist.length - 1].netWorth - base.netWorth;
 }
 function trendChartOrPlaceholder(points, height) {
   if (points.length < 2) {
