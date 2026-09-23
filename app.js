@@ -184,19 +184,9 @@ function defaultData() {
       ],
     },
     paymentMethods: cloneJson(DEFAULT_PAYMENT_METHODS),
-    accounts: [
-      { id: 'acc_rabobank', icon: '🏦', name: 'Rabobank', currency: 'EUR', balance: 0, description: '', logo: 'assets/logos/Revolut.png', logoKind: 'emoji', color: '#6C63FF', visibleInTotals: true, pockets: [] },
-      { id: 'acc_bunq', icon: '🏦', name: 'BUNQ', currency: 'EUR', balance: 0, description: '', logo: '', logoKind: 'emoji', color: '#34C77B', visibleInTotals: true, pockets: [] },
-      { id: 'acc_revolut', icon: '🏦', name: 'Revolut', currency: 'EUR', balance: 21, description: '', logo: 'assets/logos/Revolut.png', logoKind: 'image', color: '#E8963C', visibleInTotals: true,
-        pockets: [
-          { id: 'pk_holidays', icon: '🎯', name: 'Holidays', amountSaved: 420, targetAmount: 1200, color: '#4FA6D9' },
-        ] },
-      { id: 'acc_traderepublic', icon: '🏦', name: 'Trade Republic', currency: 'EUR', balance: 613, description: '', logo: 'assets/logos/Trade_Republic.png', logoKind: 'image', color: '#E5484D', visibleInTotals: true,
-        pockets: [
-          { id: 'pk_emergency', icon: '🎯', name: 'Emergency fund', amountSaved: 1722, targetAmount: 3000, color: '#34C77B' },
-        ] },
-      { id: 'acc_bnp', icon: '🏦', name: 'BGL BNP Paribas', currency: 'EUR', balance: 2235.12, description: '', logo: 'assets/logos/BGL_BNP_Paribas.png', logoKind: 'image', color: '#C79A5B', visibleInTotals: true, pockets: [] },
-    ],
+    // Genuinely empty — no sample accounts/positions/holdings. A fresh start means a fresh start;
+    // add your own via the app's own "+ Add" flows on each page.
+    accounts: [],
     budgetTransactions: [],
     // cashBalance is uninvested cash sitting at that broker — it counts toward the broker's
     // total value and net worth, but (unlike positions) has no cost basis, so it's excluded
@@ -206,23 +196,13 @@ function defaultData() {
     // tracked as free-text names on crypto lots/snapshots instead (see cryptoBrokerNames()),
     // with their logo resolved via COMMON_EXCHANGE_LOGOS. Registering them as brokers too would
     // create zero-activity "ghost" entries cluttering the Stocks & ETFs Brokers list.
-    brokers: [
-      { id: 'brk_t212', name: 'Trading 212', logo: 'assets/logos/Trading_212_Invest.png', cashBalance: 214.20, cashCurrency: 'EUR', cashInterestBearing: true, cashInterestRate: 3.5 },
-    ],
+    brokers: [],
     // Each non-crypto asset is tracked once (ticker+type), with one or more broker "entries"
     // (broker, quantity, price paid, currency — no date, same snapshot idea as crypto). Quantity
     // and average price are always derived from those entries (see assetStats()), never stored
     // directly, so they recalculate live whenever an entry is added/edited/removed.
-    assets: [
-      { id: 'asset_vwce', ticker: 'VWCE', name: 'Vanguard FTSE All-World', assetType: 'ETFs', logo: '', priceCurrency: 'EUR', currentPrice: 112.4, manualPrice: null, priceUpdatedAt: null },
-      { id: 'asset_aapl', ticker: 'AAPL', name: 'Apple Inc.', assetType: 'Stocks', logo: '', priceCurrency: 'USD', currentPrice: 191.3, manualPrice: null, priceUpdatedAt: null },
-      { id: 'asset_nvda', ticker: 'NVDA', name: 'NVIDIA Corp.', assetType: 'Stocks', logo: '', priceCurrency: 'USD', currentPrice: 498.2, manualPrice: null, priceUpdatedAt: null },
-    ],
-    assetEntries: [
-      { id: 'ae_1', assetId: 'asset_vwce', broker: 'brk_t212', quantity: 45, price: 108.2, currency: 'EUR' },
-      { id: 'ae_2', assetId: 'asset_aapl', broker: 'brk_t212', quantity: 8, price: 178.5, currency: 'USD' },
-      { id: 'ae_3', assetId: 'asset_nvda', broker: 'brk_t212', quantity: 3, price: 612.0, currency: 'USD' },
-    ],
+    assets: [],
+    assetEntries: [],
     investmentTransactions: [],
     // Each crypto asset is tracked in one of two modes:
     //  - 'snapshot': a per-broker holding snapshot — broker, quantity, avg price, currency, no
@@ -232,22 +212,8 @@ function defaultData() {
     //    always derived from those lots (see cryptoAssetStats()).
     // Prices are fetched live in USD and EUR (coingeckoId below); manualPrice/manualPriceCurrency
     // is a real user-entered override used only when a live price isn't available.
-    cryptoAssets: [
-      { symbol: 'BTC', name: 'Bitcoin', coingeckoId: 'bitcoin', mode: 'snapshot',
-        snapshots: [
-          { id: 'snap_1', broker: 'Binance', quantity: 0.045, price: 51200, currency: 'EUR' },
-          { id: 'snap_2', broker: 'Bitstack', quantity: 0.012, price: 49800, currency: 'EUR' },
-        ],
-        currentPriceUSD: null, currentPriceEUR: null, manualPrice: null, manualPriceCurrency: 'USD', priceAuto: true, priceUpdatedAt: null, logo: '' },
-      { symbol: 'ETH', name: 'Ethereum', coingeckoId: 'ethereum', mode: 'lots',
-        currentPriceUSD: null, currentPriceEUR: null, manualPrice: null, manualPriceCurrency: 'USD', priceAuto: true, priceUpdatedAt: null, logo: '' },
-      { symbol: 'SOL', name: 'Solana', coingeckoId: 'solana', mode: 'lots',
-        currentPriceUSD: null, currentPriceEUR: null, manualPrice: null, manualPriceCurrency: 'USD', priceAuto: true, priceUpdatedAt: null, logo: '' },
-    ],
-    cryptoLots: [
-      { id: 'lot_3', symbol: 'ETH', broker: 'Binance', date: '2025-12-05', currency: 'EUR', amountPaid: 2412, quantity: 0.9 },
-      { id: 'lot_4', symbol: 'SOL', broker: 'Coinbase', date: '2026-02-20', currency: 'USD', amountPaid: 1656, quantity: 12 },
-    ],
+    cryptoAssets: [],
+    cryptoLots: [],
     // Leveraged/derivative trades (futures, CFDs, options, forex, ...) — tracked separately from
     // the Investments page since these are margin/collateral positions, not outright ownership.
     trades: [],
