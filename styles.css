@@ -445,3 +445,19 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
 
 
 ::selection { background: var(--accent-1); color: var(--on-accent-1); }
+
+/* Budget → "Invested this month" card: minimalist, with a one-time entrance animation that only
+   plays when the card carries .anim (see investedCardHtml — set on arrival / month change). */
+.inv-bars { display: flex; gap: 8px; align-items: flex-end; flex: none; }
+.inv-col { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 20px; }
+.inv-track { height: 56px; width: 100%; display: flex; align-items: flex-end; }
+.inv-bar { width: 100%; border-radius: 4px 4px 2px 2px; background: var(--light-accent-1); transform-origin: bottom; }
+.inv-lbl { font-size: 9.5px; opacity: .5; }
+@keyframes invGrow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes invFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.inv-card.anim .inv-bar { animation: invGrow .75s cubic-bezier(.2,.8,.2,1) both; }
+.inv-card.anim .inv-fade { animation: invFade .55s ease both; }
+@media (prefers-reduced-motion: reduce) {
+  .inv-card.anim .inv-bar, .inv-card.anim .inv-fade { animation: none; }
+}
+@media (max-width: 640px) { .inv-col { width: 16px; } .inv-bars { gap: 6px; } }

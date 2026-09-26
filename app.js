@@ -1507,7 +1507,7 @@ function monthTransactions(monthDate) {
 function monthIncome(monthDate) { return monthTransactions(monthDate).filter(t => t.type === 'income').reduce((s, t) => s + toEUR(t.amount, t.currency), 0); }
 function monthExpenses(monthDate) { return monthTransactions(monthDate).filter(t => t.type === 'expense').reduce((s, t) => s + toEUR(t.amount, t.currency), 0); }
 
-function categoryById(kind, id) { return data.categories[kind].find(c => c.id === id); }
+function categoryById(kind, id) { return (data.categories[kind] || []).find(c => c.id === id); }
 function paymentMethodById(id) { return data.paymentMethods.find(p => p.id === id); }
 function brokerById(id) { return data.brokers.find(b => b.id === id); }
 function accountById(id) { return data.accounts.find(a => a.id === id); }
@@ -1635,7 +1635,7 @@ function downloadRawDataBackup() {
   URL.revokeObjectURL(url);
 }
 
-function goPage(page) { ui.page = page; ui.modal = null; render(); }
+function goPage(page) { ui.page = page; ui.modal = null; if (page === 'budget') ui.investedAnimate = true; render(); }
 function togglePrivacy() { data.settings.privacyMode = !data.settings.privacyMode; save(); render(); }
 function closeModal() { ui.modal = null; render(); }
 
@@ -2137,6 +2137,7 @@ function budgetTransactionsTab() {
   const categorySegments = categorySpendingSegments(m);
   const categoryTotal = categorySegments.reduce((s, x) => s + x.value, 0) || 1;
   const atMin = m.getFullYear() === BUDGET_MIN_MONTH.getFullYear() && m.getMonth() === BUDGET_MIN_MONTH.getMonth();
+  const investedCardHtmlStr = investedCardHtml(m);
   return `
     <div class="row-flex" style="margin-bottom:10px;">
       <button class="icon-btn-round" onclick="shiftBudgetMonth(-1)" ${atMin ? 'style="opacity:.3;cursor:default;" disabled' : ''}>‹</button>
@@ -2150,6 +2151,8 @@ function budgetTransactionsTab() {
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div><span style="font-size:20px;">📉</span></div></div>
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Balance</div><div style="font-size:20px;font-weight:700;" class="${balance >= 0 ? 'positive' : 'negative'}">${fmtMoney(balance)}</div></div><span style="font-size:20px;">👛</span></div></div>
     </div>
+
+    ${investedCardHtmlStr}
 
     <div class="card" style="margin-bottom:20px;">
       <div class="eyebrow" style="margin-bottom:10px;">Spending trend</div>
@@ -2179,6 +2182,77 @@ function budgetTransactionsTab() {
     </div>`;
 }
 
+/* ---- Invested this month ----
+   Money that went to an investing place during the month: transfers into a stock broker or crypto
+   exchange (net of anything taken back out to a bank/pocket), plus any expense you filed under
+   Savings → Investment Contribution / Crypto Purchases. Broker-to-broker moves don't count — the
+   money was already invested. (Stock/ETF holdings have no purchase date in this app, so buys
+   themselves can't be dated; the money you send to the broker is the honest monthly signal.) */
+const INVESTED_SUBCATEGORY_IDS = ['sc_investmentcontrib', 'sc_cryptobuy'];
+function isInvestingEndpoint(ref) { const k = (parseTransferRef(ref) || {}).kind; return k === 'brk' || k === 'cx'; }
+function monthInvested(monthDate) {
+  let sent = 0, withdrawn = 0, contributions = 0;
+  monthTransactions(monthDate).forEach(t => {
+    const eur = toEUR(t.amount, t.currency);
+    if (t.type === 'transfer') {
+      const toInv = isInvestingEndpoint(t.to), fromInv = isInvestingEndpoint(t.from);
+      if (toInv && !fromInv) sent += eur;
+      else if (fromInv && !toInv) withdrawn += eur;
+    } else if (t.type === 'expense' && INVESTED_SUBCATEGORY_IDS.includes(t.subCategoryId)) contributions += eur;
+  });
+  return { sent, withdrawn, contributions, net: sent + contributions - withdrawn };
+}
+function animateCountUp(elId, target, ms) {
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { const e = document.getElementById(elId); if (e) e.textContent = fmtMoney(target); return; }
+  const start = performance.now();
+  const step = now => {
+    const el = document.getElementById(elId);
+    if (!el) return; // page was re-rendered away mid-animation
+    const t = Math.min(1, (now - start) / ms);
+    el.textContent = fmtMoney(target * (1 - Math.pow(1 - t, 3)));
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+/* Minimalist: one big number and six slim bars. The entrance animation (count-up + bars growing
+   in) plays only when you arrive at the page or change month — ui.investedAnimate is consumed
+   here, so ordinary re-renders (opening a form, saving) never replay it. */
+function investedCardHtml(monthDate) {
+  const anim = !!ui.investedAnimate;
+  ui.investedAnimate = false;
+  const cur = monthInvested(monthDate);
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(monthDate.getFullYear(), monthDate.getMonth() - i, 1);
+    if (d >= BUDGET_MIN_MONTH) months.push(d);
+  }
+  const series = months.map(d => ({ d, v: Math.max(0, monthInvested(d).net) }));
+  const maxV = Math.max(...series.map(x => x.v), 1);
+  const caption = cur.sent || cur.withdrawn || cur.contributions
+    ? [cur.sent + cur.contributions ? `${fmtMoney(cur.sent + cur.contributions)} sent` : '', cur.withdrawn ? `${fmtMoney(cur.withdrawn)} taken back` : ''].filter(Boolean).join(' · ')
+    : 'Nothing sent to a broker or exchange yet — log a Transfer to one to track it here.';
+  if (anim) setTimeout(() => animateCountUp('inv-num', cur.net, 900), 0);
+  return `
+    <div class="card inv-card ${anim ? 'anim' : ''}" style="margin-bottom:20px;">
+      <div class="row-flex" style="align-items:flex-end;gap:24px;">
+        <div class="inv-fade" style="min-width:0;">
+          <div class="eyebrow">Invested · ${monthLabel(monthDate)}</div>
+          <div id="inv-num" style="font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.15;">${fmtMoney(anim ? 0 : cur.net)}</div>
+          <div style="font-size:12px;opacity:.55;margin-top:2px;">${caption}</div>
+        </div>
+        <div class="inv-bars" aria-hidden="true">
+          ${series.map((x, i) => {
+            const active = x.d.getFullYear() === monthDate.getFullYear() && x.d.getMonth() === monthDate.getMonth();
+            return `<div class="inv-col" title="${monthLabel(x.d)} · ${fmtMoney(x.v)}">
+              <div class="inv-track"><div class="inv-bar" style="height:${x.v ? Math.max(6, x.v / maxV * 100) : 4}%;opacity:${active ? 1 : .28};animation-delay:${i * 70}ms;"></div></div>
+              <div class="inv-lbl">${x.d.toLocaleDateString('en-US', { month: 'short' })}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
 /* Rolling 6-month strip ending at the currently-viewed month (slides as you navigate further
    forward — never earlier than BUDGET_MIN_MONTH, since no data exists before it) — click any
    pill to jump straight to that month, Revolut-style. Always includes every future month you
@@ -2200,6 +2274,7 @@ function budgetMonthPillsHtml(m) {
 function setBudgetMonthTo(year, month) {
   const d = new Date(year, month, 1);
   ui.budgetMonth = d < BUDGET_MIN_MONTH ? new Date(BUDGET_MIN_MONTH) : d;
+  ui.investedAnimate = true;
   render();
 }
 
@@ -2244,7 +2319,7 @@ function dayLabel(dateStr) {
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 }
 function dayGroupHtml(group) {
-  const netEUR = group.txs.reduce((s, t) => s + toEUR(t.type === 'income' ? t.amount : -t.amount, t.currency), 0);
+  const netEUR = group.txs.reduce((s, t) => s + txNetEUR(t), 0);
   return `
     <div class="row-flex" style="margin:18px 0 8px;">
       <div style="font-weight:700;font-size:14px;">${dayLabel(group.date)}</div>
@@ -2267,6 +2342,9 @@ function hashColor(str) {
    (item 3) in a color derived from the transaction's label, plus a small income/expense badge.
    Never fabricates a merchant logo — only ever shows one the user actually set. */
 function txAvatarHtml(t) {
+  if (t.type === 'transfer') {
+    return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:17px;">🔁</span></div>`;
+  }
   const cat = categoryById(t.type === 'income' ? 'income' : 'expense', t.categoryId);
   const subcat = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null;
   const emoji = (subcat && subcat.icon) || (cat && cat.icon) || (t.type === 'income' ? '💰' : '💸');
@@ -2280,6 +2358,26 @@ function txAvatarHtml(t) {
   </div>`;
 }
 function txRowDisplayHtml(t) {
+  if (t.type === 'transfer') {
+    // Live labels, so a renamed pocket/broker shows its new name; falls back to the saved
+    // snapshot if the place has since been deleted.
+    const fromLabel = (transferEndpoint(t.from) || {}).label || t.fromLabel || '—';
+    const toLabel = (transferEndpoint(t.to) || {}).label || t.toLabel || '—';
+    return `
+    <div class="row-flex" style="cursor:pointer;" onclick="openTxForm('${t.id}')">
+      <div style="display:flex;align-items:center;gap:12px;">
+        ${txAvatarHtml(t)}
+        <div>
+          <div style="font-weight:600;font-size:14px;">${escHtml(t.comment || 'Transfer')}${t.nature === 'Fixed' ? ' <span style="font-size:11px;opacity:.5;">🔄</span>' : ''}</div>
+          <div style="font-size:12px;opacity:.55;">${escHtml(fromLabel)} → ${escHtml(toLabel)}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;">
+        <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);">${fmtMoney(Math.abs(t.amount), t.currency)}</div>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">🗑</button>
+      </div>
+    </div>`;
+  }
   const cat = categoryById(t.type === 'income' ? 'income' : 'expense', t.categoryId);
   const subcat = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null;
   const pm = paymentMethodById(t.paymentMethodId);
@@ -2324,7 +2422,7 @@ function budgetRecurringTab() {
 function shiftBudgetMonth(delta) {
   const d = new Date(ui.budgetMonth); d.setMonth(d.getMonth() + delta);
   if (d < BUDGET_MIN_MONTH) return;
-  ui.budgetMonth = d; render();
+  ui.budgetMonth = d; ui.investedAnimate = true; render();
 }
 /* Real per-category expense totals for the month, powering the "Spending by category" donut —
    same color-per-label convention as the transaction avatars (hashColor). */
@@ -2375,11 +2473,100 @@ function cashflowBarsHtml(monthDate) {
    (used before re-applying an edited transaction, and before deleting one), so editing the
    amount/account/type of an existing transaction, or deleting it, never double-counts. */
 function applyTxToAccountBalance(record, sign) {
+  if (record && record.type === 'transfer') return applyTransferEffect(record, sign);
   if (!record || !record.accountId) return;
   const acc = accountById(record.accountId);
   if (!acc) return;
   const converted = convertCurrency(record.amount, record.currency, acc.currency);
   acc.balance += sign * (record.type === 'income' ? converted : -converted);
+}
+const round2 = n => Math.round(n * 100) / 100;
+/* ---- Transfers: money moving between places the app already tracks ----
+   A transfer has a "from" and a "to", each one of: a bank account's main balance, one of its
+   pockets, a stock broker's cash, or a crypto exchange's cash. Refs are plain strings so they
+   round-trip through the form and JSON easily: acc:<accountId>, pk:<accountId>:<pocketId>,
+   brk:<brokerId>, cx:<exchange name>. Because money only moves (never appears or disappears), a
+   transfer is deliberately neither income nor an expense and leaves net worth unchanged. */
+function parseTransferRef(ref) {
+  if (!ref) return null;
+  const i = ref.indexOf(':');
+  if (i < 0) return null;
+  const kind = ref.slice(0, i), rest = ref.slice(i + 1);
+  if (kind === 'acc') return { kind, accountId: rest };
+  if (kind === 'pk') { const j = rest.indexOf(':'); return j < 0 ? null : { kind, accountId: rest.slice(0, j), pocketId: rest.slice(j + 1) }; }
+  if (kind === 'brk') return { kind, brokerId: rest };
+  if (kind === 'cx') return { kind, exchange: rest };
+  return null;
+}
+/* Resolves a ref to the live thing it points at, or null if it no longer exists (deleted on the
+   Accounts/Investments page). floor:true means it can never go below zero (pockets, broker and
+   exchange cash) — a bank balance can, same as an ordinary expense already can today. */
+function transferEndpoint(ref) {
+  const ep = parseTransferRef(ref);
+  if (!ep) return null;
+  if (ep.kind === 'acc') {
+    const a = accountById(ep.accountId);
+    return a ? { label: a.name, ccy: a.currency, floor: false, get: () => a.balance, add: d => { a.balance = round2(a.balance + d); } } : null;
+  }
+  if (ep.kind === 'pk') {
+    const a = accountById(ep.accountId), pk = a && (a.pockets || []).find(p => p.id === ep.pocketId);
+    return pk ? { label: `${a.name} › ${pk.name}`, ccy: a.currency, floor: true, get: () => pk.amountSaved, add: d => { pk.amountSaved = round2(pk.amountSaved + d); } } : null;
+  }
+  if (ep.kind === 'brk') {
+    const b = brokerById(ep.brokerId);
+    return b ? { label: `${b.name} (cash)`, ccy: b.cashCurrency || 'EUR', floor: true, get: () => b.cashBalance || 0, add: d => { b.cashBalance = round2((b.cashBalance || 0) + d); } } : null;
+  }
+  if (ep.kind === 'cx') {
+    const name = ep.exchange;
+    if (!name) return null;
+    const e0 = cryptoExchangeCashFor(name);
+    return {
+      label: `${name} (cash)`, ccy: e0 ? e0.currency : 'EUR', floor: true,
+      get: () => { const c = cryptoExchangeCashFor(name); return c ? c.amount : 0; },
+      add: d => {
+        if (d === 0) return;
+        let c = cryptoExchangeCashFor(name);
+        if (!c) { c = { id: uid('cec'), exchange: name, amount: 0, currency: 'EUR', interestBearing: false, interestRate: null }; data.cryptoExchangeCash.push(c); }
+        c.amount = round2(c.amount + d);
+      },
+    };
+  }
+  return null;
+}
+/* Every place a transfer can start or end, grouped for the form's dropdowns. */
+function transferEndpointOptions() {
+  const groups = [
+    { label: 'Bank accounts', items: data.accounts.map(a => ({ ref: 'acc:' + a.id, label: `${a.icon || '🏦'} ${a.name}` })) },
+    { label: 'Pockets', items: data.accounts.flatMap(a => (a.pockets || []).map(p => ({ ref: `pk:${a.id}:${p.id}`, label: `${p.icon || '🎯'} ${a.name} › ${p.name}` }))) },
+    { label: 'Stock brokers (cash)', items: data.brokers.map(b => ({ ref: 'brk:' + b.id, label: `📈 ${b.name}` })) },
+    { label: 'Crypto exchanges (cash)', items: cryptoBrokerNames().map(n => ({ ref: 'cx:' + n, label: `🪙 ${n}` })) },
+  ];
+  return groups.filter(g => g.items.length);
+}
+/* Applied as a CHANGE on top of whatever each side currently holds, never recomputed from
+   scratch, so a pocket/balance/cash amount corrected by hand on the Accounts or Investments page
+   stays exactly as typed — those pages are the source of truth. sign=1 applies; sign=-1 reverses
+   (used before re-applying an edited transfer and when deleting one). Amounts are converted
+   between currencies at the app's EUR/USD rate, each side credited/debited in its own currency.
+   If the side being debited is a floor:true one that holds less than the transfer wants to move
+   (e.g. it was lowered by hand after the transfer was logged), only what's actually there moves
+   and the other side gets exactly that much — nothing is created or lost. If either side has since
+   been deleted, there's nothing left to keep in sync, so nothing happens. */
+function applyTransferEffect(record, sign) {
+  const src = transferEndpoint(sign === 1 ? record.from : record.to);
+  const dst = transferEndpoint(sign === 1 ? record.to : record.from);
+  if (!src || !dst) return;
+  let srcAmt = convertCurrency(record.amount, record.currency, src.ccy);
+  if (src.floor) srcAmt = Math.min(srcAmt, Math.max(0, src.get()));
+  if (srcAmt <= 0) return;
+  const dstAmt = convertCurrency(convertCurrency(srcAmt, src.ccy, record.currency), record.currency, dst.ccy);
+  src.add(-srcAmt);
+  dst.add(dstAmt);
+}
+/* Signed effect on cash flow for the day-by-day totals — a transfer is neutral. */
+function txNetEUR(t) {
+  if (t.type === 'transfer') return 0;
+  return toEUR(t.type === 'income' ? t.amount : -t.amount, t.currency);
 }
 function deleteBudgetTx(id) {
   const t = data.budgetTransactions.find(x => x.id === id);
@@ -2604,7 +2791,7 @@ function removePaymentMethod(id) { data.paymentMethods = data.paymentMethods.fil
    (name-suggestions, logo, location, description) that doesn't fit well crammed N-at-a-time.
    The same modal/payload serves both "Add" (no id) and "Edit" (existing id) — item 1. ---- */
 function blankTxDraft() {
-  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: '', currency: data.settings.defaultCurrency, amount: '', date: new Date().toISOString().slice(0, 10), comment: '', location: '', description: '', logo: '', impact: '' };
+  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: '', currency: data.settings.defaultCurrency, amount: '', date: new Date().toISOString().slice(0, 10), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
 }
 function openTxForm(id) {
   const existing = id ? data.budgetTransactions.find(t => t.id === id) : null;
@@ -2614,7 +2801,13 @@ function openTxForm(id) {
 }
 window.__modalRenderers.tx = function (payload) {
   const isEdit = !!payload.id;
+  const isTransfer = payload.type === 'transfer';
   const cats = data.categories[payload.type === 'income' ? 'income' : 'expense'];
+  const endpointSelect = (field, value) => `
+        <select onchange="updateTxField('${field}',this.value)">
+          <option value="">Select…</option>
+          ${transferEndpointOptions().map(g => `<optgroup label="${escHtml(g.label)}">${g.items.map(it => `<option value="${escHtml(it.ref)}" ${value === it.ref ? 'selected' : ''}>${escHtml(it.label)}</option>`).join('')}</optgroup>`).join('')}
+        </select>`;
   const selectedCat = cats.find(c => c.id === payload.categoryId);
   const subcats = selectedCat ? (selectedCat.subcategories || []) : [];
   return `
@@ -2631,9 +2824,10 @@ window.__modalRenderers.tx = function (payload) {
         <select onchange="updateTxField('type',this.value)">
           <option value="expense" ${payload.type === 'expense' ? 'selected' : ''}>💸 Expense</option>
           <option value="income" ${payload.type === 'income' ? 'selected' : ''}>💰 Income</option>
+          <option value="transfer" ${payload.type === 'transfer' ? 'selected' : ''}>🔁 Transfer</option>
         </select>
       </label>
-      <label class="field"><span class="label-text">Category</span>
+      ${isTransfer ? '' : `<label class="field"><span class="label-text">Category</span>
         <select onchange="updateTxField('categoryId',this.value)">
           <option value="">Select…</option>
           ${cats.map(c => `<option value="${c.id}" ${payload.categoryId === c.id ? 'selected' : ''}>${c.icon || ''} ${escHtml(c.name)}</option>`).join('')}
@@ -2644,14 +2838,18 @@ window.__modalRenderers.tx = function (payload) {
           <option value="">${subcats.length ? 'Select…' : '—'}</option>
           ${subcats.map(sc => `<option value="${sc.id}" ${payload.subCategoryId === sc.id ? 'selected' : ''}>${sc.icon || ''} ${escHtml(sc.name)}</option>`).join('')}
         </select>
-      </label>
+      </label>`}
       <label class="field"><span class="label-text">Recurring</span>
         <select onchange="updateTxField('nature',this.value)">
           <option value="Variable" ${payload.nature === 'Variable' ? 'selected' : ''}>One-off / Variable</option>
           <option value="Fixed" ${payload.nature === 'Fixed' ? 'selected' : ''}>🔄 Fixed / Recurring</option>
         </select>
       </label>
-      <label class="field"><span class="label-text">Payment method</span>
+      ${isTransfer ? `
+      <label class="field span-2"><span class="label-text">From</span>${endpointSelect('from', payload.from)}</label>
+      <label class="field span-2"><span class="label-text">To</span>${endpointSelect('to', payload.to)}</label>
+      <div class="span-2" style="font-size:11.5px;opacity:.55;margin-top:-4px;">Moves the money between the two places (bank, pocket, broker or exchange cash) and converts currencies automatically. A balance you edit on the Accounts or Investments page always wins.</div>
+      ` : `<label class="field"><span class="label-text">Payment method</span>
         <select onchange="updateTxField('paymentMethodId',this.value)">
           <option value="">Select…</option>
           ${data.paymentMethods.map(pm => `<option value="${pm.id}" ${payload.paymentMethodId === pm.id ? 'selected' : ''}>${pm.icon || ''} ${escHtml(pm.name)}</option>`).join('')}
@@ -2669,18 +2867,18 @@ window.__modalRenderers.tx = function (payload) {
           <option value="positive" ${payload.impact === 'positive' ? 'selected' : ''}>🙂 Positive (e.g. donation)</option>
           <option value="negative" ${payload.impact === 'negative' ? 'selected' : ''}>🙁 Negative (e.g. tobacco)</option>
         </select>
-      </label>
+      </label>`}
       <label class="field"><span class="label-text">Currency</span>
         <select onchange="updateTxField('currency',this.value)">${CURRENCIES.map(c => `<option ${payload.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
       </label>
       <label class="field"><span class="label-text">Amount</span><input type="number" step="0.01" value="${payload.amount}" onchange="updateTxField('amount',this.value)"></label>
-      <label class="field span-2"><span class="label-text">Location <span style="opacity:.6;">(optional)</span></span><input value="${escHtml(payload.location || '')}" placeholder="e.g. Amsterdam" onchange="updateTxField('location',this.value)"></label>
+      ${isTransfer ? '' : `<label class="field span-2"><span class="label-text">Location <span style="opacity:.6;">(optional)</span></span><input value="${escHtml(payload.location || '')}" placeholder="e.g. Amsterdam" onchange="updateTxField('location',this.value)"></label>`}
       <label class="field span-2"><span class="label-text">Description <span style="opacity:.6;">(optional)</span></span><input value="${escHtml(payload.description || '')}" placeholder="Any extra detail" onchange="updateTxField('description',this.value)"></label>
-      <label class="field span-2"><span class="label-text">Logo URL <span style="opacity:.6;">(optional — reused automatically next time you log this name)</span></span>
+      ${isTransfer ? '' : `<label class="field span-2"><span class="label-text">Logo URL <span style="opacity:.6;">(optional — reused automatically next time you log this name)</span></span>
         <div style="display:flex;gap:6px;align-items:center;"><input id="tf-logo" style="flex:1;" value="${escHtml(payload.logo || '')}" placeholder="https://…" onchange="updateTxField('logo',this.value)">${logoPickerButtonHtml('tf-logo')}</div>
         ${logoPickerPopoverHtml('tf-logo')}
       </label>
-      ${payload.logo ? `<div class="span-2" style="display:flex;align-items:center;gap:8px;">${assetLogoHtml(payload.logo, 'Other', 28)}<span style="font-size:12px;opacity:.6;">Current logo</span></div>` : ''}
+      ${payload.logo ? `<div class="span-2" style="display:flex;align-items:center;gap:8px;">${assetLogoHtml(payload.logo, 'Other', 28)}<span style="font-size:12px;opacity:.6;">Current logo</span></div>` : ''}`}
     </div>
     <div class="modal-actions">
       ${isEdit ? `<button class="btn danger ghost" onclick="deleteBudgetTx('${payload.id}')">🗑 Delete</button>` : ''}
@@ -2690,8 +2888,15 @@ window.__modalRenderers.tx = function (payload) {
 function updateTxField(field, value) {
   if (!ui.modal) return;
   ui.modal.payload[field] = value;
-  if (field === 'type') { ui.modal.payload.categoryId = ''; ui.modal.payload.subCategoryId = ''; }
-  if (field === 'categoryId') { ui.modal.payload.subCategoryId = ''; }
+  const p = ui.modal.payload;
+  if (field === 'type') { p.categoryId = ''; p.subCategoryId = ''; }
+  if (field === 'categoryId') { p.subCategoryId = ''; }
+  // Default the amount's currency to whatever the money is leaving, so a transfer out of a EUR
+  // account starts in EUR — still changeable, and converted automatically if the other side differs.
+  if (p.type === 'transfer' && (field === 'from' || field === 'type')) {
+    const ep = transferEndpoint(p.from);
+    if (ep) p.currency = ep.ccy;
+  }
   render();
 }
 /* Item 9: live suggestion list as you type a name — patches just the suggestion strip (no
@@ -2721,13 +2926,21 @@ function applyTxSuggestion(name) {
     comment: name, type: match.type, categoryId: match.categoryId, subCategoryId: match.subCategoryId || '',
     paymentMethodId: match.paymentMethodId || '', accountId: match.accountId || '', nature: match.nature, currency: match.currency,
     location: match.location || '', description: match.description || '', logo: match.logo || '', impact: match.impact || '',
+    from: match.from || '', to: match.to || '',
   });
   ui.txSuggestions = [];
   render();
 }
 function saveTxForm() {
   const p = ui.modal.payload;
-  if (!p.categoryId || p.amount === '' || isNaN(parseFloat(p.amount))) return;
+  const isTransfer = p.type === 'transfer';
+  if (isTransfer) {
+    const amt = parseFloat(p.amount);
+    if (!p.from || !p.to) { alert('Choose where the money comes from and where it goes.'); return; }
+    if (p.from === p.to) { alert('"From" and "To" are the same place — pick two different ones.'); return; }
+    if (isNaN(amt) || amt <= 0) { alert('Enter an amount greater than zero.'); return; }
+    if (!transferEndpoint(p.from) || !transferEndpoint(p.to)) { alert("One of those places doesn't exist anymore — pick it again."); return; }
+  } else if (!p.categoryId || p.amount === '' || isNaN(parseFloat(p.amount))) return;
   const comment = (p.comment || '').trim();
   // Item 8: logo persists automatically for future transactions with the same name — never
   // overwrites a logo the user explicitly set this time, only fills in a blank one.
@@ -2737,21 +2950,32 @@ function saveTxForm() {
     if (prior) logo = prior.logo;
   }
   const record = {
-    id: p.id || uid('tx'), date: p.date, type: p.type, categoryId: p.categoryId, subCategoryId: p.subCategoryId || null,
-    nature: p.nature, paymentMethodId: p.paymentMethodId || null, accountId: p.accountId || null, currency: p.currency, amount: Math.abs(parseFloat(p.amount)),
-    comment, location: (p.location || '').trim(), description: (p.description || '').trim(), logo, impact: p.impact || '',
+    id: p.id || uid('tx'), date: p.date, type: p.type, categoryId: isTransfer ? null : p.categoryId, subCategoryId: isTransfer ? null : (p.subCategoryId || null),
+    nature: p.nature, paymentMethodId: isTransfer ? null : (p.paymentMethodId || null), accountId: isTransfer ? null : (p.accountId || null), currency: p.currency, amount: Math.abs(parseFloat(p.amount)),
+    comment, location: isTransfer ? '' : (p.location || '').trim(), description: (p.description || '').trim(), logo: isTransfer ? '' : logo, impact: isTransfer ? '' : (p.impact || ''),
   };
+  if (isTransfer) {
+    // Snapshot the labels too, so the entry stays readable if a pocket/broker is later deleted.
+    Object.assign(record, { from: p.from, to: p.to, fromLabel: transferEndpoint(p.from).label, toLabel: transferEndpoint(p.to).label });
+  }
   // Reverse whatever this transaction previously did to its linked account's balance before
   // applying its new effect — otherwise editing the amount/account/type would double-count.
-  if (p.id) {
-    const idx = data.budgetTransactions.findIndex(t => t.id === p.id);
-    if (idx !== -1) {
-      applyTxToAccountBalance(data.budgetTransactions[idx], -1);
-      data.budgetTransactions[idx] = record;
+  const idx = p.id ? data.budgetTransactions.findIndex(t => t.id === p.id) : -1;
+  const prior = idx !== -1 ? data.budgetTransactions[idx] : null;
+  if (prior) applyTxToAccountBalance(prior, -1);
+  if (isTransfer) {
+    // A pocket / broker / exchange can't go below zero, so refuse a transfer bigger than what's
+    // actually there (checked after undoing the old version, so editing a transfer down/up works).
+    const src = transferEndpoint(record.from);
+    const need = convertCurrency(record.amount, record.currency, src.ccy);
+    if (src.floor && src.get() + 0.005 < need) {
+      if (prior) applyTxToAccountBalance(prior, 1);
+      alert(`${src.label} only holds ${fmtMoney(src.get(), src.ccy)}, so ${fmtMoney(need, src.ccy)} can't be moved out of it.`);
+      return;
     }
-  } else {
-    data.budgetTransactions.push(record);
   }
+  if (prior) data.budgetTransactions[idx] = record;
+  else data.budgetTransactions.push(record);
   applyTxToAccountBalance(record, 1);
   save(); closeModal();
 }
@@ -4538,8 +4762,8 @@ function downloadExcelXml(filename, sheetName, columns, rows) {
 const BUDGET_TX_EXPORT_COLUMNS = {
   'Date': { width: 85, type: 'Date', value: t => t.date },
   'Name / Payee': { width: 170, type: 'String', value: t => t.comment || '' },
-  'Category': { width: 150, type: 'String', value: t => (categoryById(t.type, t.categoryId) || {}).name || '' },
-  'Sub-category': { width: 150, type: 'String', value: t => { const cat = categoryById(t.type, t.categoryId); const sub = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null; return sub ? sub.name : ''; } },
+  'Category': { width: 150, type: 'String', value: t => t.type === 'transfer' ? 'Transfer' : (categoryById(t.type, t.categoryId) || {}).name || '' },
+  'Sub-category': { width: 150, type: 'String', value: t => { if (t.type === 'transfer') return `${(transferEndpoint(t.from) || {}).label || t.fromLabel || '?'} → ${(transferEndpoint(t.to) || {}).label || t.toLabel || '?'}`; const cat = categoryById(t.type, t.categoryId); const sub = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null; return sub ? sub.name : ''; } },
   'Amount': { width: 95, type: 'Number', value: t => t.amount },
   'Currency': { width: 70, type: 'String', value: t => t.currency },
   'Type': { width: 75, type: 'String', value: t => t.type },
