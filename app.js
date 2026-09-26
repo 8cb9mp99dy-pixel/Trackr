@@ -1384,7 +1384,7 @@ function cryptoBrokerLogo(name) {
   if (!key) return '';
   const matchingBroker = data.brokers.find(b => b.name.trim().toLowerCase() === key);
   if (matchingBroker && matchingBroker.logo) return matchingBroker.logo;
-  return COMMON_EXCHANGE_LOGOS[key] || '';
+  return COMMON_EXCHANGE_LOGOS[key] || builtinLogoFor(name);
 }
 /* Live path: swaps the small logo icon next to a broker/exchange text field as the user types,
    without a full render() (which would drop focus mid-typing) — same pattern already used for
@@ -1802,6 +1802,27 @@ function logoImg(src, size) {
   return `<img class="institution-icon" src="${escHtml(src)}" style="width:${size}px;height:${size}px;" onerror="this.style.display='none'">`;
 }
 
+/* ---- Built-in logo library ----
+   Every image in the project's assets/logos folder, listed in assets/logos/logos.js (generated
+   by tools/update-logos.sh — a static site can't read a folder at runtime, so the folder's
+   contents are written into a script). This is the one place the app's own logos live: they ship
+   with the app, work offline, and never depend on another website staying up. */
+function builtinLogoItems() { return (window.LOCAL_LOGOS || []).map(l => ({ name: l.name, type: 'Built-in', logo: l.file })); }
+const logoKey = s => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+/* Finds the built-in logo for a name, or '' — exact match first, then one name containing the
+   other ("Trading 212" for "Trading 212 Invest"), longest library name winning. Too-short names
+   never match, so a stray "T" can't grab a logo. Never invents one. */
+function builtinLogoFor(name) {
+  const k = logoKey(name);
+  if (k.length < 3) return '';
+  const lib = builtinLogoItems().map(it => ({ it, key: logoKey(it.name) }));
+  const exact = lib.find(x => x.key === k);
+  if (exact) return exact.it.logo;
+  const partial = lib.filter(x => x.key.includes(k) || (x.key.length >= 4 && k.includes(x.key))).sort((a, b) => b.key.length - a.key.length)[0];
+  return partial ? partial.it.logo : '';
+}
+const isRemoteLogo = src => /^https?:\/\//i.test(src || '');
+
 /* Every logo URL already in use anywhere in the app (bank accounts, brokers, stocks/ETFs/other
    assets, crypto, and transaction payees), deduped by URL — the single source of truth behind
    both the Settings "Logos & Images" library and the "choose from used logos" picker attached
@@ -1813,6 +1834,7 @@ function allLogoItems() {
     ...data.assets.filter(a => a.logo).map(a => ({ name: a.name || a.ticker, type: a.assetType || 'Asset', logo: a.logo })),
     ...data.cryptoAssets.filter(c => c.logo).map(c => ({ name: c.name || c.symbol, type: 'Crypto', logo: c.logo })),
     ...data.budgetTransactions.filter(t => t.logo).map(t => ({ name: t.comment || 'Transaction', type: 'Transaction', logo: t.logo })),
+    ...builtinLogoItems(),
   ];
   const seen = new Set();
   return items.filter(it => { if (seen.has(it.logo)) return false; seen.add(it.logo); return true; }).sort((a, b) => a.name.localeCompare(b.name));
@@ -2060,7 +2082,8 @@ function saveAccountForm(id) {
     Object.assign(acc, { name, balance, icon, currency, description, color, visibleInTotals });
     if (logo) { acc.logo = logo; acc.logoKind = 'image'; } else { acc.logoKind = 'emoji'; }
   } else {
-    data.accounts.push({ id: uid('acc'), icon, name, currency, balance, description, logo: logo || '', logoKind: logo ? 'image' : 'emoji', color, visibleInTotals, pockets: [] });
+    const newLogo = logo || builtinLogoFor(name); // a brand-new account picks up its bundled logo automatically
+    data.accounts.push({ id: uid('acc'), icon, name, currency, balance, description, logo: newLogo || '', logoKind: newLogo ? 'image' : 'emoji', color, visibleInTotals, pockets: [] });
   }
   save(); closeModal();
 }
@@ -2949,6 +2972,7 @@ function saveTxForm() {
     const prior = data.budgetTransactions.find(t => t.id !== p.id && t.logo && t.comment && t.comment.toLowerCase() === comment.toLowerCase());
     if (prior) logo = prior.logo;
   }
+  if (!logo && comment && p.type !== 'transfer') logo = builtinLogoFor(comment);
   const record = {
     id: p.id || uid('tx'), date: p.date, type: p.type, categoryId: isTransfer ? null : p.categoryId, subCategoryId: isTransfer ? null : (p.subCategoryId || null),
     nature: p.nature, paymentMethodId: isTransfer ? null : (p.paymentMethodId || null), accountId: isTransfer ? null : (p.accountId || null), currency: p.currency, amount: Math.abs(parseFloat(p.amount)),
@@ -3996,7 +4020,7 @@ function saveBrokerForm(id) {
   if (id) {
     Object.assign(brokerById(id), fields);
   } else {
-    data.brokers.push({ id: uid('brk'), ...fields });
+    data.brokers.push({ id: uid('brk'), ...fields, logo: fields.logo || builtinLogoFor(name) });
   }
   save(); closeModal();
 }
@@ -4558,12 +4582,19 @@ function toggleNotification(key) { data.settings.notifications[key] = !data.sett
    matching "choose from used logos" picker attached to every Logo URL field elsewhere. */
 function settingsLogosHtml() {
   const items = allLogoItems();
+  const remoteCount = items.filter(it => isRemoteLogo(it.logo)).length;
   return `
+    <div style="opacity:.65;font-size:13px;margin-bottom:12px;line-height:1.55;">
+      Built-in logos live in the project's <strong>assets/logos</strong> folder and ship with the app — they work offline and never break. To add one, drop the image into that folder and run <code>bash tools/update-logos.sh</code>; it then appears in every logo picker and is applied automatically to a new bank, broker or payee with a matching name.
+    </div>
+    ${remoteCount ? `<div class="card-nested" style="margin-bottom:14px;font-size:12.5px;line-height:1.5;">
+      <strong>${remoteCount}</strong> logo${remoteCount === 1 ? ' is' : 's are'} still a <strong>remote link</strong> to another website (marked below). If that site changes or goes down, the logo disappears. To keep a permanent copy, download it (⬇), put the file in <strong>assets/logos</strong> and run the script above.
+    </div>` : ''}
     <div class="grid-2" style="margin-bottom:16px;">
       ${items.map(it => `
         <div class="card-nested" style="display:flex;align-items:center;gap:10px;">
           ${logoImg(it.logo, 34)}
-          <div style="flex:1;"><div style="font-weight:600;font-size:13px;">${escHtml(it.name)}</div><div style="font-size:11px;opacity:.55;">${escHtml(it.type)}</div></div>
+          <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;">${escHtml(it.name)}</div><div style="font-size:11px;opacity:.55;">${escHtml(it.type)}${isRemoteLogo(it.logo) ? ' · <span style="color:var(--manual-accent);opacity:1;">remote link</span>' : ''}</div></div>
           <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Copy URL" onclick="copyLogoUrl(this,'${escHtml(it.logo).replace(/'/g, "\\'")}')">📋</button>
           <a class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;text-decoration:none;" href="${escHtml(it.logo)}" download="${escHtml(it.name)}.png" title="Download">⬇</a>
         </div>`).join('') || '<div style="opacity:.5;font-size:13px;">No logos yet.</div>'}

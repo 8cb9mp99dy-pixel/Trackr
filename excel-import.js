@@ -382,7 +382,7 @@ async function applyExcelImport() {
       // re-run the match now in case an earlier row in this batch already created it.
       let brokerId = excelMatchBroker(row.broker);
       if (!brokerId) {
-        const newBroker = { id: uid('brk'), name: row.broker, logo: '', cashBalance: 0, cashCurrency: 'EUR', cashInterestBearing: false, cashInterestRate: null };
+        const newBroker = { id: uid('brk'), name: row.broker, logo: (typeof builtinLogoFor === 'function' && builtinLogoFor(row.broker)) || '', cashBalance: 0, cashCurrency: 'EUR', cashInterestBearing: false, cashInterestRate: null };
         data.brokers.push(newBroker);
         brokerId = newBroker.id;
         newBrokersCreated++;

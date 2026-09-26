@@ -15,7 +15,13 @@ just open a file in your browser.
 
 - `index.html` / `styles.css` / `app.js` — the app itself. No build step,
   no dependencies beyond a Google Fonts link — just open `index.html`.
-- `assets/logos/` — bank & broker logo images used by the app.
+- `assets/logos/` — every logo the app uses lives here, so nothing depends
+  on another website. To add one, drop the image in this folder and run
+  `bash tools/update-logos.sh` (it regenerates `assets/logos/logos.js`, the
+  list the app reads). It then shows up in every logo picker and in
+  Settings → Logos & Images, and is applied automatically to a new bank,
+  broker or payee with a matching name (`Trade_Republic.png` → "Trade Republic").
+- `assets/icons/` — the app icon (browser tab, bookmarks, iPhone home screen).
 - `Logos/` — your original logo source files. Safe to keep or remove;
   the app uses its own copy in `assets/logos/`.
 
