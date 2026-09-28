@@ -440,7 +440,19 @@ function uid(prefix) { return prefix + '_' + Math.random().toString(36).slice(2,
 // No transaction history exists before this month — the Budget timeline can't be browsed
 // earlier than this, but has no upper bound (future months are always reachable by paging
 // forward, so the timeline naturally extends as time passes).
-const BUDGET_MIN_MONTH = new Date(2026, 6, 1);
+const BUDGET_DEFAULT_MIN_MONTH = new Date(2026, 6, 1);
+/* Earliest month the Budget timeline can show: the default above, or earlier if you've logged or
+   imported transactions from before it — so imported history is never saved but unreachable. */
+function budgetMinMonth() {
+  let min = BUDGET_DEFAULT_MIN_MONTH;
+  ((data && data.budgetTransactions) || []).forEach(t => {
+    const d = new Date(t.date);
+    if (isNaN(d)) return;
+    const m = new Date(d.getFullYear(), d.getMonth(), 1);
+    if (m < min) min = m;
+  });
+  return min;
+}
 
 /* ===================== Persistence ===================== */
 /* Supabase sync: your own Supabase project stores this app's entire data as one JSON row,
@@ -2135,6 +2147,7 @@ function renderBudget() {
     { id: 'transactions', label: '🧾 Transactions' },
     { id: 'recurring', label: '🔄 Recurring' },
     { id: 'categories', label: '🏷️ Categories' },
+    { id: 'import', label: '⬆ Import' },
   ];
   return `
   <div class="page surface-light">
@@ -2147,6 +2160,7 @@ function renderBudget() {
     ${ui.budgetTab === 'transactions' ? budgetTransactionsTab() : ''}
     ${ui.budgetTab === 'recurring' ? budgetRecurringTab() : ''}
     ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>` : ''}
+    ${ui.budgetTab === 'import' ? (typeof budgetImportTab === 'function' ? budgetImportTab() : '') : ''}
   </div>`;
 }
 function setBudgetTab(t) { ui.budgetTab = t; render(); }
@@ -2159,7 +2173,8 @@ function budgetTransactionsTab() {
   const trendPoints = monthSpendTrendPoints(m);
   const categorySegments = categorySpendingSegments(m);
   const categoryTotal = categorySegments.reduce((s, x) => s + x.value, 0) || 1;
-  const atMin = m.getFullYear() === BUDGET_MIN_MONTH.getFullYear() && m.getMonth() === BUDGET_MIN_MONTH.getMonth();
+  const minMonth = budgetMinMonth();
+  const atMin = m.getFullYear() === minMonth.getFullYear() && m.getMonth() === minMonth.getMonth();
   const investedCardHtmlStr = investedCardHtml(m);
   return `
     <div class="row-flex" style="margin-bottom:10px;">
@@ -2183,7 +2198,10 @@ function budgetTransactionsTab() {
     </div>
 
     <button class="btn primary full" style="margin-bottom:10px;" onclick="openTxForm()">+ Add transaction</button>
-    <button class="btn full" style="margin-bottom:22px;" onclick="exportBudgetTransactionsExcel()" title="Every logged transaction — date, type, category, sub-category, amount, and more">⬇ Export all to Excel</button>
+    <div class="grid-2" style="margin-bottom:22px;">
+      <button class="btn" onclick="setBudgetTab('import')" title="Add many income & expenses at once from an Excel or CSV file">⬆ Import from Excel</button>
+      <button class="btn" onclick="exportBudgetTransactionsExcel()" title="Every logged transaction — date, type, category, sub-category, amount, and more">⬇ Export to Excel</button>
+    </div>
 
     ${dayGroups.length ? dayGroups.map(dayGroupHtml).join('') : `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}
@@ -2247,7 +2265,7 @@ function investedCardHtml(monthDate) {
   const months = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(monthDate.getFullYear(), monthDate.getMonth() - i, 1);
-    if (d >= BUDGET_MIN_MONTH) months.push(d);
+    if (d >= budgetMinMonth()) months.push(d);
   }
   const series = months.map(d => ({ d, v: Math.max(0, monthInvested(d).net) }));
   const maxV = Math.max(...series.map(x => x.v), 1);
@@ -2277,14 +2295,14 @@ function investedCardHtml(monthDate) {
 }
 
 /* Rolling 6-month strip ending at the currently-viewed month (slides as you navigate further
-   forward — never earlier than BUDGET_MIN_MONTH, since no data exists before it) — click any
+   forward — never earlier than budgetMinMonth(), since no data exists before it) — click any
    pill to jump straight to that month, Revolut-style. Always includes every future month you
    page into, so the timeline naturally keeps extending as time passes. */
 function budgetMonthPillsHtml(m) {
   const months = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(m.getFullYear(), m.getMonth() - i, 1);
-    if (d >= BUDGET_MIN_MONTH) months.push(d);
+    if (d >= budgetMinMonth()) months.push(d);
   }
   if (!months.length) months.push(new Date(m.getFullYear(), m.getMonth(), 1));
   return `<div class="chip-scroll" style="margin-bottom:18px;">
@@ -2296,7 +2314,7 @@ function budgetMonthPillsHtml(m) {
 }
 function setBudgetMonthTo(year, month) {
   const d = new Date(year, month, 1);
-  ui.budgetMonth = d < BUDGET_MIN_MONTH ? new Date(BUDGET_MIN_MONTH) : d;
+  ui.budgetMonth = d < budgetMinMonth() ? budgetMinMonth() : d;
   ui.investedAnimate = true;
   render();
 }
@@ -2441,10 +2459,10 @@ function budgetRecurringTab() {
 
 /* Item 2: the calendar grid was removed entirely (no real purpose) in favor of the month-pill
    timeline above plus the spending/cashflow charts below. Forward navigation stays unbounded;
-   backward is clamped at BUDGET_MIN_MONTH since no data exists before it. */
+   backward is clamped at budgetMinMonth() since no data exists before it. */
 function shiftBudgetMonth(delta) {
   const d = new Date(ui.budgetMonth); d.setMonth(d.getMonth() + delta);
-  if (d < BUDGET_MIN_MONTH) return;
+  if (d < budgetMinMonth()) return;
   ui.budgetMonth = d; ui.investedAnimate = true; render();
 }
 /* Real per-category expense totals for the month, powering the "Spending by category" donut —
@@ -2465,7 +2483,7 @@ function cashflowTrendData(monthDate) {
   const months = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(monthDate.getFullYear(), monthDate.getMonth() - i, 1);
-    if (d >= BUDGET_MIN_MONTH) months.push(d);
+    if (d >= budgetMinMonth()) months.push(d);
   }
   if (!months.length) months.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1));
   return months.map(d => ({ label: d.toLocaleDateString('en-US', { month: 'short' }), income: monthIncome(d), expenses: monthExpenses(d) }));

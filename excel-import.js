@@ -55,7 +55,7 @@ function settingsExcelImportHtml() {
 function triggerExcelImport() {
   if (typeof XLSX === 'undefined') {
     const s = document.getElementById('excel-import-status');
-    if (s) s.textContent = "Couldn't load the Excel-reading library (needs an internet connection the first time) — check your connection and reload the page.";
+    if (s) s.textContent = "Couldn't load the Excel-reading library — reload the page.";
     return;
   }
   document.getElementById('excel-import-file').click();

@@ -21,6 +21,15 @@ just open a file in your browser.
   list the app reads). It then shows up in every logo picker and in
   Settings → Logos & Images, and is applied automatically to a new bank,
   broker or payee with a matching name (`Trade_Republic.png` → "Trade Republic").
+- `templates/Trackr-transactions-template.xlsx` — blank template for importing
+  income & expenses (Budget → Import). Same fields as Budget → Add transaction,
+  with drop-down lists (Category follows Type, Sub-category follows Category).
+  The in-app "Download template" button builds the same file with *your*
+  current categories, accounts and payment methods. Regenerate the shipped copy
+  after changing the default categories: `node tools/build-budget-template.js`.
+- `assets/vendor/xlsx.full.min.js` — the spreadsheet library (SheetJS 0.20.3,
+  kept in the project so imports work offline; 0.18.5 on npm has known
+  vulnerabilities when reading files).
 - `assets/icons/` — the app icon (browser tab, bookmarks, iPhone home screen).
 - `Logos/` — your original logo source files. Safe to keep or remove;
   the app uses its own copy in `assets/logos/`.
