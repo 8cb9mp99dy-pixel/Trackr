@@ -777,6 +777,6 @@ function biViewImported() {
 
 /* ---------- Environment hooks ---------- */
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildBudgetTemplateFile, buildBudgetTemplateWorkbook, BI_COLUMNS, biParseDate, biParseAmount, biParseType };
+  module.exports = { buildBudgetTemplateFile, buildBudgetTemplateWorkbook, BI_COLUMNS, BI_RECURRING_VALUES, BI_IMPACT_VALUES, biParseDate, biParseAmount, biParseType };
 }
 if (typeof window !== 'undefined' && typeof ui !== 'undefined') ui.budgetImport = null;

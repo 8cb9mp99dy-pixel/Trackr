@@ -27,6 +27,11 @@ just open a file in your browser.
   The in-app "Download template" button builds the same file with *your*
   current categories, accounts and payment methods. Regenerate the shipped copy
   after changing the default categories: `node tools/build-budget-template.js`.
+- `templates/Trackr-import-reference-for-Claude.pdf` — give this to another
+  Claude chat so it fills the template with exactly the categories,
+  sub-categories and values Trackr knows. Regenerate after changing categories
+  (add your account names with `--accounts "Revolut,ING"`):
+  `node tools/build-claude-reference.js`.
 - `assets/vendor/xlsx.full.min.js` — the spreadsheet library (SheetJS 0.20.3,
   kept in the project so imports work offline; 0.18.5 on npm has known
   vulnerabilities when reading files).

@@ -10,11 +10,7 @@ const root = path.join(__dirname, '..');
 const XLSX = require(path.join(root, 'assets/vendor/xlsx.full.min.js'));
 const { buildBudgetTemplateFile } = require(path.join(root, 'budget-import.js'));
 
-// Pull the category/payment-method definitions straight out of app.js, so there's one copy.
-const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8');
-const block = src.slice(src.indexOf('const _sc ='), src.indexOf('function cloneJson'));
-const ccyLine = src.match(/const CURRENCIES = \[[^\]]*\];/)[0];
-const defs = new Function(`${ccyLine}\n${block}\nreturn { BUDGET_CATEGORIES_TEMPLATE, DEFAULT_PAYMENT_METHODS, CURRENCIES };`)();
+const defs = require('./app-defaults.js')(); // the app's own category/payment-method definitions
 
 const bytes = buildBudgetTemplateFile(XLSX, {
   categories: defs.BUDGET_CATEGORIES_TEMPLATE,
