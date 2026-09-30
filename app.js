@@ -389,7 +389,7 @@ let data = null;
    versions really differ; see syncDiverged(). */
 let syncState = {
   conflict: null,
-  legacy: false,           // the Supabase project still has the older setup SQL (see supabaseFetchRow)
+  legacy: null,            // true: the Supabase project still has the older setup SQL; false: confirmed current; null: not known yet
   lastSuccessAt: null,     // ISO string — last time a fetch or push actually reached Supabase and succeeded
   lastError: null,         // {message, status, kind} from the most recent failed attempt, or null
   consecutiveFailures: 0,  // resets to 0 on any success; drives the "several failures" warning state
@@ -558,11 +558,14 @@ async function supabasePushRow(jsonData, expectedUpdatedAt) {
   if (!cfg) return { ok: true, updated_at: null };
   try {
     let result;
-    if (!syncState.legacy) {
+    if (syncState.legacy !== true) {
       try {
         result = await supabaseRpc('set_trackr_data', { secret: cfg.secret, new_data: jsonData, expected_updated_at: expectedUpdatedAt });
       } catch (e) {
-        if (e.status !== 404) throw e;
+        // Once get_trackr_data has answered in the current shape, the project is known to have
+        // the guarded 3-argument function: a 404 is then just an error to retry, never a reason
+        // to drop to the unguarded older call.
+        if (e.status !== 404 || syncState.legacy === false) throw e;
         syncState.legacy = true; // no 3-argument function — fall through to the older setup
       }
     }
@@ -5352,7 +5355,7 @@ async function connectSupabaseSync(mode) {
     if (!creds.url || !creds.anonKey || !creds.secret) { setSupabaseSyncStatusText('Fill in all three fields.'); return; }
   }
   syncState.conflict = null;
-  syncState.legacy = false;
+  syncState.legacy = null;
   saveSupabaseSyncConfig({ url: creds.url, anonKey: creds.anonKey, secret: creds.secret, lastSeenUpdatedAt: null, pending: syncLocalHasContent() });
   setSupabaseSyncStatusText('Connecting…');
   try {
