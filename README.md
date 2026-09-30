@@ -73,9 +73,16 @@ Pages — it's just the program, it never contains any of your actual data.
 Your real data syncs separately through your own **Supabase** project, in
 **Settings → Supabase Sync**: create a free Supabase project, run the
 one-time setup SQL shown in that Settings section, copy the Project URL and
-anon public key, and pick your own secret code. Enter all three on every
-device you want synced — no server to run, works from anywhere with
-internet, and checks for changes every few seconds.
+anon public key, and pick your own secret code. That's for the first device
+only. To add another device, tap **Copy setup code** on the first one and
+paste it on the other — one paste, nothing to retype.
+
+How it behaves: a change is sent the moment you make it and shows up on the
+other device within a few seconds (or as soon as you reopen the app there).
+Changes made offline stay on the device and are sent automatically when the
+connection is back. Live prices refresh on each device on their own and
+never count as a change. You're only ever asked a question if you edited on
+both devices before they could sync — then you pick which version to keep.
 
 ## How to update it
 

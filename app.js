@@ -385,10 +385,11 @@ function defaultData() {
 let data = null;
 /* Tracks the state of Supabase sync itself, separate from `data` — never persisted, since it
    describes this tab's current connection status, not app content. `conflict` is set (to
-   {serverData, serverUpdatedAt}) when a push was rejected by the server-side stale-write guard;
-   see supabasePushData(). Task 2 (visible sync status) will extend this further. */
+   {serverData, serverUpdatedAt, reason}) when both this device and the cloud changed and the two
+   versions really differ; see syncDiverged(). */
 let syncState = {
   conflict: null,
+  legacy: false,           // the Supabase project still has the older setup SQL (see supabaseFetchRow)
   lastSuccessAt: null,     // ISO string — last time a fetch or push actually reached Supabase and succeeded
   lastError: null,         // {message, status, kind} from the most recent failed attempt, or null
   consecutiveFailures: 0,  // resets to 0 on any success; drives the "several failures" warning state
@@ -471,19 +472,26 @@ function clearSupabaseSyncConfig() { localStorage.removeItem(SUPABASE_SYNC_KEY);
 async function supabaseRpc(fn, body) {
   const cfg = loadSupabaseSyncConfig();
   if (!cfg) return null;
-  let res;
+  // A request that never answers (common on a phone switching between Wi-Fi and mobile data) would
+  // otherwise hold up every later sync behind it — give up after 20s and let the next one retry.
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
+  let res, text;
   try {
     res = await fetch(`${cfg.url}/rest/v1/rpc/${fn}`, {
       method: 'POST',
       headers: { 'apikey': cfg.anonKey, 'Authorization': `Bearer ${cfg.anonKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: ctrl ? ctrl.signal : undefined,
     });
+    text = await res.text();
   } catch (networkErr) {
     const err = new Error('Network error reaching Supabase.');
     err.kind = 'network';
     throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  const text = await res.text();
   if (!res.ok) {
     let detail = text;
     try { detail = JSON.parse(text).message || detail; } catch (e) {}
@@ -499,14 +507,33 @@ async function supabaseRpc(fn, body) {
   if (!text) return null;
   return JSON.parse(text);
 }
-/* Shared low-level fetch — returns {data, updated_at} (or null if nothing's stored yet for this
-   secret), and persists cfg.lastSeenUpdatedAt as a side effect whenever a row exists. updated_at
-   is the row's own server-side timestamp, set by Postgres via now() on every write — it's the
-   authoritative token the stale-write guard in supabasePushData() compares against, deliberately
-   separate from data.updatedAt (a field inside the payload itself, client-set, purely
-   informational). Both supabaseFetchData() (callers that only want the payload) and
-   supabasePushData()'s no-known-baseline path (which also needs the payload, to recognize real
-   remote content rather than push blindly over it) go through this single fetch. */
+/* ---------- Sync engine ----------
+   One function, syncNow(), does all syncing, and everything else just asks it to run: a save, the
+   8-second timer, coming back to the tab/app, the connection returning, the "Sync now" button.
+   It decides what to do from two facts kept in this device's sync config:
+
+     cfg.pending            — this device has edits Supabase doesn't have yet
+     cfg.lastSeenUpdatedAt  — the server's own timestamp of the version this device last had
+                              (set by Postgres, so device clocks never matter)
+
+     cloud unchanged + nothing pending → nothing to do
+     cloud changed   + nothing pending → take the cloud's version (the other device's edit)
+     cloud unchanged + pending         → send this device's version
+     cloud changed   + pending         → both devices edited: ask which to keep (only if the two
+                                         versions really differ)
+
+   The baseline is only ever moved when this device actually takes or sends a version — never by
+   merely looking — so an edit from the other device can't be skipped and then overwritten. */
+
+/* Older Supabase setups (before the stale-write guard) return the bare data from get_trackr_data
+   and only have a 2-argument set_trackr_data. Both shapes are handled so sync keeps working
+   whichever version of the setup SQL the project has; in legacy mode the version token is the
+   data's own updatedAt instead of the server's timestamp. */
+function supabaseRowIsCurrentShape(result) {
+  return !!(result && typeof result === 'object' && !Array.isArray(result) && 'updated_at' in result && 'data' in result);
+}
+/* Returns {data, updated_at} or null if nothing's stored yet for this secret. Read-only: never
+   touches cfg.lastSeenUpdatedAt. */
 async function supabaseFetchRow() {
   const cfg = loadSupabaseSyncConfig();
   if (!cfg) return null;
@@ -518,114 +545,201 @@ async function supabaseFetchRow() {
     throw e;
   }
   recordSyncSuccess(); // reaching here means the read itself succeeded, regardless of row content
-  if (result && result.updated_at) {
-    cfg.lastSeenUpdatedAt = result.updated_at;
-    saveSupabaseSyncConfig(cfg);
-  }
-  return result;
+  if (result == null) return null;
+  if (supabaseRowIsCurrentShape(result)) { syncState.legacy = false; return result; }
+  syncState.legacy = true;
+  return { data: result, updated_at: result.updatedAt || null };
 }
-async function supabaseFetchData() {
-  const row = await supabaseFetchRow();
-  return row ? row.data : null;
-}
-/* Pushes local data to Supabase. By default this is a compare-and-swap: the server refuses the
-   write (and reports a conflict instead of writing) if its stored row was updated more recently
-   than the updated_at this device last saw — see set_trackr_data's expected_updated_at parameter.
-   Pass {force: true} to skip that check entirely (expected_updated_at = null), which is what the
-   explicit "push this device's data, overwrite" actions use. Returns {ok:true} on success, or
-   {ok:false, conflict:true, serverData, serverUpdatedAt} if the server rejected the write —
-   callers must NOT silently discard local changes or silently adopt serverData; see save()'s
-   conflict handling and resolveSyncConflictKeepLocal/resolveSyncConflictUseRemote. */
-async function supabasePushData(jsonData, opts) {
+/* Writes jsonData. expectedUpdatedAt = the version this device believes the cloud has; the write
+   is refused (returns {conflict:true, server_data, server_updated_at}) if the cloud has moved on.
+   Pass null to overwrite unconditionally. Returns {ok:true, updated_at} on success. */
+async function supabasePushRow(jsonData, expectedUpdatedAt) {
   const cfg = loadSupabaseSyncConfig();
-  if (!cfg) return { ok: true };
-  const force = !!(opts && opts.force);
-  let expectedUpdatedAt = null;
-  if (!force) {
-    if (cfg.lastSeenUpdatedAt == null) {
-      // This device has no established baseline (a config saved before this field existed, or a
-      // load() whose initial fetch failed) — it genuinely doesn't know whether jsonData reflects,
-      // predates, or conflicts with whatever's really on the server. A fetch-then-push alone
-      // doesn't settle that: the server would happily accept the write the instant nothing races
-      // the fetch, even if the just-fetched remote holds real, different work from another device
-      // — silently clobbering it. Comparing jsonData.updatedAt against the remote's wouldn't catch
-      // this either: save() always re-stamps jsonData.updatedAt to "now" right before calling this,
-      // so local would trivially look newer almost every time regardless of whether its content
-      // actually reflects the remote's changes. So: if the fetch reveals the remote has anything
-      // at all, treat it as a conflict — same as a write the server itself rejected, routed
-      // through the same resolution UI — rather than deciding unilaterally that local should win.
-      // Only a genuinely empty remote (nothing to compare against) is safe to push into directly.
-      const remoteRow = await supabaseFetchRow();
-      if (remoteRow) {
-        // 'unverified': unlike the CAS rejection below, this isn't a confirmed divergence — we
-        // simply have no prior baseline to compare against, so we can't tell "genuinely different"
-        // from "byte-for-byte identical, just never confirmed." The resolution UI needs to know
-        // which case it's showing so it doesn't claim a conflict that might not actually exist.
-        return { ok: false, conflict: true, reason: 'unverified', serverData: remoteRow.data, serverUpdatedAt: remoteRow.updated_at };
-      }
-      expectedUpdatedAt = null; // confirmed empty — nothing to guard against
-    } else {
-      expectedUpdatedAt = cfg.lastSeenUpdatedAt;
-    }
-  }
-  let result;
+  if (!cfg) return { ok: true, updated_at: null };
   try {
-    result = await supabaseRpc('set_trackr_data', { secret: cfg.secret, new_data: jsonData, expected_updated_at: expectedUpdatedAt });
+    let result;
+    if (!syncState.legacy) {
+      try {
+        result = await supabaseRpc('set_trackr_data', { secret: cfg.secret, new_data: jsonData, expected_updated_at: expectedUpdatedAt });
+      } catch (e) {
+        if (e.status !== 404) throw e;
+        syncState.legacy = true; // no 3-argument function — fall through to the older setup
+      }
+    }
+    if (syncState.legacy) {
+      if (expectedUpdatedAt != null) {
+        const current = await supabaseRpc('get_trackr_data', { secret: cfg.secret });
+        const currentToken = current ? (current.updatedAt || null) : null;
+        if (current && currentToken !== expectedUpdatedAt) {
+          return { ok: false, conflict: true, server_data: current, server_updated_at: currentToken };
+        }
+      }
+      await supabaseRpc('set_trackr_data', { secret: cfg.secret, new_data: jsonData });
+      result = { ok: true, updated_at: jsonData.updatedAt || null };
+    }
+    if (!(result && result.conflict)) recordSyncSuccess();
+    return result || { ok: true, updated_at: null };
   } catch (e) {
     recordSyncFailure(e);
     throw e;
   }
+}
+/* Two versions count as "the same" if they only differ in things every device refreshes on its
+   own (live prices, the EUR/USD rate, the daily history point, the save timestamp) — so a price
+   refresh on one device is never mistaken for an edit that conflicts with the other. Keys are
+   sorted because Postgres jsonb doesn't preserve key order. */
+const SYNC_VOLATILE_KEYS = { updatedAt: 1, history: 1, currentPrice: 1, currentPriceUSD: 1, currentPriceEUR: 1, priceUpdatedAt: 1, eurUsdRate: 1, eurUsdRateUpdatedAt: 1 };
+function syncFingerprint(d) {
+  const norm = v => {
+    if (Array.isArray(v)) return v.map(norm);
+    if (v && typeof v === 'object') {
+      const o = {};
+      Object.keys(v).sort().forEach(k => { if (!SYNC_VOLATILE_KEYS[k] && v[k] != null) o[k] = norm(v[k]); });
+      return o;
+    }
+    return v;
+  };
+  return JSON.stringify(norm(d));
+}
+/* A copy of d brought up to this version's data shape, without disturbing the live `data` —
+   so a version saved by an older build of the app compares fairly against the local one. */
+function syncMigratedCopy(d) {
+  const keep = data;
+  try {
+    data = JSON.parse(JSON.stringify(d));
+    migrateCryptoModel();
+    return data;
+  } catch (e) {
+    return d;
+  } finally {
+    data = keep;
+  }
+}
+function syncSameContent(a, b) {
+  try { return syncFingerprint(a) === syncFingerprint(syncMigratedCopy(b)); } catch (e) { return false; }
+}
+function syncUpdateConfig(patch) {
+  const cfg = loadSupabaseSyncConfig();
+  if (!cfg) return null;
+  Object.assign(cfg, patch);
+  saveSupabaseSyncConfig(cfg);
+  return cfg;
+}
+/* Swapping the whole dataset re-renders the page, which would wipe a half-filled form — so wait
+   until nothing is being edited; the next sync (a few seconds later) picks it up. */
+function syncUserIsEditing() {
+  if (ui.modal) return true;
+  const el = document.activeElement;
+  return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+}
+function syncAdoptRemote(row) {
+  try { localStorage.setItem(STORAGE_KEY + '-backup', JSON.stringify(data)); } catch (e) {}
+  data = row.data;
+  try { migrateCryptoModel(); } catch (e) { console.error('Migration failed', e); }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+  syncUpdateConfig({ lastSeenUpdatedAt: row.updated_at, pending: false });
+  applyTheme();
+  render();
+}
+let syncEditSeq = 0;      // bumped by every user save, so an edit made *during* a push isn't marked as sent
+let syncRunning = null;   // the in-flight syncNow() promise, if any
+let syncRunAgain = false; // something asked for a sync while one was running
+async function syncPush(expectedUpdatedAt) {
+  const seq = syncEditSeq;
+  const result = await supabasePushRow(data, expectedUpdatedAt);
   if (result && result.conflict) {
-    // 'rejected': a confirmed divergence — this device DID have a known baseline, and the server
-    // is reporting something changed since then. Deliberately NOT recordSyncSuccess() here: the
-    // connection worked, but the write itself didn't go through, and the visible sync indicator
-    // should reflect that (via syncState.conflict) rather than read as "all good."
-    return { ok: false, conflict: true, reason: 'rejected', serverData: result.server_data, serverUpdatedAt: result.server_updated_at };
+    syncDiverged({ data: result.server_data, updated_at: result.server_updated_at });
+    return;
   }
-  recordSyncSuccess();
-  if (result && result.updated_at) {
-    cfg.lastSeenUpdatedAt = result.updated_at;
-    saveSupabaseSyncConfig(cfg);
+  syncUpdateConfig({ lastSeenUpdatedAt: result.updated_at, pending: syncEditSeq !== seq });
+  if (syncEditSeq !== seq) syncRunAgain = true;
+}
+/* The cloud changed while this device also has (or may have) its own unsent edits. */
+function syncDiverged(row) {
+  const cfg = loadSupabaseSyncConfig();
+  if (!cfg) return;
+  if (syncSameContent(data, row.data)) {
+    // Same content after all — just catch the baseline up; a pending edit is then sent on top.
+    syncUpdateConfig({ lastSeenUpdatedAt: row.updated_at, pending: cfg.pending === true });
+    if (cfg.pending === true) syncRunAgain = true;
+    return;
   }
-  return { ok: true };
+  syncState.conflict = { serverData: row.data, serverUpdatedAt: row.updated_at, reason: cfg.lastSeenUpdatedAt ? 'rejected' : 'unverified' };
+  render();
+}
+async function syncOnce() {
+  let cfg = loadSupabaseSyncConfig();
+  if (!cfg || syncState.conflict) return;
+  const row = await supabaseFetchRow();
+  cfg = loadSupabaseSyncConfig();
+  if (!cfg || syncState.conflict) return; // disconnected / resolved elsewhere while fetching
+  const base = cfg.lastSeenUpdatedAt || null;
+  if (!row) { await syncPush(null); return; } // nothing in the cloud yet: this device seeds it
+  const remoteChanged = row.updated_at !== base;
+  if (cfg.pending === false) {
+    if (remoteChanged && !syncUserIsEditing()) syncAdoptRemote(row);
+    return;
+  }
+  if (cfg.pending === undefined) {
+    // A device connected before this engine existed. The old baseline can't be trusted (it moved
+    // on every check, even when the other device's edit wasn't taken), so go by content: identical
+    // → carry on quietly; different → ask once, rather than guess which device is right.
+    if (syncSameContent(data, row.data)) { syncUpdateConfig({ lastSeenUpdatedAt: row.updated_at, pending: false }); return; }
+    syncState.conflict = { serverData: row.data, serverUpdatedAt: row.updated_at, reason: 'unverified' };
+    render();
+    return;
+  }
+  if (remoteChanged) { syncDiverged(row); return; }
+  await syncPush(base);
+}
+/* Safe to call from anywhere, as often as you like: only one sync runs at a time, and a call
+   made while one is running just queues exactly one more. Never throws unless opts.throwErrors
+   (used by Connect, which needs to show what went wrong). */
+function syncNow(opts) {
+  if (!loadSupabaseSyncConfig()) return Promise.resolve();
+  if (syncRunning) { syncRunAgain = true; return syncRunning; }
+  const beforeState = syncStatusState(), beforePending = syncIsPending();
+  syncRunning = (async () => {
+    try {
+      let rounds = 0;
+      do {
+        syncRunAgain = false;
+        await syncOnce();
+      } while (syncRunAgain && ++rounds < 5);
+    } catch (e) {
+      console.error('Supabase sync failed — changes stay on this device and are retried automatically', e);
+      if (opts && opts.throwErrors) throw e;
+    } finally {
+      syncRunning = null;
+      if ((syncStatusState() !== beforeState || syncIsPending() !== beforePending) && !syncUserIsEditing()) render();
+    }
+  })();
+  return syncRunning;
+}
+function syncIsPending() {
+  const cfg = loadSupabaseSyncConfig();
+  return !!(cfg && cfg.pending === true);
 }
 let syncPollTimer = null;
-/* Every 8s, pick up changes saved from another device (e.g. an edit made on the iPhone while
-   this tab is also open) without needing a manual refresh — a plain database row is cheap to
-   poll often, unlike the old GitHub-based sync (which also grew a new commit on every save, and
-   only checked every 30s to stay within GitHub's request patterns). Skips the swap while a modal
-   is open so an in-progress edit is never yanked out from under the user; last-write-wins via
-   data.updatedAt (an ISO string, so plain string comparison already sorts chronologically). */
+let syncWakeListenersAdded = false;
+/* Checks every 8s while the app is on screen, and immediately whenever you come back to it
+   (phones freeze timers in the background, so without this an iPhone reopened after an hour
+   would show old numbers until the next tick — or push over them) or the connection returns. */
 function startSyncPolling() {
-  if (syncPollTimer) return;
-  syncPollTimer = setInterval(async () => {
-    // While a conflict is pending, freeze auto-sync entirely — otherwise this could silently
-    // adopt the other device's data a few seconds later on its own, which is exactly the kind of
-    // unasked-for overwrite the conflict banner exists to prevent. Resolving the conflict (either
-    // button) clears syncState.conflict and polling resumes normally next tick.
-    if (ui.modal || syncState.conflict) return;
-    // Success/failure tracking (and re-rendering the visible sync indicator if that changes what
-    // it shows) happens inside recordSyncSuccess()/recordSyncFailure() themselves — called from
-    // supabaseFetchData() below either way — so this tick doesn't need to duplicate that check;
-    // it only needs to handle its own specific job, adopting genuinely newer remote data.
-    try {
-      const remote = await supabaseFetchData();
-      if (remote && remote.updatedAt && (!data.updatedAt || remote.updatedAt > data.updatedAt)) {
-        data = remote;
-        migrateCryptoModel();
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-        render();
-      }
-    } catch (e) { /* recorded by supabaseFetchRow() via recordSyncFailure() */ }
-  }, 8000);
+  if (!syncPollTimer) {
+    syncPollTimer = setInterval(() => { if (!document.hidden) syncNow(); }, 8000);
+  }
+  if (syncWakeListenersAdded) return;
+  syncWakeListenersAdded = true;
+  const wake = () => { if (!document.hidden) syncNow(); };
+  document.addEventListener('visibilitychange', wake);
+  window.addEventListener('focus', wake);
+  window.addEventListener('pageshow', wake);
+  window.addEventListener('online', wake);
 }
-/* Compares local (localStorage) against remote (Supabase) by updatedAt and keeps whichever is
-   actually newer — NEVER overwrites local data with remote just because remote exists (this is
-   the exact lesson learned from a real data-loss incident with the old GitHub-based sync: a
-   push that silently failed left the remote copy stale, and unconditionally adopting "whatever
-   is remote" on the next load wiped out everything typed since). If local turns out to be the
-   one that's ahead (or Supabase had nothing yet), it's pushed up so the two reconcile instead of
-   drifting further apart. */
+/* Shows this device's own copy straight away (so the app opens instantly, even offline), then
+   syncs: takes the cloud's version if the other device changed it, or sends this device's edits
+   if it has any that haven't gone up yet. */
 async function load() {
   let localData = null;
   try {
@@ -633,49 +747,23 @@ async function load() {
     if (raw) localData = JSON.parse(raw);
   } catch (e) {}
 
-  let remoteData = null, remoteFetchFailed = false;
-  if (loadSupabaseSyncConfig()) {
-    try {
-      remoteData = await supabaseFetchData();
-    } catch (e) {
-      console.error('Supabase sync unreachable, falling back to local data', e);
-      remoteFetchFailed = true;
-    }
-  }
-
-  const remoteIsNewer = !!(remoteData && remoteData.updatedAt && (!localData || !localData.updatedAt || remoteData.updatedAt > localData.updatedAt));
-  const inSync = !!(remoteData && localData && remoteData.updatedAt === localData.updatedAt);
-
-  if (remoteIsNewer) {
-    // Extra safety net: keep a copy of what was here before adopting remote data, recoverable
-    // via localStorage.getItem('trackr-v1-backup') in the browser console if remote ever turns
-    // out to be wrong (e.g. a clock issue makes stale data look newer than it is).
-    if (localData) { try { localStorage.setItem(STORAGE_KEY + '-backup', JSON.stringify(localData)); } catch (e) {} }
-    data = remoteData;
-  } else if (localData) {
-    data = localData;
-  } else if (remoteData) {
-    data = remoteData;
-  } else {
-    data = defaultData();
-  }
+  data = localData || defaultData();
   try {
     migrateCryptoModel();
   } catch (e) { console.error('Migration failed', e); }
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
-
-  // Reconcile: if local was kept (not remote) and it actually differs from what's in Supabase,
-  // push it up so a future load on another device doesn't regress either.
-  if (loadSupabaseSyncConfig() && !remoteIsNewer && !inSync && !remoteFetchFailed) {
-    await save();
-  }
+  // No local copy at all (first open, or browser storage was cleared): there is nothing here
+  // worth sending, so whatever the cloud has wins.
+  if (!localData) syncUpdateConfig({ pending: false, lastSeenUpdatedAt: null });
 
   applyTheme();
   render();
-  if (data.settings.eurUsdRateAuto !== false && eurUsdRateIsStale()) fetchEurUsdRate();
+  if (loadSupabaseSyncConfig()) {
+    await syncNow();
+    startSyncPolling();
+  }
+  if (data.settings.eurUsdRateAuto !== false && eurUsdRateIsStale()) fetchEurUsdRate(true);
   fetchCryptoPrices();
   fetchAssetPrices();
-  if (loadSupabaseSyncConfig()) startSyncPolling();
 }
 
 /* Upgrades pre-existing saves (Crypto tracked as aggregated `positions`) to the
@@ -919,24 +1007,20 @@ function snapshotsToLots(symbol, snapshots) {
   }));
 }
 
-async function save() {
-  data.updatedAt = new Date().toISOString();
+/* Saves to this device, then syncs. {auto: true} is for things the app refreshes by itself (live
+   prices, the EUR/USD rate): those are kept on this device only and don't count as an edit —
+   every device fetches its own, and sending them made two open devices look like they were both
+   editing at once. They still travel along with your next real change. */
+async function save(opts) {
+  const auto = !!(opts && opts.auto);
+  if (!auto) data.updatedAt = new Date().toISOString();
   recordHistorySnapshot();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
   catch (e) { console.error('save failed', e); }
-  if (loadSupabaseSyncConfig()) {
-    try {
-      const result = await supabasePushData(data);
-      // A conflict means another device saved something newer since this one last synced — the
-      // write was refused, not applied. Local data (already saved above) is never touched or
-      // reverted, and the server's copy is never adopted automatically either; the user picks
-      // via resolveSyncConflictKeepLocal/resolveSyncConflictUseRemote. Re-render so a visible
-      // conflict state (if already showing) updates immediately.
-      const hadConflict = !!syncState.conflict;
-      syncState.conflict = (result && result.conflict) ? { serverData: result.serverData, serverUpdatedAt: result.serverUpdatedAt, reason: result.reason } : null;
-      if (hadConflict || syncState.conflict) render();
-    } catch (e) { console.error('Supabase sync push failed, changes stay local for now', e); }
-  }
+  if (auto || !loadSupabaseSyncConfig()) return;
+  syncEditSeq++;
+  syncUpdateConfig({ pending: true });
+  await syncNow();
 }
 
 /* Upserts today's {netWorth, portfolioValue} into data.history. Real, not fabricated:
@@ -966,7 +1050,7 @@ function eurUsdRateIsStale() {
   if (!data.settings.eurUsdRateUpdatedAt) return true;
   return (Date.now() - new Date(data.settings.eurUsdRateUpdatedAt).getTime()) > 60 * 60 * 1000; // 1h
 }
-async function fetchEurUsdRate() {
+async function fetchEurUsdRate(auto) {
   ui.eurUsdRateFetching = true;
   ui.eurUsdRateFetchError = false;
   if (ui.page === 'investments') render();
@@ -979,7 +1063,7 @@ async function fetchEurUsdRate() {
     data.settings.eurUsdRate = rate;
     data.settings.eurUsdRateAuto = true;
     data.settings.eurUsdRateUpdatedAt = new Date().toISOString();
-    save();
+    save({ auto: !!auto });
     return true;
   } catch (e) {
     console.error('EUR/USD live rate fetch failed, keeping last known rate', e);
@@ -1034,7 +1118,7 @@ async function fetchCryptoPrices(force) {
         any = true;
       }
     });
-    if (any) { ui.cryptoManualEntryOpen = null; save(); }
+    if (any) { ui.cryptoManualEntryOpen = null; save({ auto: !force }); }
     if (!any) ui.cryptoPriceFetchError = true;
     return any;
   } catch (e) {
@@ -1101,7 +1185,7 @@ async function fetchAssetPrices(force) {
         any = true;
       }
     });
-    if (any) save();
+    if (any) save({ auto: !force });
     if (!any) ui.assetPriceFetchError = true;
     return any;
   } catch (e) {
@@ -5107,73 +5191,133 @@ $$;
 grant execute on function get_trackr_data(text) to anon;
 grant execute on function set_trackr_data(text, jsonb, timestamptz) to anon;`;
 function toggleSupabaseSetupSql() { ui.supabaseSetupSqlOpen = !ui.supabaseSetupSqlOpen; render(); }
-/* Config (url/anon key/secret) is entered separately on every device and kept in that device's
-   own localStorage only (see SUPABASE_SYNC_KEY) — never part of the synced data itself, since a
-   device needs it before it can even reach Supabase. Connecting pulls whatever's already stored
-   under this secret if it exists, or seeds it from this device's current data if nothing's
-   there yet — so the same "Connect" button handles both "this is the first device" and "join
-   data another device already seeded" without a separate flow. */
+function toggleSupabaseManualSetup() { ui.supabaseManualOpen = !ui.supabaseManualOpen; render(); }
+/* The setup code is the three connection values (project URL, anon key, secret) packed into one
+   line of text, so a second device is linked by copying once and pasting once instead of typing
+   three long values without a single typo — a mistyped secret doesn't fail, it silently syncs to
+   a different, empty row, which looks exactly like "sync doesn't work". It grants full access to
+   the synced data, so it's only ever shown on request. */
+const SUPABASE_SETUP_CODE_PREFIX = 'trackr-sync:';
+function supabaseSetupCode(cfg) {
+  const json = JSON.stringify({ u: cfg.url, k: cfg.anonKey, s: cfg.secret });
+  return SUPABASE_SETUP_CODE_PREFIX + btoa(unescape(encodeURIComponent(json)));
+}
+function parseSupabaseSetupCode(text) {
+  try {
+    const raw = String(text || '').replace(/\s+/g, '');
+    const at = raw.indexOf(SUPABASE_SETUP_CODE_PREFIX);
+    if (at < 0) return null;
+    const o = JSON.parse(decodeURIComponent(escape(atob(raw.slice(at + SUPABASE_SETUP_CODE_PREFIX.length)))));
+    if (!o || !o.u || !o.k || !o.s) return null;
+    return { url: String(o.u).replace(/\/+$/, ''), anonKey: String(o.k), secret: String(o.s) };
+  } catch (e) { return null; }
+}
+function syncConflictBannerHtml() {
+  if (!syncState.conflict) return '';
+  const unverified = syncState.conflict.reason === 'unverified';
+  return `
+    <div class="card-nested" style="margin-bottom:16px;border:1px solid var(--light-warn, #E5A94D);">
+      <div style="font-weight:700;margin-bottom:6px;">${unverified ? '🔄 Which data do you want to keep?' : '⚠️ Both devices were changed'}</div>
+      <div style="font-size:12.5px;opacity:.75;margin-bottom:10px;line-height:1.5;">${syncConflictExplanationHtml()}</div>
+      <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
+        <button class="btn primary" onclick="resolveSyncConflictUseRemote()">Use the cloud's version</button>
+        <button class="btn" onclick="resolveSyncConflictKeepLocal()">Keep this device's version</button>
+      </div>
+    </div>`;
+}
+function syncConflictExplanationHtml() {
+  const c = syncState.conflict;
+  if (!c) return '';
+  const localAt = data && data.updatedAt ? timeAgo(data.updatedAt) : 'unknown';
+  const remoteAt = c.serverData && c.serverData.updatedAt ? timeAgo(c.serverData.updatedAt) : 'unknown';
+  const intro = c.reason === 'unverified'
+    ? 'This device and the cloud (your other device) both hold data, and they are different.'
+    : 'Changes were made here and on your other device before they could sync. Nothing has been overwritten.';
+  return `${intro} Pick the one to keep — the other is replaced on both devices.<br>This device: last changed ${escHtml(localAt)} · Cloud: last changed ${escHtml(remoteAt)}`;
+}
 function settingsSupabaseSyncHtml() {
   const cfg = loadSupabaseSyncConfig();
-  return `
-    <div style="opacity:.65;font-size:13px;margin-bottom:16px;">
-      Sync your data between devices (e.g. this Mac and your iPhone) through your own Supabase project — no server to run, works from anywhere with internet, and checks for changes every few seconds instead of every 30.
-    </div>
-    ${cfg ? `
-      ${syncState.conflict ? (syncState.conflict.reason === 'unverified' ? `
-        <div class="card-nested" style="margin-bottom:16px;border:1px solid var(--light-border, #999);">
-          <div style="font-weight:700;margin-bottom:6px;">🔄 Confirm this device's data</div>
-          <div style="font-size:12.5px;opacity:.75;margin-bottom:10px;line-height:1.5;">This device hasn't confirmed sync with Supabase yet (common right after an update, or after a brief connection hiccup) — Supabase already has something stored, but that doesn't necessarily mean it's different from what's here, just that this device can't automatically confirm it matches. Pick whichever should win to be safe:</div>
-          <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
-            <button class="btn primary" onclick="resolveSyncConflictKeepLocal()">Keep this device's version</button>
-            <button class="btn" onclick="resolveSyncConflictUseRemote()">Use Supabase's version</button>
-          </div>
-        </div>
-      ` : `
-        <div class="card-nested" style="margin-bottom:16px;border:1px solid var(--light-warn, #E5A94D);">
-          <div style="font-weight:700;margin-bottom:6px;">⚠️ Sync conflict</div>
-          <div style="font-size:12.5px;opacity:.75;margin-bottom:10px;line-height:1.5;">Another device saved changes since this device last synced, so this device's last save was refused (nothing was overwritten on either side). Choose which version to keep:</div>
-          <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
-            <button class="btn primary" onclick="resolveSyncConflictKeepLocal()">Keep this device's version</button>
-            <button class="btn" onclick="resolveSyncConflictUseRemote()">Use the other device's version</button>
-          </div>
-        </div>
-      `) : ''}
-      <div class="card-nested" style="margin-bottom:16px;">
-        <div class="row-flex">
-          <div>
-            <div style="font-weight:700;">🔄 Connected</div>
-            <div style="font-size:12.5px;opacity:.6;margin-top:2px;">${escHtml(cfg.url)}</div>
-          </div>
-          <button class="btn small" onclick="disconnectSupabaseSync()">Disconnect</button>
-        </div>
-        <div style="font-size:12px;opacity:.6;margin-top:10px;">If this device's data should replace what's currently stored (e.g. this is the device with your real, existing data), use:</div>
-        <button class="btn small" style="margin-top:8px;" onclick="pushSupabaseSyncOverwrite()">⬆ Push this device's data (overwrite)</button>
-      </div>
-    ` : `
-      <div class="card-nested" style="margin-bottom:16px;">
-        <div style="font-weight:700;margin-bottom:8px;">One-time setup</div>
-        <ol style="font-size:12.5px;opacity:.75;margin:0 0 12px;padding-left:18px;line-height:1.6;">
-          <li>Create a free project at <strong>supabase.com</strong>.</li>
-          <li>Open the <strong>SQL Editor</strong> (left sidebar) and run the setup script below — once.</li>
-          <li>Go to <strong>Project Settings → API</strong>, copy the <strong>Project URL</strong> and the <strong>anon public</strong> key.</li>
-          <li>Pick your own secret code (like a password — the longer and more random, the better) and enter everything below, on every device you want synced.</li>
-        </ol>
-        <button type="button" class="btn small" onclick="toggleSupabaseSetupSql()">${ui.supabaseSetupSqlOpen ? 'Hide' : 'Show'} setup SQL</button>
-        ${ui.supabaseSetupSqlOpen ? `<pre style="font-size:10.5px;background:var(--dark-card-2);padding:10px;border-radius:var(--radius-sm);overflow:auto;margin-top:8px;white-space:pre-wrap;user-select:all;">${escHtml(SUPABASE_SETUP_SQL)}</pre>` : ''}
-      </div>
-      <div class="form-grid" style="margin-bottom:12px;">
-        <label class="field span-2"><span class="label-text">Project URL</span><input id="sb-url" placeholder="https://xxxxxxxxxxxx.supabase.co"></label>
+  const manualFieldsHtml = `
+      <div class="form-grid" style="margin:12px 0;">
+        <label class="field span-2"><span class="label-text">Project URL</span><input id="sb-url" placeholder="https://xxxxxxxxxxxx.supabase.co" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
         <label class="field span-2"><span class="label-text">Anon public key</span><input id="sb-anon-key" type="password" placeholder="eyJhbGciOi…"></label>
         <label class="field span-2"><span class="label-text">Your secret code</span><input id="sb-secret" type="password" placeholder="A long, private code only you know"></label>
       </div>
-      <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
-        <button class="btn primary" onclick="connectSupabaseSync()">🔄 Connect (pull existing data, if any)</button>
-        <button class="btn" onclick="connectSupabaseSync(true)">⬆ Connect &amp; push THIS device's data instead</button>
+      <button class="btn primary" onclick="connectSupabaseSync('manual')">🔄 Connect</button>`;
+  const state = syncStatusState();
+  const statusLine = syncState.conflict ? 'Waiting for your choice above'
+    : syncIsPending() ? (syncState.lastError ? "Changes saved on this device — they'll be sent as soon as the connection is back" : 'Sending changes…')
+    : state === 'warning' ? "Can't reach the cloud right now — retrying automatically"
+    : syncState.lastSuccessAt ? `Up to date · checked ${timeAgo(syncState.lastSuccessAt)}` : 'Checking…';
+  return `
+    <div style="opacity:.65;font-size:13px;margin-bottom:16px;">
+      Keeps your data identical on all your devices (e.g. this Mac and your iPhone). Changes are sent as soon as you make them and picked up on the other device within a few seconds, or the moment you reopen the app.
+    </div>
+    ${cfg ? `
+      ${syncConflictBannerHtml()}
+      <div class="card-nested" style="margin-bottom:16px;">
+        <div class="row-flex">
+          <div style="min-width:0;">
+            <div style="font-weight:700;">🔄 Sync is on</div>
+            <div style="font-size:12.5px;opacity:.6;margin-top:2px;">${escHtml(statusLine)}</div>
+          </div>
+          <button class="btn small primary" onclick="manualSyncNow()">Sync now</button>
+        </div>
       </div>
-      <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Use the second button on whichever device holds your real, existing data — it overwrites what's stored with what's here instead of pulling from it.</div>
+      <div class="card-nested" style="margin-bottom:16px;">
+        <div style="font-weight:700;margin-bottom:6px;">📱 Add another device</div>
+        <ol style="font-size:12.5px;opacity:.75;margin:0 0 12px;padding-left:18px;line-height:1.6;">
+          <li>Tap <strong>Copy setup code</strong> here.</li>
+          <li>Send it to your other device (AirDrop, Notes, a message to yourself).</li>
+          <li>On that device open Trackr → <strong>Settings → Supabase Sync</strong>, paste it, tap <strong>Connect</strong>.</li>
+        </ol>
+        <button class="btn small" onclick="copySupabaseSetupCode()">📋 Copy setup code</button>
+        ${ui.supabaseShowCode ? `<textarea readonly onclick="this.select()" style="width:100%;margin-top:10px;font-size:11px;min-height:70px;word-break:break-all;">${escHtml(supabaseSetupCode(cfg))}</textarea>` : ''}
+        <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Keep this code private — like a password, it gives access to your data.</div>
+      </div>
+      ${syncState.legacy ? `
+      <div class="card-nested" style="margin-bottom:16px;">
+        <div style="font-weight:700;margin-bottom:6px;">ℹ️ Optional: update your Supabase setup</div>
+        <div style="font-size:12.5px;opacity:.75;line-height:1.5;margin-bottom:8px;">Sync works, but your Supabase project still has the first version of the setup script. Running the current one (Supabase → SQL Editor → paste → Run) adds an extra safety check on the server. Your data is not touched.</div>
+        <button type="button" class="btn small" onclick="toggleSupabaseSetupSql()">${ui.supabaseSetupSqlOpen ? 'Hide' : 'Show'} setup SQL</button>
+        ${ui.supabaseSetupSqlOpen ? `<pre style="font-size:10.5px;background:var(--dark-card-2);padding:10px;border-radius:var(--radius-sm);overflow:auto;margin-top:8px;white-space:pre-wrap;user-select:all;">${escHtml(SUPABASE_SETUP_SQL)}</pre>` : ''}
+      </div>` : ''}
+      <div class="card-nested" style="margin-bottom:16px;">
+        <div style="font-size:12px;opacity:.6;">Connected to ${escHtml(cfg.url)}</div>
+        <div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-top:10px;justify-content:flex-start;">
+          <button class="btn small" onclick="pushSupabaseSyncOverwrite()">⬆ Replace the cloud with this device's data</button>
+          <button class="btn small" onclick="disconnectSupabaseSync()">Disconnect</button>
+        </div>
+      </div>
+    ` : `
+      <div class="card-nested" style="margin-bottom:16px;">
+        <div style="font-weight:700;margin-bottom:6px;">Already using sync on another device?</div>
+        <div style="font-size:12.5px;opacity:.75;margin-bottom:10px;line-height:1.5;">On that device: <strong>Settings → Supabase Sync → Copy setup code</strong>. Paste it here.</div>
+        <textarea id="sb-code" placeholder="trackr-sync:…" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%;font-size:12px;min-height:70px;word-break:break-all;margin-bottom:10px;"></textarea>
+        <button class="btn primary" onclick="connectSupabaseSync('code')">🔄 Connect</button>
+      </div>
+      <div class="card-nested" style="margin-bottom:16px;">
+        <div class="row-flex">
+          <div style="font-weight:700;">First device — set up from scratch</div>
+          <button type="button" class="btn small" onclick="toggleSupabaseManualSetup()">${ui.supabaseManualOpen ? 'Hide' : 'Show'}</button>
+        </div>
+        ${ui.supabaseManualOpen ? `
+        <ol style="font-size:12.5px;opacity:.75;margin:12px 0;padding-left:18px;line-height:1.6;">
+          <li>Create a free project at <strong>supabase.com</strong>.</li>
+          <li>Open the <strong>SQL Editor</strong> (left sidebar) and run the setup script below — once.</li>
+          <li>Go to <strong>Project Settings → API</strong>, copy the <strong>Project URL</strong> and the <strong>anon public</strong> key.</li>
+          <li>Pick your own secret code (like a password — the longer and more random, the better).</li>
+        </ol>
+        <button type="button" class="btn small" onclick="toggleSupabaseSetupSql()">${ui.supabaseSetupSqlOpen ? 'Hide' : 'Show'} setup SQL</button>
+        ${ui.supabaseSetupSqlOpen ? `<pre style="font-size:10.5px;background:var(--dark-card-2);padding:10px;border-radius:var(--radius-sm);overflow:auto;margin-top:8px;white-space:pre-wrap;user-select:all;">${escHtml(SUPABASE_SETUP_SQL)}</pre>` : ''}
+        ${manualFieldsHtml}` : ''}
+      </div>
     `}
     <div id="sb-sync-status" style="margin-top:10px;font-size:12.5px;"></div>`;
+}
+function setSupabaseSyncStatusText(text) {
+  const el = document.getElementById('sb-sync-status');
+  if (el) el.textContent = text;
 }
 /* Turns a thrown supabaseRpc error into a message that tells you what's actually wrong instead
    of one generic "couldn't connect" — distinguishes bad key, missing function/wrong URL, missing
@@ -5188,89 +5332,100 @@ function supabaseSyncErrorMessage(e, action) {
   if (e && e.status) return `Couldn't ${action} — Supabase returned an error (${e.status}). ${(e.message || '').slice(0, 200)}`.trim();
   return `Couldn't ${action} — check the project URL, anon key, and that you ran the setup SQL, then try again.`;
 }
-async function connectSupabaseSync(forcePush) {
-  const url = document.getElementById('sb-url').value.trim().replace(/\/+$/, '');
-  const anonKey = document.getElementById('sb-anon-key').value.trim();
-  const secret = document.getElementById('sb-secret').value.trim();
-  const status = document.getElementById('sb-sync-status');
-  if (!url || !anonKey || !secret) { if (status) status.textContent = 'Fill in all three fields.'; return; }
-  saveSupabaseSyncConfig({ url, anonKey, secret });
-  if (status) status.textContent = forcePush ? 'Pushing…' : 'Connecting…';
+/* Whether this device holds anything of its own worth protecting — a brand-new device with
+   nothing entered just takes the cloud's data without being asked a question it can't answer. */
+function syncLocalHasContent() {
+  return ['accounts', 'budgetTransactions', 'brokers', 'assets', 'cryptoAssets', 'cryptoLots', 'assetEntries', 'investmentTransactions', 'positions', 'trades', 'cryptoExchangeCash']
+    .some(k => Array.isArray(data[k]) && data[k].length > 0);
+}
+/* One Connect for every case: cloud empty → this device's data is sent up; this device empty →
+   the cloud's data comes down; both have (different) data → you're asked which to keep. */
+async function connectSupabaseSync(mode) {
+  let creds;
+  if (mode === 'code') {
+    const field = document.getElementById('sb-code');
+    creds = parseSupabaseSetupCode(field && field.value);
+    if (!creds) { setSupabaseSyncStatusText("That doesn't look like a setup code — copy it again from the other device (it starts with “trackr-sync:”)."); return; }
+  } else {
+    const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    creds = { url: val('sb-url').replace(/\/+$/, ''), anonKey: val('sb-anon-key'), secret: val('sb-secret') };
+    if (!creds.url || !creds.anonKey || !creds.secret) { setSupabaseSyncStatusText('Fill in all three fields.'); return; }
+  }
+  syncState.conflict = null;
+  syncState.legacy = false;
+  saveSupabaseSyncConfig({ url: creds.url, anonKey: creds.anonKey, secret: creds.secret, lastSeenUpdatedAt: null, pending: syncLocalHasContent() });
+  setSupabaseSyncStatusText('Connecting…');
   try {
-    const remote = await supabaseFetchData();
-    if (remote && !forcePush) {
-      data = remote;
-      migrateCryptoModel();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      if (status) status.textContent = '✓ Connected — pulled existing data from Supabase.';
-    } else {
-      // Push this device's current data as-is — pushed directly (not via save()) so a real
-      // URL/key/secret problem surfaces here instead of being silently swallowed. A null/empty
-      // remote here is expected on first setup, not an error — it just means this is the first
-      // device to connect, so its data seeds Supabase instead of pulling from it.
-      data.updatedAt = new Date().toISOString();
-      recordHistorySnapshot();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      // Always forced: either the user explicitly asked to overwrite, or the remote was empty
-      // and there's nothing meaningful to conflict with — either way this device's data should
-      // win outright, not go through the normal stale-write check.
-      await supabasePushData(data, { force: true });
-      if (status) status.textContent = remote ? "✓ Connected — this device's data now overwrites Supabase." : "✓ Connected — Supabase was empty, seeded it with this device's data.";
-    }
+    await syncNow({ throwErrors: true });
     startSyncPolling();
     render();
+    setSupabaseSyncStatusText(syncState.conflict ? 'Connected — one choice to make above.' : '✓ Connected. This device is now in sync.');
   } catch (e) {
     clearSupabaseSyncConfig();
-    if (status) status.textContent = supabaseSyncErrorMessage(e, 'connect');
+    render();
+    setSupabaseSyncStatusText(supabaseSyncErrorMessage(e, 'connect'));
   }
 }
-/* Manual override for a device that's already connected — e.g. you connected the wrong way
-   round the first time, or want to force this device's current data to become authoritative
-   again after experimenting on another device. */
+async function manualSyncNow() {
+  setSupabaseSyncStatusText('Syncing…');
+  await syncNow();
+  render();
+  setSupabaseSyncStatusText(syncState.conflict ? 'One choice to make above.'
+    : syncState.lastError ? supabaseSyncErrorMessage(syncState.lastError, 'sync')
+    : '✓ Up to date.');
+}
+async function copySupabaseSetupCode() {
+  const cfg = loadSupabaseSyncConfig();
+  if (!cfg) return;
+  ui.supabaseShowCode = true;
+  let copied = false;
+  try { await navigator.clipboard.writeText(supabaseSetupCode(cfg)); copied = true; } catch (e) {}
+  render();
+  setSupabaseSyncStatusText(copied ? '✓ Setup code copied — paste it on your other device.' : 'Select the code above and copy it, then paste it on your other device.');
+}
+/* This device's data becomes the one true version: used by "Keep this device's version" when
+   both devices changed, and by the explicit "Replace the cloud" button. */
+async function syncForceLocal() {
+  data.updatedAt = new Date().toISOString();
+  recordHistorySnapshot();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  const seq = syncEditSeq;
+  const result = await supabasePushRow(data, null);
+  syncUpdateConfig({ lastSeenUpdatedAt: result.updated_at, pending: syncEditSeq !== seq });
+  syncState.conflict = null;
+}
 async function pushSupabaseSyncOverwrite() {
-  const status = document.getElementById('sb-sync-status');
-  if (status) status.textContent = 'Pushing…';
+  if (!confirm("Replace what's in the cloud with this device's data? Your other devices will switch to this version.")) return;
+  setSupabaseSyncStatusText('Sending…');
   try {
-    data.updatedAt = new Date().toISOString();
-    recordHistorySnapshot();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    await supabasePushData(data, { force: true }); // explicit overwrite — always forced
-    syncState.conflict = null; // an explicit overwrite resolves any pending conflict by definition
-    if (status) status.textContent = '✓ Pushed — this device\'s data is now what Supabase has.';
+    await syncForceLocal();
+    render();
+    setSupabaseSyncStatusText("✓ Done — the cloud now has this device's data.");
   } catch (e) {
-    if (status) status.textContent = supabaseSyncErrorMessage(e, 'push');
+    setSupabaseSyncStatusText(supabaseSyncErrorMessage(e, 'push'));
   }
 }
-/* Conflict resolution: a save() was refused by the server because another device had already
-   saved something newer. Neither side is touched automatically — the user picks one of these. */
 async function resolveSyncConflictKeepLocal() {
-  const status = document.getElementById('sb-sync-status');
-  if (status) status.textContent = 'Pushing…';
+  setSupabaseSyncStatusText('Sending…');
   try {
-    data.updatedAt = new Date().toISOString();
-    recordHistorySnapshot();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    await supabasePushData(data, { force: true });
-    syncState.conflict = null;
+    await syncForceLocal();
     render();
   } catch (e) {
-    if (status) status.textContent = supabaseSyncErrorMessage(e, 'push');
+    render();
+    setSupabaseSyncStatusText(supabaseSyncErrorMessage(e, 'push'));
   }
 }
 function resolveSyncConflictUseRemote() {
-  if (!syncState.conflict) return;
-  data = syncState.conflict.serverData;
-  migrateCryptoModel();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  const cfg = loadSupabaseSyncConfig();
-  if (cfg) { cfg.lastSeenUpdatedAt = syncState.conflict.serverUpdatedAt; saveSupabaseSyncConfig(cfg); }
+  const c = syncState.conflict;
+  if (!c) return;
   syncState.conflict = null;
-  render();
+  syncAdoptRemote({ data: c.serverData, updated_at: c.serverUpdatedAt });
 }
 function disconnectSupabaseSync() {
   clearSupabaseSyncConfig();
   if (syncPollTimer) { clearInterval(syncPollTimer); syncPollTimer = null; }
   syncState.conflict = null;
+  ui.supabaseShowCode = false;
   render();
 }
 
@@ -5284,7 +5439,9 @@ const SYNC_WARN_AFTER_STALE_MS = 3 * 60 * 1000; // "a few minutes"
 function syncStatusState() {
   if (!loadSupabaseSyncConfig()) return null;
   if (syncState.conflict) return 'conflict';
-  const stale = !syncState.lastSuccessAt || (Date.now() - new Date(syncState.lastSuccessAt).getTime()) > SYNC_WARN_AFTER_STALE_MS;
+  // Before the very first attempt has come back (the app now shows your data before syncing),
+  // there is nothing to warn about yet.
+  const stale = syncState.lastSuccessAt ? (Date.now() - new Date(syncState.lastSuccessAt).getTime()) > SYNC_WARN_AFTER_STALE_MS : syncState.consecutiveFailures > 0;
   const failing = syncState.consecutiveFailures >= SYNC_WARN_AFTER_FAILURES;
   return (stale || failing) ? 'warning' : 'ok';
 }
@@ -5296,8 +5453,9 @@ function syncStatusIndicatorHtml() {
   const state = syncStatusState();
   if (!state) return '';
   const label = state === 'conflict' ? 'Sync needs attention'
-    : state === 'warning' ? (syncState.lastSuccessAt ? `Sync issue — synced ${timeAgo(syncState.lastSuccessAt)}` : 'Sync issue — not synced yet')
-    : `Synced ${timeAgo(syncState.lastSuccessAt)}`;
+    : state === 'warning' ? (syncIsPending() ? 'Not sent yet — retrying' : syncState.lastSuccessAt ? `Sync issue — synced ${timeAgo(syncState.lastSuccessAt)}` : 'Sync issue — not synced yet')
+    : syncIsPending() ? 'Sending changes…'
+    : syncState.lastSuccessAt ? `Synced ${timeAgo(syncState.lastSuccessAt)}` : 'Syncing…';
   const dotColor = state === 'ok' ? 'var(--accent-2, #34C77B)' : '#E8963C';
   return `
     <button class="sync-indicator-sidebar" onclick="openSyncStatusModal()" style="display:flex;align-items:center;gap:7px;width:100%;background:transparent;border:none;padding:6px 4px;margin-bottom:2px;cursor:pointer;font-family:inherit;font-size:11.5px;opacity:${state === 'ok' ? '.55' : '1'};color:inherit;text-align:left;">
@@ -5336,16 +5494,11 @@ window.__modalRenderers.syncStatus = function () {
   if (state === 'conflict') {
     const unverified = syncState.conflict.reason === 'unverified';
     return `
-      <div class="modal-head"><div class="modal-title">${unverified ? "🔄 Confirm this device's data" : '⚠️ Sync conflict'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
-      <div style="font-size:13px;opacity:.75;line-height:1.6;margin-bottom:16px;">
-        ${unverified
-          ? "This device hasn't confirmed sync with Supabase yet (common right after an update, or a brief connection hiccup) — Supabase already has something stored, but that doesn't necessarily mean it's different from what's here, just that this device can't automatically confirm it matches."
-          : "Another device saved changes since this device last synced, so this device's last save was refused (nothing was overwritten on either side)."}
-        Pick whichever should win:
-      </div>
+      <div class="modal-head"><div class="modal-title">${unverified ? '🔄 Which data do you want to keep?' : '⚠️ Both devices were changed'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+      <div style="font-size:13px;opacity:.75;line-height:1.6;margin-bottom:16px;">${syncConflictExplanationHtml()}</div>
       <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
-        <button class="btn primary" onclick="resolveSyncConflictKeepLocal();closeModal();">Keep this device's version</button>
-        <button class="btn" onclick="resolveSyncConflictUseRemote();closeModal();">Use the other version</button>
+        <button class="btn primary" onclick="ui.modal=null;resolveSyncConflictUseRemote();">Use the cloud's version</button>
+        <button class="btn" onclick="ui.modal=null;resolveSyncConflictKeepLocal();">Keep this device's version</button>
       </div>`;
   }
   const errorHtml = syncState.lastError ? `
@@ -5359,7 +5512,8 @@ window.__modalRenderers.syncStatus = function () {
       Last successful sync: ${escHtml(syncState.lastSuccessAt ? timeAgo(syncState.lastSuccessAt) : 'never')}${syncState.consecutiveFailures ? ` · ${syncState.consecutiveFailures} failed attempt${syncState.consecutiveFailures === 1 ? '' : 's'} in a row` : ''}
     </div>
     ${errorHtml}
-    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Close</button></div>`;
+    ${syncIsPending() ? '<div style="font-size:13px;opacity:.75;line-height:1.6;margin-top:8px;">Your latest changes are saved on this device and will be sent automatically.</div>' : ''}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();syncNow();">Sync now</button></div>`;
 };
 
 load();
