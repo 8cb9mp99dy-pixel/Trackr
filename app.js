@@ -422,7 +422,7 @@ function recordSyncFailure(err) {
 let ui = {
   page: 'dashboard',
   budgetTab: 'transactions',
-  budgetMonth: new Date(),
+  budgetMonth: appToday(),
   dashboardPortfolioPeriod: '1M',
   modal: null,        // {type, payload}
   openAccountId: null, // expanded account card
@@ -438,6 +438,18 @@ let ui = {
 };
 
 function uid(prefix) { return prefix + '_' + Math.random().toString(36).slice(2, 9); }
+/* ---- The app's clock: this device's own date and time ----
+   Transaction dates are calendar days ('YYYY-MM-DD'). "Today" is the device's local day — not
+   the UTC day, which in the Netherlands is still yesterday until 1–2 a.m. — and stored dates are
+   read as local days too, so an entry never slips into the previous day or month. */
+function pad2(n) { return String(n).padStart(2, '0'); } // a declaration, so it's usable from `ui` above
+function dateToYmd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function todayYmd() { return dateToYmd(new Date()); }
+function appToday() { return ymdToDate(todayYmd()); }
+function ymdToDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ''));
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(s);
+}
 // No transaction history exists before this month — the Budget timeline can't be browsed
 // earlier than this, but has no upper bound (future months are always reachable by paging
 // forward, so the timeline naturally extends as time passes).
@@ -447,7 +459,7 @@ const BUDGET_DEFAULT_MIN_MONTH = new Date(2026, 6, 1);
 function budgetMinMonth() {
   let min = BUDGET_DEFAULT_MIN_MONTH;
   ((data && data.budgetTransactions) || []).forEach(t => {
-    const d = new Date(t.date);
+    const d = ymdToDate(t.date);
     if (isNaN(d)) return;
     const m = new Date(d.getFullYear(), d.getMonth(), 1);
     if (m < min) min = m;
@@ -764,6 +776,9 @@ async function load() {
     await syncNow();
     startSyncPolling();
   }
+  // After the first sync, so a device opened after days away first takes what the other device
+  // already added instead of adding the same months again.
+  startAppDayWatch();
   if (data.settings.eurUsdRateAuto !== false && eurUsdRateIsStale()) fetchEurUsdRate(true);
   fetchCryptoPrices();
   fetchAssetPrices();
@@ -801,7 +816,7 @@ function migrateCryptoModel() {
       }
       const broker = brokerById(p.brokerId);
       data.cryptoLots.push({
-        id: uid('lot'), symbol: p.ticker, broker: broker ? broker.name : '', date: new Date().toISOString().slice(0, 10),
+        id: uid('lot'), symbol: p.ticker, broker: broker ? broker.name : '', date: todayYmd(),
         currency: p.currency || 'EUR', amountPaid: p.quantity * p.avgPrice, quantity: p.quantity,
       });
     });
@@ -918,6 +933,7 @@ function migrateBudgetTransactions() {
     if (t.accountId === undefined) t.accountId = null;
   });
   fillMissingTxLogosByName();
+  migrateRecurringSeries();
 }
 /* ---- One logo per name ----
    Every income/expense with the same name shows the same logo, however it was added (by hand,
@@ -1040,7 +1056,7 @@ function aggregateLotsToSnapshots(lots) {
 /* Turns snapshot rows into purchase lots (today's date as a placeholder) — used when switching
    a coin from snapshot mode to detailed purchases. */
 function snapshotsToLots(symbol, snapshots) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayYmd();
   return (snapshots || []).filter(s => s.quantity).map(s => ({
     id: uid('lot'), symbol, broker: s.broker || '', date: today, currency: s.currency, amountPaid: s.quantity * s.price, quantity: s.quantity,
   }));
@@ -1069,7 +1085,7 @@ async function save(opts) {
    (if initially sparse) record of your actual numbers. */
 function recordHistorySnapshot() {
   if (!data.history) data.history = [];
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayYmd();
   const netWorth = netWorthTotal();
   const pv = portfolioValue();
   const last = data.history[data.history.length - 1];
@@ -1667,7 +1683,13 @@ function allPriceableHoldings() {
 
 function monthTransactions(monthDate) {
   const m = monthDate.getMonth(), y = monthDate.getFullYear();
-  return data.budgetTransactions.filter(t => { const d = new Date(t.date); return d.getMonth() === m && d.getFullYear() === y; });
+  // A recurring entry only shows from its day on (see runRecurring) — even one typed in ahead.
+  const today = todayYmd();
+  return data.budgetTransactions.filter(t => {
+    if (t.nature === 'Fixed' && t.date > today) return false;
+    const d = ymdToDate(t.date);
+    return d.getMonth() === m && d.getFullYear() === y;
+  });
 }
 // Each transaction can carry its own currency (t.currency) — same mixed-currency summing bug
 // as accounts/positions applies here too, so each amount is converted to EUR before totaling.
@@ -1912,7 +1934,7 @@ window.__modalRenderers = {};
 
 /* ===================== Dashboard ===================== */
 function renderDashboard() {
-  const now = new Date();
+  const now = appToday();
   const total = bankTotal();
   const avail = bankAvailable();
   const pockets = pocketsTotal();
@@ -2595,7 +2617,7 @@ function setBudgetMonthTo(year, month) {
 function monthCumulativeExpenses(monthDate, upToDay) {
   const dayTotals = {};
   monthTransactions(monthDate).filter(t => t.type === 'expense').forEach(t => {
-    const d = new Date(t.date).getDate();
+    const d = ymdToDate(t.date).getDate();
     dayTotals[d] = (dayTotals[d] || 0) + toEUR(t.amount, t.currency);
   });
   let running = 0;
@@ -2606,7 +2628,7 @@ function monthCumulativeExpenses(monthDate, upToDay) {
 function monthSpendTrend(monthDate) {
   const y = monthDate.getFullYear(), m = monthDate.getMonth();
   const daysInMonth = new Date(y, m + 1, 0).getDate();
-  const today = new Date();
+  const today = appToday();
   const isCurrentMonth = y === today.getFullYear() && m === today.getMonth();
   const maxDay = isCurrentMonth ? today.getDate() : daysInMonth;
   const dayLabel = d => new Date(y, m, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -2634,8 +2656,8 @@ function groupTransactionsByDay(txs) {
   return order.map(date => ({ date, txs: groups[date] }));
 }
 function dayLabel(dateStr) {
-  const d = new Date(dateStr); d.setHours(0, 0, 0, 0);
-  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = ymdToDate(dateStr);
+  const today = appToday();
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
   if (d.getTime() === today.getTime()) return 'Today';
   if (d.getTime() === yesterday.getTime()) return 'Yesterday';
@@ -2724,19 +2746,156 @@ function txRowDisplayHtml(t) {
     </div>`;
 }
 
+/* ===================== Recurring income & expenses =====================
+   A transaction marked "Fixed / Recurring" starts (or joins) a monthly series. Every month, once
+   its day has arrived on this device's calendar (see todayYmd), the app adds that month's entry by
+   itself — never earlier, so nothing shows up before the day it happens. The newest entry of a
+   series is the model for the next ones: edit it to change the amount, day, account… from then
+   on. A day that doesn't exist in a month (31st in November) falls on that month's last day.
+
+   - Logging or importing the real entry for a month replaces the automatic one, so nothing is
+     counted twice (e.g. importing the bank statement with your rent in it).
+   - Deleting one month's entry doesn't bring it back; "Stop" in Budget → Recurring ends a series.
+   - Series ids and automatic entries are built only from the data itself (no random ids, no
+     timestamps), so two devices that both add the same month produce the identical result and
+     sync without asking which version to keep.
+
+   data.recurring[seriesId] = { day, lastMonth: 'YYYY-MM', stopped } */
+function ymOf(ymd) { return String(ymd || '').slice(0, 7); }
+function nextYm(ym) { const [y, m] = ym.split('-').map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; }
+function recurringDueDate(ym, day) {
+  const [y, m] = ym.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return `${ym}-${String(Math.min(day, last)).padStart(2, '0')}`;
+}
+function recurringSeriesKey(t) {
+  return 'rs_' + t.type + '_' + (txNameKey(t.comment) || t.categoryId || 'none');
+}
+function recurringOccurrences(seriesId) {
+  return data.budgetTransactions.filter(t => t.recurringId === seriesId).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+}
+/* Puts a just-saved (or imported) Fixed transaction into its series, replacing the automatic
+   entry of the same month if there is one. Call after the record is in data.budgetTransactions.
+   The series keeps its day (bank dates shift around weekends) unless opts.setDay — editing the
+   newest entry by hand, which is how you move it to another day. */
+function attachToRecurringSeries(record, opts) {
+  if (!record || record.type === 'transfer') return;
+  if (record.nature !== 'Fixed') { delete record.recurringId; delete record.auto; return; }
+  if (!data.recurring) data.recurring = {};
+  const id = record.recurringId || recurringSeriesKey(record);
+  record.recurringId = id;
+  delete record.auto;
+  const month = ymOf(record.date);
+  data.budgetTransactions
+    .filter(t => t.id !== record.id && t.recurringId === id && t.auto && ymOf(t.date) === month)
+    .forEach(t => { applyTxToAccountBalance(t, -1); data.budgetTransactions = data.budgetTransactions.filter(x => x !== t); });
+  const st = data.recurring[id] || (data.recurring[id] = { day: +record.date.slice(8, 10) || 1, lastMonth: month, stopped: false });
+  const occ = recurringOccurrences(id);
+  if (opts && opts.setDay && occ[occ.length - 1] === record) st.day = +record.date.slice(8, 10) || st.day;
+  if (month > st.lastMonth) st.lastMonth = month;
+  st.stopped = false;
+}
+/* Adds every entry that has come due since the last one, up to today. Returns how many. */
+function runRecurring() {
+  if (!data || !data.recurring) return 0;
+  const today = todayYmd(), thisMonth = ymOf(today);
+  let added = 0;
+  Object.keys(data.recurring).forEach(id => {
+    const st = data.recurring[id];
+    if (!st || st.stopped) return;
+    const occ = recurringOccurrences(id).filter(t => t.nature === 'Fixed');
+    const model = occ[occ.length - 1];
+    if (!model) return;
+    let guard = 0;
+    for (let ym = nextYm(st.lastMonth); ym <= thisMonth && guard < 24; ym = nextYm(ym), guard++) {
+      const date = recurringDueDate(ym, st.day);
+      if (date > today) break; // not yet — it appears on its day
+      st.lastMonth = ym;
+      if (data.budgetTransactions.some(t => t.recurringId === id && ymOf(t.date) === ym)) continue; // already logged by hand
+      const entry = {
+        id: `${id}_${ym}`, date, type: model.type, categoryId: model.categoryId, subCategoryId: model.subCategoryId || null,
+        nature: 'Fixed', paymentMethodId: model.paymentMethodId || null, accountId: model.accountId || null,
+        currency: model.currency, amount: model.amount, comment: model.comment || '', location: model.location || '',
+        description: model.description || '', logo: model.logo || '', impact: model.impact || '',
+        recurringId: id, auto: true,
+      };
+      data.budgetTransactions.push(entry);
+      applyTxToAccountBalance(entry, 1);
+      added++;
+    }
+  });
+  return added;
+}
+/* Existing "Fixed / Recurring" transactions (logged before series existed) become series, picking
+   up from their newest entry. Deterministic, so every device migrates to the same result. */
+function migrateRecurringSeries() {
+  if (!data.recurring) data.recurring = {};
+  data.budgetTransactions
+    .filter(t => t.nature === 'Fixed' && t.type !== 'transfer' && !t.recurringId)
+    .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0)
+    .forEach(t => attachToRecurringSeries(t));
+}
+function stopRecurringSeries(id) {
+  const st = data.recurring && data.recurring[id];
+  if (!st) return;
+  const model = recurringOccurrences(id).pop();
+  if (!confirm(`Stop repeating "${(model && model.comment) || 'this item'}"? Entries already logged stay.`)) return;
+  st.stopped = true;
+  save(); render();
+}
+/* Runs the recurring entries and refreshes the screen when the day changes while the app is open
+   (or is reopened the next morning) — checked every minute and whenever the app comes back. If
+   you were looking at the month that just ended, the Budget page moves on to the new one. */
+let appDayShown = null;
+function checkAppDay() {
+  const today = todayYmd();
+  const previous = appDayShown;
+  appDayShown = today;
+  const dayChanged = !!previous && previous !== today;
+  if (dayChanged && ymOf(previous) !== ymOf(today) && ui.budgetMonth && ymOf(dateToYmd(ui.budgetMonth)) === ymOf(previous)) ui.budgetMonth = appToday();
+  const added = runRecurring();
+  if (added) save();
+  if ((dayChanged || added) && !syncUserIsEditing()) render();
+}
+function startAppDayWatch() {
+  checkAppDay();
+  setInterval(checkAppDay, 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkAppDay(); });
+  window.addEventListener('focus', checkAppDay);
+  window.addEventListener('pageshow', checkAppDay);
+}
+
 /* Item 7: same card/row language as the Transactions tab (grid-2/3 stat cards, txRowDisplayHtml
    rows with avatars) instead of a bare data-table — the two tabs now feel like one page. */
+function ordinalDay(n) { const r = n % 100; return n + ((r >= 11 && r <= 13) ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th')); }
+/* One row per active series: its newest entry (tap to edit — changes apply from then on), when
+   it repeats, the next date it will appear, and Stop. */
+function activeRecurringSeries() {
+  return Object.keys(data.recurring || {}).map(id => {
+    const st = data.recurring[id];
+    const model = recurringOccurrences(id).filter(t => t.nature === 'Fixed').pop();
+    if (!st || st.stopped || !model) return null;
+    return { id, st, model, next: recurringDueDate(nextYm(st.lastMonth), st.day) };
+  }).filter(Boolean).sort((a, b) => a.next < b.next ? -1 : a.next > b.next ? 1 : 0);
+}
 function budgetRecurringTab() {
-  const recurring = data.budgetTransactions.filter(t => t.nature === 'Fixed').sort((a, b) => new Date(b.date) - new Date(a.date));
-  const fixedIncome = recurring.filter(t => t.type === 'income').reduce((s, t) => s + toEUR(t.amount, t.currency), 0);
-  const fixedExpenses = recurring.filter(t => t.type === 'expense').reduce((s, t) => s + toEUR(t.amount, t.currency), 0);
+  const series = activeRecurringSeries();
+  const perMonth = type => series.filter(x => x.model.type === type).reduce((s, x) => s + toEUR(x.model.amount, x.model.currency), 0);
   return `
     <div class="grid-2" style="margin-bottom:20px;">
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(fixedIncome)}</div></div><span style="font-size:20px;">📈</span></div></div>
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(fixedExpenses)}</div></div><span style="font-size:20px;">📉</span></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed income / month</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(perMonth('income'))}</div></div><span style="font-size:20px;">📈</span></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed expenses / month</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(perMonth('expense'))}</div></div><span style="font-size:20px;">📉</span></div></div>
     </div>
-    ${recurring.length ? `<div class="card stack-gap-16">${recurring.map(txRowDisplayHtml).join('')}</div>` : `
-      <div class="card"><div class="empty-state"><div class="emoji">🔄</div><div class="title">No recurring items yet</div><div class="sub">Mark a transaction "Fixed / Recurring" to see it here.</div></div></div>`}`;
+    ${series.length ? `<div class="card stack-gap-16">${series.map(({ id, st, model, next }) => `
+      <div>
+        ${txRowDisplayHtml(model)}
+        <div class="row-flex" style="margin-top:6px;padding-left:50px;gap:10px;">
+          <div style="font-size:12px;opacity:.6;">Every month on the ${ordinalDay(st.day)} · next: ${escHtml(ymdToDate(next).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))}</div>
+          <button class="btn small" onclick="stopRecurringSeries('${id}')">Stop</button>
+        </div>
+      </div>`).join('')}</div>
+      <div style="font-size:12px;opacity:.55;margin-top:10px;line-height:1.5;">Each one is added by itself on its day every month (not before). To change the amount or day from now on, tap it and edit. Logging or importing the real one for a month replaces the automatic one.</div>` : `
+      <div class="card"><div class="empty-state"><div class="emoji">🔄</div><div class="title">No recurring items yet</div><div class="sub">Mark a transaction "Fixed / Recurring" and it will be added by itself every month on the same day.</div></div></div>`}`;
 }
 
 /* Item 2: the calendar grid was removed entirely (no real purpose) in favor of the month-pill
@@ -3115,7 +3274,7 @@ function removePaymentMethod(id) { data.paymentMethods = data.paymentMethods.fil
    (name-suggestions, logo, location, description) that doesn't fit well crammed N-at-a-time.
    The same modal/payload serves both "Add" (no id) and "Edit" (existing id) — item 1. ---- */
 function blankTxDraft() {
-  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: '', currency: data.settings.defaultCurrency, amount: '', date: new Date().toISOString().slice(0, 10), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
+  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: '', currency: data.settings.defaultCurrency, amount: '', date: todayYmd(), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
 }
 function openTxForm(id) {
   const existing = id ? data.budgetTransactions.find(t => t.id === id) : null;
@@ -3276,6 +3435,7 @@ function saveTxForm() {
     nature: p.nature, paymentMethodId: isTransfer ? null : (p.paymentMethodId || null), accountId: isTransfer ? null : (p.accountId || null), currency: p.currency, amount: Math.abs(parseFloat(p.amount)),
     comment, location: isTransfer ? '' : (p.location || '').trim(), description: (p.description || '').trim(), logo: isTransfer ? '' : logo, impact: isTransfer ? '' : (p.impact || ''),
   };
+  if (p.recurringId) record.recurringId = p.recurringId;
   if (isTransfer) {
     // Snapshot the labels too, so the entry stays readable if a pocket/broker is later deleted.
     Object.assign(record, { from: p.from, to: p.to, fromLabel: transferEndpoint(p.from).label, toLabel: transferEndpoint(p.to).label });
@@ -3300,6 +3460,8 @@ function saveTxForm() {
   else data.budgetTransactions.push(record);
   applyTxToAccountBalance(record, 1);
   if (!isTransfer && record.logo) shareTxLogoByName(record.comment, record.logo);
+  attachToRecurringSeries(record, { setDay: !!prior && prior.nature === 'Fixed' });
+  runRecurring();
   save(); closeModal();
 }
 /* ===================== Investments ===================== */
@@ -4184,7 +4346,7 @@ function patchCryptoSummary(symbol) {
 }
 
 function addCryptoLot(symbol) {
-  data.cryptoLots.push({ id: uid('lot'), symbol, broker: '', date: new Date().toISOString().slice(0, 10), currency: 'EUR', amountPaid: 0, quantity: 0 });
+  data.cryptoLots.push({ id: uid('lot'), symbol, broker: '', date: todayYmd(), currency: 'EUR', amountPaid: 0, quantity: 0 });
   save(); render();
 }
 function deleteCryptoLot(id) { data.cryptoLots = data.cryptoLots.filter(l => l.id !== id); save(); render(); }
@@ -4663,14 +4825,14 @@ function quickCloseTrade(id) {
   if (!confirm(`Close ${t.instrument}? This records today as the close date and uses the current price as the close price — you can fine-tune it after via Edit.`)) return;
   t.status = 'closed';
   t.closePrice = t.currentPrice;
-  t.closeDate = new Date().toISOString().slice(0, 10);
+  t.closeDate = todayYmd();
   save(); render();
 }
 function blankTradeDraft() {
   return {
     instrument: '', tradeType: 'CFD', direction: 'Long', platform: '', currency: data.settings.defaultCurrency,
     entryPrice: '', currentPrice: '', quantity: '', leverage: '', collateral: '',
-    stopLoss: '', takeProfit: '', status: 'open', openDate: new Date().toISOString().slice(0, 10),
+    stopLoss: '', takeProfit: '', status: 'open', openDate: todayYmd(),
     closeDate: '', closePrice: '', notes: '',
   };
 }
@@ -4750,7 +4912,7 @@ function saveTradeForm() {
     takeProfit: tpRaw === '' ? null : parseFloat(tpRaw),
     openDate: document.getElementById('tr-opendate').value,
     status,
-    closeDate: status === 'closed' ? ((closeDateEl && closeDateEl.value) || new Date().toISOString().slice(0, 10)) : null,
+    closeDate: status === 'closed' ? ((closeDateEl && closeDateEl.value) || todayYmd()) : null,
     closePrice: status === 'closed' ? (closePriceEl && closePriceEl.value !== '' ? parseFloat(closePriceEl.value) : null) : null,
     notes: document.getElementById('tr-notes').value.trim(),
   };

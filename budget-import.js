@@ -711,6 +711,7 @@ async function biApply() {
   const sel = st.rows.filter(r => r.included);
   if (!sel.length) return;
   const created = { cats: 0, subs: 0 };
+  const imported = [];
   sel.forEach(r => {
     const kind = r.type;
     // Always re-checked against live data, so two rows naming the same new category create it once.
@@ -741,7 +742,14 @@ async function biApply() {
     };
     data.budgetTransactions.push(record);
     if (st.updateBalances) applyTxToAccountBalance(record, 1);
+    imported.push(record);
   });
+  // Recurring rows join (or start) their monthly series; a real row replaces that month's
+  // automatic entry. Oldest first, so the newest row ends up setting the series' day.
+  if (typeof attachToRecurringSeries === 'function') {
+    imported.slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0).forEach(attachToRecurringSeries);
+    runRecurring();
+  }
   await save();
   const dates = sel.map(r => r.date).sort();
   ui.budgetImport = { step: 'done', count: sel.length, from: dates[0], to: dates[dates.length - 1], created, balances: st.updateBalances && sel.some(r => r.accountId || st.defaultAccountId), fileName: st.fileName };
