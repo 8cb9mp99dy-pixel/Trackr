@@ -2282,6 +2282,11 @@ function budgetTransactionsTab() {
     </div>
     ${budgetMonthPillsHtml(m)}
 
+    <div class="donut-pair" style="margin-bottom:20px;">
+      ${categoryDonutCardHtml('Spending by category', expenseSegments, 'No expenses yet this month.', animateCharts)}
+      ${categoryDonutCardHtml('Income by category', incomeSegments, 'No income yet this month.', animateCharts)}
+    </div>
+
     <div class="grid-3" style="margin-bottom:20px;">
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(income)}</div></div><span style="font-size:20px;">📈</span></div></div>
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div><span style="font-size:20px;">📉</span></div></div>
@@ -2304,10 +2309,6 @@ function budgetTransactionsTab() {
     ${dayGroups.length ? dayGroups.map(dayGroupHtml).join('') : `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}
 
-    <div class="donut-pair" style="margin-top:8px;margin-bottom:20px;">
-      ${categoryDonutCardHtml('Spending by category', expenseSegments, 'No expenses yet this month.', animateCharts)}
-      ${categoryDonutCardHtml('Income by category', incomeSegments, 'No income yet this month.', animateCharts)}
-    </div>
 
     <div class="card">
       <div class="eyebrow" style="margin-bottom:14px;">Income vs expenses</div>

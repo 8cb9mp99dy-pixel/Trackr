@@ -468,7 +468,7 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
    drops below a smaller ring. */
 .donut-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
 .donut-card { min-width: 0; }
-.donut-body { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+.donut-body { display: flex; align-items: center; gap: 22px; }
 .donut-body svg { flex: none; }
 .donut-legend { min-width: 0; }
 .donut-legend-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
