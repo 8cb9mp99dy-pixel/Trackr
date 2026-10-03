@@ -1675,31 +1675,117 @@ function svgDonut(segments, opts) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"${opts.animate ? ' class="donut-anim"' : ''}>${arcs}</svg>`;
 }
 
-function svgArea(points, opts) {
+/* Line chart used by "Spending trend" (Budget) and "Portfolio Performance" (Dashboard).
+   Drawn in black (the page's text color) with a soft fill, a value scale on the left gridlines,
+   first/last labels underneath, a marker on the latest point, and the exact date + value wherever
+   you hover or touch. The SVG stretches to the card's width; strokes use non-scaling-stroke so
+   the line stays evenly thin instead of distorting, and the round markers are HTML so they stay
+   round. points: [{x, value, label}]. opts: {h, xMin, xMax, zeroBase, compare: [{x, value}],
+   compareLabel, valueSuffix}. */
+window.__lineCharts = window.__lineCharts || {};
+function niceStep(range) {
+  const raw = range / 4 || 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / mag;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * mag;
+}
+/* Monotone cubic (Fritsch–Carlson): smooth, but never overshoots — a running total never appears
+   to dip, and a peak is drawn exactly where the real value is. */
+function monotonePath(pts) {
+  const n = pts.length;
+  if (n < 2) return '';
+  if (n === 2) return `M${pts[0][0]},${pts[0][1]}L${pts[1][0]},${pts[1][1]}`;
+  const dx = [], dy = [], m = [];
+  for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; dy[i] = (pts[i + 1][1] - pts[i][1]) / (dx[i] || 1); }
+  m[0] = dy[0]; m[n - 1] = dy[n - 2];
+  for (let i = 1; i < n - 1; i++) m[i] = dy[i - 1] * dy[i] <= 0 ? 0 : (dy[i - 1] + dy[i]) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (dy[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / dy[i], b = m[i + 1] / dy[i], s = a * a + b * b;
+    if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * dy[i]; m[i + 1] = t * b * dy[i]; }
+  }
+  let d = `M${pts[0][0].toFixed(2)},${pts[0][1].toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3;
+    d += `C${(pts[i][0] + h).toFixed(2)},${(pts[i][1] + m[i] * h).toFixed(2)} ${(pts[i + 1][0] - h).toFixed(2)},${(pts[i + 1][1] - m[i + 1] * h).toFixed(2)} ${pts[i + 1][0].toFixed(2)},${pts[i + 1][1].toFixed(2)}`;
+  }
+  return d;
+}
+/* Short amounts for the chart scale: no cents, thousands as "k" from 10k up. */
+function fmtAxisMoney(v) {
+  if (data.settings.privacyMode) return '•••';
+  const sym = CURRENCY_SYMBOL[data.settings.defaultCurrency] || data.settings.defaultCurrency;
+  const a = Math.abs(v);
+  const body = a >= 10000 ? (+(a / 1000).toFixed(a >= 100000 ? 0 : 1)).toLocaleString('en-IE') + 'k' : Math.round(a).toLocaleString('en-IE');
+  return (v < 0 ? '-' : '') + sym + body;
+}
+function lineChartHtml(points, opts) {
   opts = opts || {};
-  const w = opts.w || 560, h = opts.h || 160, pad = 10;
-  const vals = points.map(p => p.value);
-  const min = Math.min(...vals, 0), max = Math.max(...vals);
-  const range = (max - min) || 1;
-  const stepX = points.length > 1 ? (w - pad * 2) / (points.length - 1) : 0;
-  const coords = points.map((p, i) => {
-    const x = pad + i * stepX;
-    const y = pad + (1 - (p.value - min) / range) * (h - pad * 2);
-    return [x, y];
-  });
-  const line = coords.map((c, i) => (i === 0 ? 'M' : 'L') + c[0].toFixed(1) + ' ' + c[1].toFixed(1)).join(' ');
-  const areaPath = line + ` L${coords[coords.length - 1][0].toFixed(1)} ${h - pad} L${coords[0][0].toFixed(1)} ${h - pad} Z`;
-  const zeroY = pad + (1 - (0 - min) / range) * (h - pad * 2);
-  const gid = 'g' + Math.random().toString(36).slice(2, 8);
-  return `<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="var(--light-accent-1)" stop-opacity="0.35"/>
-      <stop offset="100%" stop-color="var(--light-accent-1)" stop-opacity="0"/>
-    </linearGradient></defs>
-    ${min < 0 && max > 0 ? `<line x1="${pad}" y1="${zeroY}" x2="${w - pad}" y2="${zeroY}" stroke="currentColor" stroke-opacity="0.15" stroke-dasharray="4 4"/>` : ''}
-    <path d="${areaPath}" fill="url(#${gid})" stroke="none"/>
-    <path d="${line}" fill="none" stroke="var(--light-accent-1)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  </svg>`;
+  const H = opts.h || 120;
+  const plotH = H - 18;            // room for the x labels underneath, inside the same height
+  const padT = 8, padB = 6;
+  const W = 1000;                  // viewBox width; stretched to the card
+  const compare = opts.compare || [];
+  const xs = points.map(p => p.x).concat(compare.map(p => p.x));
+  const xMin = opts.xMin != null ? opts.xMin : Math.min(...xs);
+  const xMax = opts.xMax != null ? opts.xMax : Math.max(...xs);
+  const vals = points.map(p => p.value).concat(compare.map(p => p.value));
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  if (opts.zeroBase) lo = Math.min(0, lo);
+  if (hi === lo) { hi += Math.abs(hi) * 0.05 || 1; lo -= opts.zeroBase ? 0 : (Math.abs(lo) * 0.05 || 1); }
+  const step = niceStep(hi - lo);
+  lo = Math.floor(lo / step) * step;
+  hi = Math.ceil(hi / step) * step;
+  const ticks = [];
+  for (let v = lo; v <= hi + step / 2; v += step) ticks.push(v);
+  const fx = x => (xMax === xMin ? 0.5 : (x - xMin) / (xMax - xMin));
+  const fy = v => padT + (1 - (v - lo) / (hi - lo)) * (plotH - padT - padB);
+  const main = points.map(p => [fx(p.x) * W, fy(p.value)]);
+  const cmp = compare.map(p => [fx(p.x) * W, fy(p.value)]);
+  const line = monotonePath(main);
+  const area = line + `L${main[main.length - 1][0].toFixed(2)},${plotH - padB}L${main[0][0].toFixed(2)},${plotH - padB}Z`;
+  const id = 'lc' + Math.random().toString(36).slice(2, 8);
+  window.__lineCharts[id] = { points, fx, fy, compare, compareLabel: opts.compareLabel || '', suffix: opts.valueSuffix || '' };
+  const last = points[points.length - 1];
+  return `
+  <div class="lc" style="height:${H}px;">
+    ${ticks.map(v => `<span class="lc-y" style="top:${(fy(v) - 6).toFixed(1)}px;">${fmtAxisMoney(v)}</span>`).join('')}
+    <div class="lc-plot" id="${id}" onpointermove="lineChartHover(event,'${id}')" onpointerdown="lineChartHover(event,'${id}')" onpointerleave="lineChartHover(null,'${id}')">
+    <svg class="lc-svg" width="100%" height="${plotH}" viewBox="0 0 ${W} ${plotH}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="${id}-g" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="currentColor" stop-opacity="0.10"/>
+        <stop offset="100%" stop-color="currentColor" stop-opacity="0"/>
+      </linearGradient></defs>
+      ${ticks.map(v => `<line x1="0" x2="${W}" y1="${fy(v).toFixed(2)}" y2="${fy(v).toFixed(2)}" stroke="currentColor" stroke-opacity="0.08" vector-effect="non-scaling-stroke"/>`).join('')}
+      <path d="${area}" fill="url(#${id}-g)"/>
+      ${cmp.length > 1 ? `<path d="${monotonePath(cmp)}" fill="none" stroke="currentColor" stroke-opacity="0.3" stroke-width="1.25" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>` : ''}
+      <path d="${line}" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <span class="lc-dot" style="left:${(fx(last.x) * 100).toFixed(3)}%;top:${fy(last.value).toFixed(1)}px;"></span>
+    <span class="lc-cross" style="display:none;height:${plotH - padB}px;"></span>
+    <span class="lc-dot lc-hdot" style="display:none;"></span>
+    <div class="lc-tip" style="display:none;"></div>
+    <div class="lc-x"><span>${escHtml(points[0].label)}</span><span>${escHtml(opts.endLabel || last.label)}</span></div>
+    </div>
+  </div>`;
+}
+function lineChartHover(ev, id) {
+  const root = document.getElementById(id), c = window.__lineCharts[id];
+  if (!root || !c) return;
+  const cross = root.querySelector('.lc-cross'), dot = root.querySelector('.lc-hdot'), tip = root.querySelector('.lc-tip');
+  if (!ev) { cross.style.display = dot.style.display = tip.style.display = 'none'; return; }
+  const rect = root.getBoundingClientRect();
+  const frac = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+  let best = c.points[0];
+  c.points.forEach(p => { if (Math.abs(c.fx(p.x) - frac) < Math.abs(c.fx(best.x) - frac)) best = p; });
+  const left = c.fx(best.x) * rect.width, top = c.fy(best.value);
+  cross.style.display = dot.style.display = tip.style.display = 'block';
+  cross.style.left = left + 'px';
+  dot.style.left = left + 'px'; dot.style.top = top + 'px';
+  const cmp = c.compare.length ? c.compare.reduce((a, p) => Math.abs(p.x - best.x) < Math.abs(a.x - best.x) ? p : a, c.compare[0]) : null;
+  tip.innerHTML = `<div class="lc-tip-l">${escHtml(best.label)}</div><div class="lc-tip-v">${fmtMoney(best.value)}${c.suffix}</div>${cmp && c.compareLabel ? `<div class="lc-tip-c">${escHtml(c.compareLabel)}: ${fmtMoney(cmp.value)}</div>` : ''}`;
+  const tw = tip.offsetWidth;
+  tip.style.left = Math.min(rect.width - tw, Math.max(0, left - tw / 2)) + 'px';
 }
 
 /* ===================== Root render ===================== */
@@ -1859,7 +1945,10 @@ function renderDashboard() {
           ${['1D', '1W', '1M', '3M', '1Y', 'All'].map(p => `<button class="tab-btn ${ui.dashboardPortfolioPeriod === p ? 'active' : ''}" style="padding:5px 10px;font-size:12px;" onclick="setPfPeriod('${p}')">${p}</button>`).join('')}
         </div>
       </div>
-      <div class="${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;margin-bottom:8px;">${fmtMoney(pl)} (${fmtPct(plPct)})</div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+        <span class="${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${fmtMoney(pl)} (${fmtPct(plPct)})</span>
+        ${pfPoints.length >= 2 ? (() => { const a = pfPoints[0].value, b = pfPoints[pfPoints.length - 1].value; return `<span style="font-size:12px;opacity:.55;">value ${b - a >= 0 ? '+' : ''}${fmtMoney(b - a)}${a ? ` (${fmtPct((b - a) / a * 100)})` : ''} since ${escHtml(pfPoints[0].label)}</span>`; })() : ''}
+      </div>
       ${trendChartOrPlaceholder(pfPoints, 120)}
     </div>
 
@@ -1914,14 +2003,15 @@ function periodToDays(p) { return { '1D': 1, '1W': 7, '1M': 30, '3M': 90, '6M': 
 function historyPoints(days, key) {
   const hist = data.history || [];
   const filtered = days ? hist.filter(h => new Date(h.date).getTime() >= Date.now() - days * 86400000) : hist;
-  return filtered.map(h => ({ label: fmtDate(h.date), value: h[key] }));
+  return filtered.filter(h => typeof h[key] === 'number').map(h => ({ x: new Date(h.date).getTime(), label: shortDay(h.date), value: h[key] }));
 }
-function trendChartOrPlaceholder(points, height) {
+function trendChartOrPlaceholder(points, height, opts, emptyText) {
   if (points.length < 2) {
-    return `<div style="text-align:center;padding:${Math.max(20, height / 2 - 20)}px 10px;opacity:.5;font-size:12.5px;">Not enough history yet — check back tomorrow to see a trend.</div>`;
+    return `<div style="text-align:center;padding:${Math.max(20, height / 2 - 20)}px 10px;opacity:.5;font-size:12.5px;">${emptyText || 'Not enough history yet — check back tomorrow to see a trend.'}</div>`;
   }
-  return `<div style="color:var(--light-text)">${svgArea(points, { h: height })}</div>`;
+  return lineChartHtml(points, Object.assign({ h: height }, opts));
 }
+const shortDay = d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 /* Real holdings (crypto + stocks/ETFs/etc.) sorted by value, with real unrealized P&L vs cost. */
 function dashboardHoldingsList() {
   const cryptoRows = data.cryptoAssets.map(c => cryptoAssetStats(c.symbol)).filter(s => s.quantity > 0)
@@ -2301,7 +2391,7 @@ function budgetTransactionsTab() {
   const txs = monthTransactions(m).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
   const income = monthIncome(m), expenses = monthExpenses(m), balance = income - expenses;
   const dayGroups = groupTransactionsByDay(txs);
-  const trendPoints = monthSpendTrendPoints(m);
+  const trend = monthSpendTrend(m);
   // Read before investedCardHtml() consumes it: the category donuts animate on the same
   // occasions as the Invested card (arriving on the page, changing month).
   const animateCharts = !!ui.investedAnimate;
@@ -2332,8 +2422,11 @@ function budgetTransactionsTab() {
     ${investedCardHtmlStr}
 
     <div class="card" style="margin-bottom:20px;">
-      <div class="eyebrow" style="margin-bottom:10px;">Spending trend</div>
-      ${trendChartOrPlaceholder(trendPoints, 120)}
+      <div class="row-flex" style="margin-bottom:10px;align-items:baseline;gap:10px;flex-wrap:wrap;">
+        <div class="eyebrow">Spending trend</div>
+        <div style="font-size:12px;opacity:.6;">${fmtMoney(trend.total)} ${trend.isCurrentMonth ? 'so far' : 'spent'}${trend.compare.length ? ` · last month ${fmtMoney(trend.compareAtSameDay)}${trend.isCurrentMonth ? ' by this day' : ''}` : ''}</div>
+      </div>
+      ${trendChartOrPlaceholder(trend.points, 120, { xMin: 1, xMax: trend.daysInMonth, zeroBase: true, compare: trend.compare, compareLabel: 'Last month', valueSuffix: ' spent', endLabel: trend.endLabel }, 'No spending logged yet this month.')}
     </div>
 
     <button class="btn primary full" style="margin-bottom:10px;" onclick="openTxForm()">+ Add transaction</button>
@@ -2464,25 +2557,37 @@ function setBudgetMonthTo(year, month) {
 }
 
 /* Cumulative expenses by day of month — a real running total from actual transaction dates,
-   truncated at today for the current month so the line doesn't flatline through unlived days. */
-function monthSpendTrendPoints(monthDate) {
-  const y = monthDate.getFullYear(), m = monthDate.getMonth();
-  const daysInMonth = new Date(y, m + 1, 0).getDate();
-  const today = new Date();
-  const isCurrentMonth = y === today.getFullYear() && m === today.getMonth();
-  const maxDay = isCurrentMonth ? today.getDate() : daysInMonth;
+   stopping at today for the current month (the axis still spans the whole month, so you can see
+   how far through it you are), with last month's running total as a dashed comparison. */
+function monthCumulativeExpenses(monthDate, upToDay) {
   const dayTotals = {};
   monthTransactions(monthDate).filter(t => t.type === 'expense').forEach(t => {
     const d = new Date(t.date).getDate();
     dayTotals[d] = (dayTotals[d] || 0) + toEUR(t.amount, t.currency);
   });
   let running = 0;
-  const points = [];
-  for (let d = 1; d <= maxDay; d++) {
-    running += (dayTotals[d] || 0);
-    points.push({ label: String(d), value: running });
-  }
-  return points;
+  const out = [];
+  for (let d = 1; d <= upToDay; d++) { running += (dayTotals[d] || 0); out.push(running); }
+  return out;
+}
+function monthSpendTrend(monthDate) {
+  const y = monthDate.getFullYear(), m = monthDate.getMonth();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const today = new Date();
+  const isCurrentMonth = y === today.getFullYear() && m === today.getMonth();
+  const maxDay = isCurrentMonth ? today.getDate() : daysInMonth;
+  const dayLabel = d => new Date(y, m, d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const points = monthCumulativeExpenses(monthDate, maxDay).map((v, i) => ({ x: i + 1, value: v, label: dayLabel(i + 1) }));
+  const prev = new Date(y, m - 1, 1);
+  const prevDays = new Date(y, m, 0).getDate();
+  const hasPrev = prev >= budgetMinMonth() && monthTransactions(prev).some(t => t.type === 'expense');
+  const compare = hasPrev ? monthCumulativeExpenses(prev, Math.min(prevDays, daysInMonth)).map((v, i) => ({ x: i + 1, value: v })) : [];
+  return {
+    points, compare, daysInMonth, isCurrentMonth,
+    total: points.length ? points[points.length - 1].value : 0,
+    compareAtSameDay: compare.length ? compare[Math.min(maxDay, compare.length) - 1].value : 0,
+    endLabel: dayLabel(daysInMonth),
+  };
 }
 
 /* Groups (already date-sorted, descending) transactions into per-day buckets, preserving
