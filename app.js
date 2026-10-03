@@ -917,6 +917,42 @@ function migrateBudgetTransactions() {
     // than guessed, so no account balance jumps retroactively from a migration.
     if (t.accountId === undefined) t.accountId = null;
   });
+  fillMissingTxLogosByName();
+}
+/* ---- One logo per name ----
+   Every income/expense with the same name shows the same logo, however it was added (by hand,
+   from a suggestion, or imported). Names match ignoring case, accents, spaces and punctuation, so
+   "Albert Heijn", "ALBERT-HEIJN" and "albert heijn" are one name. */
+function txNameKey(name) {
+  return String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+/* The logo of the most recent other transaction with this name, or ''. */
+function txLogoForName(name, excludeId) {
+  const k = txNameKey(name);
+  if (!k) return '';
+  const prior = data.budgetTransactions
+    .filter(t => t.id !== excludeId && t.type !== 'transfer' && t.logo && txNameKey(t.comment) === k)
+    .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+  return prior ? prior.logo : '';
+}
+/* Gives every transaction with this name this logo — used when you set or change one. */
+function shareTxLogoByName(name, logo) {
+  const k = txNameKey(name);
+  if (!k || !logo) return;
+  data.budgetTransactions.forEach(t => { if (t.type !== 'transfer' && txNameKey(t.comment) === k) t.logo = logo; });
+}
+/* Fills in transactions that have no logo yet with the newest logo used under the same name. */
+function fillMissingTxLogosByName() {
+  const byName = {};
+  data.budgetTransactions
+    .filter(t => t.type !== 'transfer' && t.logo && t.comment)
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .forEach(t => { const k = txNameKey(t.comment); if (k && !byName[k]) byName[k] = t.logo; });
+  data.budgetTransactions.forEach(t => {
+    if (t.type === 'transfer' || t.logo || !t.comment) return;
+    const logo = byName[txNameKey(t.comment)];
+    if (logo) t.logo = logo;
+  });
 }
 
 /* Earlier versions registered crypto exchanges as regular brokers purely so their name could
@@ -3092,13 +3128,10 @@ function saveTxForm() {
     if (!transferEndpoint(p.from) || !transferEndpoint(p.to)) { alert("One of those places doesn't exist anymore — pick it again."); return; }
   } else if (!p.categoryId || p.amount === '' || isNaN(parseFloat(p.amount))) return;
   const comment = (p.comment || '').trim();
-  // Item 8: logo persists automatically for future transactions with the same name — never
-  // overwrites a logo the user explicitly set this time, only fills in a blank one.
+  // One logo per name: a blank logo takes the one already used for this name (else a matching
+  // built-in logo); a logo set here is then shared with every transaction of that name (below).
   let logo = (p.logo || '').trim();
-  if (!logo && comment) {
-    const prior = data.budgetTransactions.find(t => t.id !== p.id && t.logo && t.comment && t.comment.toLowerCase() === comment.toLowerCase());
-    if (prior) logo = prior.logo;
-  }
+  if (!logo && comment) logo = txLogoForName(comment, p.id);
   if (!logo && comment && p.type !== 'transfer') logo = builtinLogoFor(comment);
   const record = {
     id: p.id || uid('tx'), date: p.date, type: p.type, categoryId: isTransfer ? null : p.categoryId, subCategoryId: isTransfer ? null : (p.subCategoryId || null),
@@ -3128,6 +3161,7 @@ function saveTxForm() {
   if (prior) data.budgetTransactions[idx] = record;
   else data.budgetTransactions.push(record);
   applyTxToAccountBalance(record, 1);
+  if (!isTransfer && record.logo) shareTxLogoByName(record.comment, record.logo);
   save(); closeModal();
 }
 /* ===================== Investments ===================== */

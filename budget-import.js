@@ -732,8 +732,7 @@ async function biApply() {
     // else a matching built-in logo.
     let logo = '';
     if (r.name) {
-      const prior = data.budgetTransactions.find(t => t.logo && t.comment && t.comment.toLowerCase() === r.name.toLowerCase());
-      logo = prior ? prior.logo : (typeof builtinLogoFor === 'function' ? builtinLogoFor(r.name) : '');
+      logo = (typeof txLogoForName === 'function' ? txLogoForName(r.name) : '') || (typeof builtinLogoFor === 'function' ? builtinLogoFor(r.name) : '');
     }
     const record = {
       id: uid('tx'), date: r.date, type: kind, categoryId: cat.id, subCategoryId: subId,
