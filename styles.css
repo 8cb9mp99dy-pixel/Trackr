@@ -462,6 +462,35 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
 }
 @media (max-width: 640px) { .inv-col { width: 16px; } .inv-bars { gap: 6px; } }
 
+/* Budget → category donuts: the ring sweeps in clockwise and the legend rows follow, on the same
+   occasions as the Invested card (see categoryDonutCardHtml / svgDonut's animate option). */
+/* Spending and Income side by side — kept as two columns on phones too, where the legend simply
+   drops below a smaller ring. */
+.donut-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.donut-card { min-width: 0; }
+.donut-body { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+.donut-body svg { flex: none; }
+.donut-legend { min-width: 0; }
+.donut-legend-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.donut-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+@media (max-width: 640px) {
+  .donut-pair { gap: 8px; }
+  .donut-card { padding: 14px 12px; }
+  .donut-body { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .donut-body svg { width: 110px; height: 110px; align-self: center; }
+  .donut-legend-row { font-size: 11.5px; gap: 6px; align-items: flex-start; line-height: 1.3; }
+  .donut-swatch { width: 8px; height: 8px; margin-top: 3px; }
+}
+@keyframes donutSweep { from { stroke-dashoffset: var(--seg-off); } to { stroke-dashoffset: 0; } }
+.donut-seg-anim { animation-name: donutSweep; animation-timing-function: linear; animation-fill-mode: both; }
+.donut-anim { animation: donutSpin .9s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes donutSpin { from { transform: rotate(-30deg) scale(.92); opacity: .4; } to { transform: none; opacity: 1; } }
+.donut-card-anim .donut-legend-row { animation: invFade .45s ease both; }
+@media (prefers-reduced-motion: reduce) {
+  .donut-seg-anim, .donut-anim, .donut-card-anim .donut-legend-row { animation: none; }
+  .donut-seg-anim { stroke-dashoffset: 0; }
+}
+
 /* Budget → Import preview */
 .bi-table td { vertical-align: top; }
 .bi-table tr.bi-off td { opacity: .38; }

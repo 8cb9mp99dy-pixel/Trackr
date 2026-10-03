@@ -1619,16 +1619,24 @@ function svgDonut(segments, opts) {
   const circumference = 2 * Math.PI * r;
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   let offset = 0;
+  // opts.animate: the ring fills in one continuous clockwise sweep — each segment grows from its
+  // own start (dashoffset dash → 0, with a gap longer than the ring so nothing repeats), starting
+  // exactly when the previous one finishes.
+  const sweepMs = opts.sweepMs || 900;
   const arcs = segments.filter(s => s.value > 0).map(seg => {
     const frac = seg.value / total;
     const dash = frac * circumference;
     const gap = circumference - dash;
     const rotation = (offset / total) * 360 - 90;
+    const startFrac = offset / total;
     offset += seg.value;
+    const anim = opts.animate
+      ? ` class="donut-seg-anim" style="--seg-off:${dash};animation-duration:${Math.max(40, frac * sweepMs)}ms;animation-delay:${startFrac * sweepMs}ms;"`
+      : '';
     return `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${stroke}"
-      stroke-dasharray="${dash} ${gap}" transform="rotate(${rotation} ${c} ${c})" stroke-linecap="butt"/>`;
+      stroke-dasharray="${opts.animate ? `${dash} ${circumference}` : `${dash} ${gap}`}" transform="rotate(${rotation} ${c} ${c})" stroke-linecap="butt"${anim}/>`;
   }).join('');
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${arcs}</svg>`;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"${opts.animate ? ' class="donut-anim"' : ''}>${arcs}</svg>`;
 }
 
 function svgArea(points, opts) {
@@ -2258,8 +2266,11 @@ function budgetTransactionsTab() {
   const income = monthIncome(m), expenses = monthExpenses(m), balance = income - expenses;
   const dayGroups = groupTransactionsByDay(txs);
   const trendPoints = monthSpendTrendPoints(m);
-  const categorySegments = categorySpendingSegments(m);
-  const categoryTotal = categorySegments.reduce((s, x) => s + x.value, 0) || 1;
+  // Read before investedCardHtml() consumes it: the category donuts animate on the same
+  // occasions as the Invested card (arriving on the page, changing month).
+  const animateCharts = !!ui.investedAnimate;
+  const expenseSegments = categorySpendingSegments(m, 'expense');
+  const incomeSegments = categorySpendingSegments(m, 'income');
   const minMonth = budgetMinMonth();
   const atMin = m.getFullYear() === minMonth.getFullYear() && m.getMonth() === minMonth.getMonth();
   const investedCardHtmlStr = investedCardHtml(m);
@@ -2293,20 +2304,29 @@ function budgetTransactionsTab() {
     ${dayGroups.length ? dayGroups.map(dayGroupHtml).join('') : `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}
 
-    <div class="card" style="margin-top:8px;margin-bottom:20px;">
-      <div class="eyebrow" style="margin-bottom:14px;">Spending by category</div>
-      ${categorySegments.length ? `
-        <div style="display:flex;align-items:center;gap:26px;flex-wrap:wrap;">
-          ${svgDonut(categorySegments, { size: 140, stroke: 22 })}
-          <div class="stack-gap-8">
-            ${categorySegments.map(s => `<div style="display:flex;align-items:center;gap:8px;font-size:13.5px;"><span style="width:10px;height:10px;border-radius:3px;background:${s.color};display:inline-block;"></span>${s.icon || ''} ${escHtml(s.label)} · ${(s.value / categoryTotal * 100).toFixed(0)}%</div>`).join('')}
-          </div>
-        </div>` : `<div style="opacity:.5;font-size:13px;">No expenses yet this month.</div>`}
+    <div class="donut-pair" style="margin-top:8px;margin-bottom:20px;">
+      ${categoryDonutCardHtml('Spending by category', expenseSegments, 'No expenses yet this month.', animateCharts)}
+      ${categoryDonutCardHtml('Income by category', incomeSegments, 'No income yet this month.', animateCharts)}
     </div>
 
     <div class="card">
       <div class="eyebrow" style="margin-bottom:14px;">Income vs expenses</div>
       ${cashflowBarsHtml(m)}
+    </div>`;
+}
+
+function categoryDonutCardHtml(title, segments, emptyText, animate) {
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+  return `
+    <div class="card donut-card ${animate ? 'donut-card-anim' : ''}">
+      <div class="eyebrow" style="margin-bottom:14px;">${title}</div>
+      ${segments.length ? `
+        <div class="donut-body">
+          ${svgDonut(segments, { size: 140, stroke: 22, animate })}
+          <div class="stack-gap-8 donut-legend">
+            ${segments.map((s, i) => `<div class="donut-legend-row" style="animation-delay:${150 + i * 55}ms;" title="${escHtml(s.label)} · ${fmtMoney(s.value)}"><span class="donut-swatch" style="background:${s.color};"></span><span>${s.icon || ''} ${escHtml(s.label)} · ${(s.value / total * 100).toFixed(0)}%</span></div>`).join('')}
+          </div>
+        </div>` : `<div style="opacity:.5;font-size:13px;">${emptyText}</div>`}
     </div>`;
 }
 
@@ -2552,12 +2572,13 @@ function shiftBudgetMonth(delta) {
   if (d < budgetMinMonth()) return;
   ui.budgetMonth = d; ui.investedAnimate = true; render();
 }
-/* Real per-category expense totals for the month, powering the "Spending by category" donut —
-   same color-per-label convention as the transaction avatars (hashColor). */
-function categorySpendingSegments(monthDate) {
+/* Real per-category totals for the month, powering the "Spending by category" and "Income by
+   category" donuts — same color-per-label convention as the transaction avatars (hashColor). */
+function categorySpendingSegments(monthDate, kind) {
+  kind = kind || 'expense';
   const byCategory = {};
-  monthTransactions(monthDate).filter(t => t.type === 'expense').forEach(t => {
-    const cat = categoryById('expense', t.categoryId);
+  monthTransactions(monthDate).filter(t => t.type === kind).forEach(t => {
+    const cat = categoryById(kind, t.categoryId);
     const key = cat ? cat.id : 'uncategorized';
     if (!byCategory[key]) byCategory[key] = { label: cat ? cat.name : 'Uncategorized', icon: cat ? cat.icon : '❓', value: 0 };
     byCategory[key].value += toEUR(t.amount, t.currency);
