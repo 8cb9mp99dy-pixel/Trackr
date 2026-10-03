@@ -966,7 +966,7 @@ function cleanupGhostCryptoBrokers() {
   const cryptoNames = new Set(cryptoBrokerNames().map(n => n.trim().toLowerCase()));
   data.brokers = data.brokers.filter(b => {
     const isCryptoNamed = cryptoNames.has(b.name.trim().toLowerCase());
-    const isEmpty = !(b.cashBalance > 0) && positionsByBroker(b.id).length === 0;
+    const isEmpty = !(brokerCash(b) > 0) && positionsByBroker(b.id).length === 0;
     return !(isCryptoNamed && isEmpty);
   });
 }
@@ -1053,6 +1053,7 @@ function snapshotsToLots(symbol, snapshots) {
 async function save(opts) {
   const auto = !!(opts && opts.auto);
   if (!auto) data.updatedAt = new Date().toISOString();
+  mirrorLinkedBrokerCash();
   recordHistorySnapshot();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
   catch (e) { console.error('save failed', e); }
@@ -1377,7 +1378,37 @@ function allInvestmentPositions() { return derivedAssetPositions().concat(derive
 
 // Each broker's uninvested cash carries its own cashCurrency — same mixed-currency summing bug
 // as accounts/positions/transactions, fixed the same way (convert each to EUR before adding).
-function totalBrokerCash() { return data.brokers.reduce((s, b) => s + toEUR(b.cashBalance || 0, b.cashCurrency), 0); }
+function totalBrokerCash() { return data.brokers.reduce((s, b) => s + (brokerCashCountedInBank(b) ? 0 : toEUR(brokerCash(b), brokerCashCurrency(b))), 0); }
+/* ---- A bank account and a broker with the same name are one pot of cash ----
+   (e.g. Trade Republic, which is both.) The bank account's balance — not its pockets — IS that
+   broker's cash: both pages read the same number, changing either one changes it, and the
+   Accounts page wins if they ever disagreed. It counts once in net worth: under Bank when the
+   account is included in totals, otherwise under the broker. Names match like transaction
+   names do (case, accents, spaces and punctuation ignored). */
+function linkedAccountForBroker(b) {
+  const k = b && txNameKey(b.name);
+  return k ? data.accounts.find(a => txNameKey(a.name) === k) || null : null;
+}
+function linkedBrokerForAccount(a) {
+  const k = a && txNameKey(a.name);
+  return k ? data.brokers.find(b => txNameKey(b.name) === k) || null : null;
+}
+function brokerCash(b) { const a = linkedAccountForBroker(b); return a ? (+a.balance || 0) : (+b.cashBalance || 0); }
+function brokerCashCurrency(b) { const a = linkedAccountForBroker(b); return a ? a.currency : (b.cashCurrency || 'EUR'); }
+function brokerCashCountedInBank(b) { const a = linkedAccountForBroker(b); return !!(a && a.visibleInTotals); }
+function setBrokerCash(b, v) {
+  const a = linkedAccountForBroker(b);
+  if (a) a.balance = v;
+  b.cashBalance = v;
+}
+/* Keeps the stored broker cash identical to its account's balance, so backups and exports
+   show the same number the app does. Run on every save. */
+function mirrorLinkedBrokerCash() {
+  (data.brokers || []).forEach(b => {
+    const a = linkedAccountForBroker(b);
+    if (a) { b.cashBalance = +a.balance || 0; b.cashCurrency = a.currency; }
+  });
+}
 function investedTotal() { return allInvestmentPositions().reduce((s, p) => s + positionCost(p), 0); }
 // Total value includes uninvested broker/exchange cash (it's real money sitting there); P&L
 // doesn't, since cash has no cost basis — including it there would inflate P&L by the balance.
@@ -1398,7 +1429,8 @@ function positionsByBroker(brokerId) {
 }
 function brokerValue(brokerId) {
   const b = brokerById(brokerId) || {};
-  const cash = toEUR(b.cashBalance || 0, b.cashCurrency);
+  // Cash already counted under Bank isn't repeated in investment totals.
+  const cash = b.id && !brokerCashCountedInBank(b) ? toEUR(brokerCash(b), brokerCashCurrency(b)) : 0;
   return positionsByBroker(brokerId).reduce((s, p) => s + positionValue(p), 0) + cash;
 }
 function positionsByAssetType(type) { return allInvestmentPositions().filter(p => p.assetType === type); }
@@ -2249,6 +2281,7 @@ window.__modalRenderers.account = function (payload) {
         <label class="field"><span class="label-text">Current balance</span><input id="af-balance" type="number" step="0.01" value="${acc ? acc.balance : ''}"></label>
         <label class="field"><span class="label-text">Currency</span><select id="af-currency">${CURRENCIES.map(c => `<option ${acc && acc.currency === c ? 'selected' : (!acc && c === 'EUR' ? 'selected' : '')}>${c}</option>`).join('')}</select></label>
       </div>
+      ${acc && linkedBrokerForAccount(acc) ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">🔗 This balance is also the cash at your <strong>${escHtml(linkedBrokerForAccount(acc).name)}</strong> broker (Investments) — they always stay the same.</div>` : ''}
       <label class="field"><span class="label-text">Description / note</span><input id="af-desc" value="${escHtml(acc ? acc.description || '' : '')}"></label>
       <label class="field"><span class="label-text">Logo / image URL</span>
         <div style="display:flex;gap:6px;align-items:center;"><input id="af-logo" style="flex:1;" value="${escHtml(acc ? (acc.logoKind === 'image' ? acc.logo : '') : '')}" placeholder="https://…">${logoPickerButtonHtml('af-logo')}</div>
@@ -2805,7 +2838,7 @@ function transferEndpoint(ref) {
   }
   if (ep.kind === 'brk') {
     const b = brokerById(ep.brokerId);
-    return b ? { label: `${b.name} (cash)`, ccy: b.cashCurrency || 'EUR', floor: true, get: () => b.cashBalance || 0, add: d => { b.cashBalance = round2((b.cashBalance || 0) + d); } } : null;
+    return b ? { label: `${b.name} (cash)`, ccy: brokerCashCurrency(b), floor: true, get: () => brokerCash(b), add: d => { setBrokerCash(b, round2(brokerCash(b) + d)); } } : null;
   }
   if (ep.kind === 'cx') {
     const name = ep.exchange;
@@ -3354,8 +3387,8 @@ function brokersCardHtml(opts) {
   const rows = data.brokers.map(b => {
     const positions = (assetTypes ? positionsByBroker(b.id).filter(p => assetTypes.includes(p.assetType)) : positionsByBroker(b.id))
       .slice().sort((a, b2) => positionValue(b2) - positionValue(a));
-    const hasCash = showCash && b.cashBalance > 0;
-    const val = positions.reduce((s, p) => s + positionValue(p), 0) + (hasCash ? toEUR(b.cashBalance || 0, b.cashCurrency) : 0);
+    const hasCash = showCash && brokerCash(b) > 0;
+    const val = positions.reduce((s, p) => s + positionValue(p), 0) + (hasCash ? toEUR(brokerCash(b), brokerCashCurrency(b)) : 0);
     return { b, positions, hasCash, val };
   }).filter(r => r.positions.length || r.hasCash).sort((a, b) => b.val - a.val);
   if (!rows.length && !showAddBroker) return '';
@@ -3373,7 +3406,7 @@ function brokersCardHtml(opts) {
               <div style="display:flex;align-items:center;gap:10px;">${logoImg(b.logo, 30)}<div>
                 <div style="font-weight:600;font-size:13.5px;">${escHtml(b.name)}</div>
                 <div style="font-size:11.5px;opacity:.55;">
-                  ${positions.length} asset${positions.length !== 1 ? 's' : ''}${hasCash ? ` · ${fmtMoney(b.cashBalance, b.cashCurrency)} cash` : ''}
+                  ${positions.length} asset${positions.length !== 1 ? 's' : ''}${hasCash ? ` · ${fmtMoney(brokerCash(b), brokerCashCurrency(b))} cash${linkedAccountForBroker(b) ? ' 🔗' : ''}` : ''}
                   ${hasCash && b.cashInterestBearing ? `<span class="badge" style="background:rgba(34,181,115,0.18);color:var(--positive);margin-left:4px;">${b.cashInterestRate}% APY</span>` : ''}
                 </div>
               </div></div>
@@ -3386,7 +3419,7 @@ function brokersCardHtml(opts) {
             </div>
             ${expanded ? `
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">
-                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">💶 Cash</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(b.cashBalance, b.cashCurrency)}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" onclick="openBrokerForm('${b.id}')">✎</button>` : ''}</div></div></div>` : ''}
+                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div><div style="font-weight:600;font-size:13px;">💶 Cash</div>${linkedAccountForBroker(b) ? `<div style="font-size:11px;opacity:.55;">🔗 Same as your ${escHtml(linkedAccountForBroker(b).name)} bank account</div>` : ''}</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(brokerCash(b), brokerCashCurrency(b))}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" onclick="openBrokerForm('${b.id}')">✎</button>` : ''}</div></div></div>` : ''}
                 <div class="stack-gap-8">
                   ${positions.map(p => positionRowHtml(p)).join('') || '<div style="opacity:.5;font-size:13px;">No positions here yet.</div>'}
                 </div>
@@ -4249,6 +4282,7 @@ function saveCryptoAssetForm() {
 function openBrokerForm(id) { ui.modal = { type: 'broker', payload: { id: id || null } }; render(); }
 window.__modalRenderers.broker = function (payload) {
   const b = payload.id ? brokerById(payload.id) : null;
+  const linkedAcc = b ? linkedAccountForBroker(b) : null;
   const interestOn = b ? b.cashInterestBearing : false;
   return `
     <div class="modal-head"><div class="modal-title">${b ? 'Edit broker' : 'Add broker'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
@@ -4260,9 +4294,10 @@ window.__modalRenderers.broker = function (payload) {
       </label>
       ${b && b.logo ? `<div style="display:flex;align-items:center;gap:8px;">${logoImg(b.logo, 32)}<span style="font-size:12px;opacity:.6;">Current logo</span></div>` : ''}
       <div class="form-grid">
-        <label class="field"><span class="label-text">Cash held here</span><input id="bf-cash" type="number" step="0.01" value="${b ? b.cashBalance : ''}" placeholder="0"></label>
-        <label class="field"><span class="label-text">Currency</span><select id="bf-cash-currency">${CURRENCIES.map(c => `<option ${(b ? b.cashCurrency : 'EUR') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+        <label class="field"><span class="label-text">Cash held here</span><input id="bf-cash" type="number" step="0.01" value="${b ? brokerCash(b) : ''}" placeholder="0"></label>
+        <label class="field"><span class="label-text">Currency</span><select id="bf-cash-currency" ${linkedAcc ? 'disabled' : ''}>${CURRENCIES.map(c => `<option ${(b ? brokerCashCurrency(b) : 'EUR') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       </div>
+      ${linkedAcc ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">🔗 Same cash as your <strong>${escHtml(linkedAcc.name)}</strong> bank account — changing it here changes the account's balance too.</div>` : `<div style="font-size:12px;opacity:.55;margin-top:-4px;">Tip: give it the same name as one of your bank accounts and both will always share one cash balance.</div>`}
       <div class="row-flex">
         <span class="label-text" style="font-size:13px;">This cash earns interest</span>
         <div class="toggle ${interestOn ? 'on' : ''}" id="bf-cash-interest-on" onclick="this.classList.toggle('on'); document.getElementById('bf-cash-rate').disabled = !this.classList.contains('on');"></div>
@@ -4278,16 +4313,20 @@ function saveBrokerForm(id) {
   const name = document.getElementById('bf-name').value.trim();
   if (!name) return;
   const logo = document.getElementById('bf-logo').value.trim();
-  const cashBalance = parseFloat(document.getElementById('bf-cash').value) || 0;
+  const cashRaw = document.getElementById('bf-cash').value.trim();
+  const cashBalance = parseFloat(cashRaw) || 0;
   const cashCurrency = document.getElementById('bf-cash-currency').value;
   const cashInterestBearing = document.getElementById('bf-cash-interest-on').classList.contains('on');
   const cashInterestRate = cashInterestBearing ? (parseFloat(document.getElementById('bf-cash-rate').value) || 0) : null;
-  const fields = { name, logo, cashBalance, cashCurrency, cashInterestBearing, cashInterestRate };
-  if (id) {
-    Object.assign(brokerById(id), fields);
-  } else {
-    data.brokers.push({ id: uid('brk'), ...fields, logo: fields.logo || builtinLogoFor(name) });
-  }
+  const fields = { name, logo, cashCurrency, cashInterestBearing, cashInterestRate };
+  let b = id ? brokerById(id) : null;
+  const cashBefore = b ? brokerCash(b) : null;
+  if (b) Object.assign(b, fields);
+  else { b = { id: uid('brk'), ...fields, cashBalance: 0, logo: fields.logo || builtinLogoFor(name) }; data.brokers.push(b); }
+  // Linked to a bank account (same name): an empty or untouched cash field never overwrites the
+  // account's balance — only a cash amount you actually typed here changes it.
+  if (!linkedAccountForBroker(b)) b.cashBalance = cashBalance;
+  else if (cashRaw !== '' && cashBalance !== cashBefore) setBrokerCash(b, cashBalance);
   save(); closeModal();
 }
 
