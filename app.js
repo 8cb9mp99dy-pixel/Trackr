@@ -373,6 +373,8 @@ function defaultData() {
     // equivalent of a broker's cashBalance, kept separate since exchanges are free-text names,
     // not data.brokers records.
     cryptoExchangeCash: [],
+    // Bank loans invested in the markets — see loan.js (Investments → Loan).
+    loans: [],
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
     // (today's entry is updated in place every time something changes; past days are frozen).
     // Starts empty — no fabricated history — and grows for real as you use the app.
@@ -1086,6 +1088,7 @@ async function save(opts) {
 function recordHistorySnapshot() {
   if (!data.history) data.history = [];
   const today = todayYmd();
+  if (typeof recordLoanSnapshots === 'function') recordLoanSnapshots(today);
   const netWorth = netWorthTotal();
   const pv = portfolioValue();
   const last = data.history[data.history.length - 1];
@@ -1217,40 +1220,78 @@ function assetPriceIsStale(asset) {
    during the passive background refresh so it doesn't get silently clobbered — only an
    explicit forced refresh (the ↻ button, or clearing the override) touches it, matching how
    crypto's live-price refresh already works. */
+/* Live prices for Stocks/ETFs/Gold/… — two sources, tried in this order:
+   1. By ISIN, from the Lang & Schwarz Exchange (where Trade Republic trades), in EUR. Browsers
+      aren't allowed to ask the exchange directly, so your own Supabase database asks it for the
+      app (get_isin_quotes in SUPABASE_SETUP_SQL) — needs sync to be connected and that function
+      to be installed once.
+   2. By ticker, from Twelve Data, if you've saved a Twelve Data key.
+   Never invents a price: anything neither source returns keeps its last price (from your last
+   import/screenshot, or typed by hand). A manually-overridden price is only replaced by an
+   explicit refresh (the ↻ button), same as crypto. */
+async function fetchIsinQuotes(isins) {
+  const cfg = loadSupabaseSyncConfig();
+  if (!cfg || !isins.length) { ui.isinQuoteStatus = cfg ? ui.isinQuoteStatus : 'nosync'; return null; }
+  try {
+    const out = await supabaseRpc('get_isin_quotes', { secret: cfg.secret, isins });
+    ui.isinQuoteStatus = 'ok';
+    return out || {};
+  } catch (e) {
+    ui.isinQuoteStatus = e && e.status === 404 ? 'missing' : 'error';
+    console.error('Live ISIN prices unavailable, keeping last known prices', e);
+    return null;
+  }
+}
 async function fetchAssetPrices(force) {
-  const apiKey = data.settings.twelveDataApiKey;
-  if (!apiKey) return false;
   const toFetch = data.assets.filter(a => force || (a.manualPrice == null && assetPriceIsStale(a)));
-  if (!toFetch.length) return false;
+  const apiKey = data.settings.twelveDataApiKey;
+  const withIsin = toFetch.filter(a => /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(String(a.isin || '').toUpperCase()));
+  if (!toFetch.length || (!withIsin.length && !apiKey)) return false;
   ui.assetPriceFetching = true;
   ui.assetPriceFetchError = false;
-  if (ui.page === 'investments') render();
+  if (ui.page === 'investments' || ui.page === 'manual-prices') render();
+  const done = new Set();
+  const setPrice = (a, price, source) => {
+    a.currentPrice = price;
+    a.manualPrice = null; // a refresh always shows the live price, not a stale manual one
+    a.priceUpdatedAt = new Date().toISOString();
+    a.priceSource = source;
+    done.add(a.id);
+  };
   try {
-    const symbols = Array.from(new Set(toFetch.map(a => a.ticker)));
-    const res = await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${encodeURIComponent(apiKey)}`);
-    if (!res.ok) throw new Error('bad response');
-    const json = await res.json();
-    let any = false;
-    toFetch.forEach(a => {
-      const entry = symbols.length === 1 ? json : json[a.ticker];
-      const priceNum = entry && parseFloat(entry.price);
-      if (entry && !isNaN(priceNum)) {
-        a.currentPrice = priceNum;
-        a.manualPrice = null; // a refresh always shows the live price, not a stale manual one
-        a.priceUpdatedAt = new Date().toISOString();
-        any = true;
-      }
-    });
+    if (withIsin.length) {
+      const quotes = await fetchIsinQuotes(Array.from(new Set(withIsin.map(a => a.isin.toUpperCase()))));
+      if (quotes) withIsin.forEach(a => {
+        const q = quotes[a.isin.toUpperCase()];
+        const p = q && parseFloat(q.price);
+        if (p > 0) setPrice(a, convertCurrency(p, q.currency || 'EUR', a.priceCurrency || 'EUR'), q.venue || 'Lang & Schwarz');
+      });
+    }
+    const rest = toFetch.filter(a => !done.has(a.id) && a.ticker);
+    if (apiKey && rest.length) {
+      try {
+        const symbols = Array.from(new Set(rest.map(a => a.ticker)));
+        const res = await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${encodeURIComponent(apiKey)}`);
+        if (!res.ok) throw new Error('bad response');
+        const json = await res.json();
+        rest.forEach(a => {
+          const entry = symbols.length === 1 ? json : json[a.ticker];
+          const priceNum = entry && parseFloat(entry.price);
+          if (entry && !isNaN(priceNum)) setPrice(a, priceNum, 'Twelve Data');
+        });
+      } catch (e) { console.error('Twelve Data price fetch failed, keeping last known price(s)', e); }
+    }
+    const any = done.size > 0;
     if (any) save({ auto: !force });
-    if (!any) ui.assetPriceFetchError = true;
+    if (!any || done.size < toFetch.length) ui.assetPriceFetchError = !any;
     return any;
   } catch (e) {
-    console.error('Stock/ETF live price fetch failed, keeping last known price(s)', e);
+    console.error('Live price fetch failed, keeping last known price(s)', e);
     ui.assetPriceFetchError = true;
     return false;
   } finally {
     ui.assetPriceFetching = false;
-    if (ui.page === 'investments') render();
+    if (ui.page === 'investments' || ui.page === 'manual-prices') render();
   }
 }
 function clearAssetPriceManual(assetId) {
@@ -1865,6 +1906,7 @@ function renderApp(app) {
     trading: renderTrading,
     settings: renderSettings,
     'manual-prices': renderManualPrices,
+    'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
   };
   const pageHtml = pageRenderers[ui.page] ? pageRenderers[ui.page]() : '';
 
@@ -3514,16 +3556,51 @@ function renderInvestments() {
       </div>
     </div>
 
+    ${investedByTypeCardHtml(allByType)}
+
     <div class="tab-row" style="margin-bottom:20px;">
       <button class="tab-btn ${ui.investmentsTab === 'stocks' ? 'active' : ''}" onclick="setInvestmentsTab('stocks')">Stocks &amp; ETFs</button>
       <button class="tab-btn ${ui.investmentsTab === 'crypto' ? 'active' : ''}" onclick="setInvestmentsTab('crypto')">🪙 Crypto</button>
       <button class="tab-btn ${ui.investmentsTab === 'other' ? 'active' : ''}" onclick="setInvestmentsTab('other')">Other Assets</button>
+      <button class="tab-btn ${ui.investmentsTab === 'loan' ? 'active' : ''}" onclick="setInvestmentsTab('loan')">🏦 Loan</button>
     </div>
 
-    ${ui.investmentsTab === 'other' ? renderOtherAssetsTab() : ui.investmentsTab === 'crypto' ? renderCryptoTab() : renderStocksEtfTab()}
+    ${ui.investmentsTab === 'loan' ? (typeof renderLoanTab === 'function' ? renderLoanTab() : '') : ui.investmentsTab === 'other' ? renderOtherAssetsTab() : ui.investmentsTab === 'crypto' ? renderCryptoTab() : renderStocksEtfTab()}
   </div>`;
 }
 function setInvestmentsTab(t) { ui.investmentsTab = t; render(); }
+/* How much money went into each kind of investment (cost basis), what it's worth now, and the
+   difference — the "where did my money go" view next to the value-based breakdown above. */
+function investedByTypeCardHtml(allByType) {
+  const rows = allByType.map(x => {
+    const invested = x.positions.reduce((s, p) => s + positionCost(p), 0);
+    const value = x.positions.reduce((s, p) => s + positionValue(p), 0);
+    return { type: x.type, invested, value, pl: value - invested };
+  }).filter(r => r.invested > 0 || r.value > 0).sort((a, b) => b.invested - a.invested);
+  if (!rows.length) return '';
+  const tot = rows.reduce((s, r) => ({ invested: s.invested + r.invested, value: s.value + r.value }), { invested: 0, value: 0 });
+  const pct = (pl, inv) => (inv ? ` (${pl >= 0 ? '+' : ''}${(pl / inv * 100).toFixed(1)}%)` : '');
+  return `
+    <div class="card-dark" style="margin-bottom:20px;">
+      <div style="font-weight:700;margin-bottom:12px;">Invested by type</div>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr><th>Type</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value now</th><th class="num">Gain / loss</th></tr></thead>
+          <tbody>
+            ${rows.map(r => `<tr>
+              <td><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${assetTypeColor(r.type)};margin-right:7px;"></span>${escHtml(r.type)}</td>
+              <td class="num">${fmtMoney(r.invested)}</td>
+              <td class="num" style="opacity:.6;">${tot.invested ? (r.invested / tot.invested * 100).toFixed(0) : 0}%</td>
+              <td class="num">${fmtMoney(r.value)}</td>
+              <td class="num ${r.pl >= 0 ? 'positive' : 'negative'}">${r.pl >= 0 ? '+' : ''}${fmtMoney(r.pl)}${pct(r.pl, r.invested)}</td>
+            </tr>`).join('')}
+            <tr style="font-weight:700;"><td>Total</td><td class="num">${fmtMoney(tot.invested)}</td><td class="num" style="opacity:.6;">100%</td><td class="num">${fmtMoney(tot.value)}</td>
+              <td class="num ${tot.value - tot.invested >= 0 ? 'positive' : 'negative'}">${tot.value - tot.invested >= 0 ? '+' : ''}${fmtMoney(tot.value - tot.invested)}${pct(tot.value - tot.invested, tot.invested)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
 
 /* Shared "add position" quick actions — identical on the Stocks & ETFs and Other Assets tabs. */
 /* Same three quick actions on every Investments tab — only the primary action's label/handler
@@ -3534,7 +3611,7 @@ function positionQuickActionsHtml(opts) {
   return `
     <div class="grid-3" style="margin-bottom:22px;">
       <button class="btn primary" onclick="${addAction}">${addLabel}</button>
-      <button class="btn" onclick="alert('Import Excel: choose a .xlsx file exported from your broker (format TBD).')">📄 Import Excel</button>
+      <button class="btn" onclick="goPositionsImport()" title="Update all positions, prices and cash of your brokers from one Excel/CSV file">📄 Import Excel</button>
       <button class="btn" style="background:#F5E7C4;color:#12141C;border-color:#F5E7C4;" onclick="goManualPrices()">📝 Manual Prices</button>
     </div>`;
 }
@@ -3764,6 +3841,7 @@ window.__modalRenderers.position = function (payload) {
         <select id="pf-assettype">${data.categories.asset.map(t => `<option value="${escHtml(t.name)}" ${a.assetType === t.name ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('')}</select>
       </label>
       <label class="field"><span class="label-text">Price currency</span><select id="pf-currency">${CURRENCIES.map(c => `<option ${a.priceCurrency === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+      <label class="field span-2"><span class="label-text">ISIN <span style="opacity:.6;">(for the live price)</span></span><input id="pf-isin" value="${escHtml(a.isin || '')}" placeholder="e.g. IE00B4L5Y983" autocapitalize="characters" spellcheck="false"></label>
       <label class="field span-2"><span class="label-text">Logo URL <span style="opacity:.6;">(optional)</span></span>
         <div style="display:flex;gap:6px;align-items:center;"><input id="pf-logo" style="flex:1;" value="${escHtml(a.logo || '')}" placeholder="https://…">${logoPickerButtonHtml('pf-logo')}</div>
         ${logoPickerPopoverHtml('pf-logo')}
@@ -3866,6 +3944,7 @@ function savePositionForm(id) {
     currentPrice: parseFloat(document.getElementById('pf-current').value),
     manualPrice: manualRaw.trim() === '' ? null : parseFloat(manualRaw),
     logo: document.getElementById('pf-logo').value.trim(),
+    isin: document.getElementById('pf-isin').value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
   });
   if (isNaN(asset.currentPrice)) asset.currentPrice = null;
   save(); closeModal();
@@ -4637,12 +4716,15 @@ function saveTxnForm() {
   const currency = document.getElementById('tn-currency').value;
   const fullName = document.getElementById('tn-fullname').value.trim() || ticker;
   const logoInput = document.getElementById('tn-logo').value.trim();
+  const isinEl = document.getElementById('tn-isin');
+  const isin = isinEl ? isinEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
 
   let asset = data.assets.find(a => a.ticker === ticker && a.assetType === assetType);
   if (!asset) {
-    asset = { id: uid('asset'), ticker, name: fullName, assetType, logo: logoInput, priceCurrency: currency, currentPrice: price, manualPrice: null, priceUpdatedAt: null };
+    asset = { id: uid('asset'), ticker, name: fullName, assetType, isin, logo: logoInput, priceCurrency: currency, currentPrice: price, manualPrice: null, priceUpdatedAt: null };
     data.assets.push(asset);
   } else {
+    if (isin) asset.isin = isin;
     if (logoInput) asset.logo = logoInput;
     if (fullName) asset.name = fullName;
   }
@@ -4664,6 +4746,7 @@ function renderManualPrices() {
       <div><h1 class="page-title">Manual Prices</h1><div class="page-subtitle">Override the live price for any holding</div></div>
       <button class="btn" onclick="goPage('investments')">← Back to Portfolio</button>
     </div>
+    ${livePricesStatusCardHtml()}
     <div class="card-dark">
       <table class="data-table">
         <thead><tr><th>Ticker / Name</th><th class="num">Auto price</th><th class="num">Manual price</th><th></th></tr></thead>
@@ -4684,6 +4767,30 @@ function renderManualPrices() {
       </div>
     </div>
   </div>`;
+}
+/* Where live prices come from, and the one-time step if the ISIN price lookup isn't installed
+   in Supabase yet. Manual prices always keep working either way. */
+function livePricesStatusCardHtml() {
+  const withIsin = data.assets.filter(a => a.isin).length;
+  const st = ui.isinQuoteStatus;
+  const line = !loadSupabaseSyncConfig() ? 'Connect sync first (Settings → Supabase Sync): your Supabase database fetches the prices for the app.'
+    : st === 'ok' ? '✓ Working — prices by ISIN from the Lang & Schwarz Exchange (Trade Republic\'s exchange), in EUR, refreshed every hour.'
+    : st === 'missing' ? 'One-time step: in Supabase → SQL Editor, paste the setup script below and press Run. It adds the price lookup; your data is not touched.'
+    : st === 'error' ? "Couldn't get live prices right now — the last known or manual prices are used. Try ↻ later."
+    : 'Prices by ISIN from the Lang & Schwarz Exchange, in EUR. Press ↻ to check.';
+  return `
+    <div class="card-dark" style="margin-bottom:16px;">
+      <div class="row-flex" style="gap:10px;">
+        <div style="min-width:0;">
+          <div style="font-weight:700;margin-bottom:4px;">Live prices by ISIN</div>
+          <div style="font-size:12.5px;opacity:.7;line-height:1.5;">${escHtml(line)}</div>
+          <div style="font-size:11.5px;opacity:.5;margin-top:4px;">${withIsin} of ${data.assets.length} asset${data.assets.length === 1 ? '' : 's'} have an ISIN. Without one (or if the lookup fails) the price from your last import or the manual price is used.</div>
+        </div>
+        <button class="btn small" onclick="refreshPrices()">${ui.assetPriceFetching ? '…' : '↻'} Refresh</button>
+      </div>
+      ${st === 'missing' ? `<button type="button" class="btn small" style="margin-top:10px;" onclick="toggleSupabaseSetupSql()">${ui.supabaseSetupSqlOpen ? 'Hide' : 'Show'} setup SQL</button>
+        ${ui.supabaseSetupSqlOpen ? `<pre style="font-size:10.5px;background:var(--dark-card-2);padding:10px;border-radius:var(--radius-sm);overflow:auto;margin-top:8px;white-space:pre-wrap;user-select:all;">${escHtml(SUPABASE_SETUP_SQL)}</pre>` : ''}` : ''}
+    </div>`;
 }
 function saveManualPrices() {
   allPriceableHoldings().forEach(h => {
@@ -5554,7 +5661,64 @@ end;
 $$;
 
 grant execute on function get_trackr_data(text) to anon;
-grant execute on function set_trackr_data(text, jsonb, timestamptz) to anon;`;
+grant execute on function set_trackr_data(text, jsonb, timestamptz) to anon;
+
+-- Live prices by ISIN (Lang & Schwarz Exchange, in EUR). Browsers can't ask the exchange
+-- directly, so the database asks it for the app. Only answers a caller that knows a valid
+-- secret, so it can't be used by anyone else. One ISIN failing never blocks the others.
+create extension if not exists http with schema extensions;
+
+create or replace function get_isin_quotes(secret text, isins text[])
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  result jsonb := '{}'::jsonb;
+  code text;
+  found jsonb;
+  chart jsonb;
+  iid text;
+  pts jsonb;
+  last_pt jsonb;
+  price numeric;
+begin
+  if not exists (select 1 from trackr_data where id = encode(digest(secret, 'sha256'), 'hex')) then
+    return result;
+  end if;
+  begin
+    perform http_set_curlopt('CURLOPT_TIMEOUT_MS', '8000');
+  exception when others then null;
+  end;
+  foreach code in array coalesce(isins, '{}'::text[]) loop
+    begin
+      code := upper(trim(code));
+      continue when code !~ '^[A-Z]{2}[A-Z0-9]{9}[0-9]$';
+      select content::jsonb into found
+        from http_get('https://www.ls-tc.de/_rpc/json/.lstc/instrument/search/main?q=' || code || '&localeId=2');
+      iid := found->0->>'instrumentId';
+      continue when iid is null;
+      select content::jsonb into chart
+        from http_get('https://www.ls-tc.de/_rpc/json/instrument/chart/dataForInstrument?instrumentId=' || iid);
+      pts := chart->'series'->'intraday'->'data';
+      last_pt := case when jsonb_typeof(pts) = 'array' and jsonb_array_length(pts) > 0
+                      then pts->(jsonb_array_length(pts) - 1) end;
+      price := coalesce((last_pt->>1)::numeric, (chart->'info'->'plotlines'->0->>'value')::numeric);
+      continue when price is null;
+      result := result || jsonb_build_object(code, jsonb_build_object(
+        'price', price, 'currency', 'EUR', 'venue', 'Lang & Schwarz',
+        'name', found->0->>'displayname',
+        'at', case when last_pt is not null then to_timestamp((last_pt->>0)::numeric / 1000) else now() end));
+    exception when others then
+      null;
+    end;
+  end loop;
+  return result;
+end;
+$$;
+
+grant execute on function get_isin_quotes(text, text[]) to anon;`;
 function toggleSupabaseSetupSql() { ui.supabaseSetupSqlOpen = !ui.supabaseSetupSqlOpen; render(); }
 function toggleSupabaseManualSetup() { ui.supabaseManualOpen = !ui.supabaseManualOpen; render(); }
 /* The setup code is the three connection values (project URL, anon key, secret) packed into one

@@ -27,6 +27,16 @@ just open a file in your browser.
   The in-app "Download template" button builds the same file with *your*
   current categories, accounts and payment methods. Regenerate the shipped copy
   after changing the default categories: `node tools/build-budget-template.js`.
+- `templates/Trackr-positions-template.xlsx` — template for updating your brokers
+  (Investments → Import Excel): one row per position with ISIN, quantity, average buy
+  price and current price, plus a Cash row per broker. The file is the full state of each
+  broker it lists; positions missing from it are shown so you can say "sold" or "keep".
+  Regenerate after changing its columns: `node tools/build-positions-template.js`.
+- `templates/Claude-project-instructions.md` — instructions for a Claude project that fills
+  these files from bank statements and broker screenshots.
+- `loan.js` — Investments → Loan: a bank loan you invested, what you owe and the interest
+  over time, the real and projected value of the positions bought with it, and when they
+  pass what you owe.
 - `templates/Trackr-import-reference-for-Claude.pdf` — give this to another
   Claude chat so it fills the template with exactly the categories,
   sub-categories and values Trackr knows. Regenerate after changing categories
