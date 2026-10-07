@@ -242,7 +242,7 @@ function multiLineChartHtml(series, opts) {
   const y0 = new Date(xMin).getFullYear(), y1 = new Date(xMax).getFullYear();
   for (let y = y0 + 1; y <= y1; y++) { const t = new Date(y, 0, 1).getTime(); if (t > xMin && t < xMax) yearTicks.push({ t, label: String(y) }); }
   // Year labels only away from the first/last labels, at most ~5, so they never collide on a phone.
-  const innerYears = yearTicks.filter(t => fx(t.t) > 0.18 && fx(t.t) < 0.82);
+  const innerYears = yearTicks.filter(t => fx(t.t) > 0.22 && fx(t.t) < 0.78);
   const yearEvery = Math.max(1, Math.ceil(innerYears.length / 5));
   return `
   <div class="lc mlc" style="height:${H}px;">
@@ -296,9 +296,19 @@ const LOAN_COLORS = { value: 'var(--positive)', debt: 'var(--negative)', interes
 const LOAN_SCENARIO_STYLES = [{ color: '#9FE0BD', dash: '2 4' }, { color: '#34C77B', dash: '6 4' }, { color: '#12A05A', dash: '10 4' }, { color: '#0B7A44', dash: '14 5' }];
 const loanScenarioKey = sc => (sc.avg ? 'scavg' : 'sc' + sc.rate);
 const loanScenarioStyle = (sc, i) => (sc.avg ? { color: '#7FB3FF', dash: '1 3' } : LOAN_SCENARIO_STYLES[i % LOAN_SCENARIO_STYLES.length]);
-function toggleLoanSeries(key) { ui.loanHidden = ui.loanHidden || {}; ui.loanHidden[key] = !ui.loanHidden[key]; render(); }
+const LOAN_HIDDEN_BY_DEFAULT = { interest: true, invested: true };
+function loanHiddenSeries() { return Object.assign({}, LOAN_HIDDEN_BY_DEFAULT, ui.loanHidden || {}); }
+function toggleLoanSeries(key) { const h = loanHiddenSeries(); ui.loanHidden = Object.assign(ui.loanHidden || {}, { [key]: !h[key] }); render(); }
+/* The scenario on screen: the one you picked, else the middle one (5 % by default). */
+function loanSelectedScenario(M) {
+  const list = M.scenarios;
+  return list.find(sc => loanScenarioKey(sc) === ui.loanScenario) || list.filter(sc => !sc.avg)[Math.floor((list.filter(sc => !sc.avg).length - 1) / 2)] || list[0];
+}
+function pickLoanScenario(key) { ui.loanScenario = key; ui.loanAllScenarios = key === 'all'; render(); }
 function loanChartHtml(L, M) {
-  const hidden = ui.loanHidden || {};
+  const hidden = loanHiddenSeries();
+  const selected = loanSelectedScenario(M);
+  M.scenarios.forEach(sc => { hidden[loanScenarioKey(sc)] = !ui.loanAllScenarios && sc !== selected; });
   const pt = (date, y) => ({ x: ymdMs(date), y });
   const sched = M.sched;
   const series = [];
@@ -331,10 +341,12 @@ function loanChartHtml(L, M) {
     const swatch = s.dash ? `background:repeating-linear-gradient(90deg,${s.color} 0 4px,transparent 4px 7px);` : `background:${s.color};`;
     return `<button class="mlc-chip ${s.hidden ? 'off' : ''}" onclick="toggleLoanSeries('${s.key}')"><span style="${swatch}"></span>${escHtml(s.label)}</button>`;
   };
+  const scenarioChips = M.scenarios.map(sc => `<span class="chip" style="cursor:pointer;${!ui.loanAllScenarios && sc === selected ? 'background:var(--positive);border-color:var(--positive);color:#fff;' : ''}" onclick="pickLoanScenario('${loanScenarioKey(sc)}')">${sc.avg ? `Your 5-yr avg (${sc.rate}%)` : sc.rate + '% a year'}</span>`).join('');
   return `
-    <div class="mlc-legend">${series.map(chip).join('')}</div>
+    <div class="loan-scenario-pick"><span>If the markets return</span><div class="chip-scroll" style="margin:0;">${scenarioChips}<span class="chip" style="cursor:pointer;${ui.loanAllScenarios ? 'background:var(--positive);border-color:var(--positive);color:#fff;' : ''}" onclick="pickLoanScenario('all')">Show all</span></div></div>
+    <div class="mlc-legend">${series.filter(x => !/^sc/.test(x.key) || !x.hidden).map(chip).join('')}</div>
     ${multiLineChartHtml(series, { xMin: ymdMs(start), xMax: ymdMs(end), markers, dots, h: 280, empty: 'Add the loan details below to see the chart.' })}
-    <div style="font-size:11.5px;opacity:.5;margin-top:8px;line-height:1.5;">Hover or touch the chart to see every line at a date. Dots are the real figures from your bank statements. Tap a label above to hide or show a line. Projections take each loan payment out of the investments.</div>`;
+    <div style="font-size:11.5px;opacity:.5;margin-top:8px;line-height:1.5;">Red = what you owe the bank. Green = what your investments are worth (solid: real, dotted: projection). Where green passes above red, your investments could repay the whole loan. Touch the chart to read the values; tap a label to show or hide a line.</div>`;
 }
 function loanKpi(label, value, sub, cls) {
   return `<div class="card-nested"><div class="eyebrow">${label}</div><div style="font-size:18px;font-weight:700;" class="${cls || ''}">${value}</div>${sub ? `<div style="font-size:11.5px;opacity:.6;margin-top:3px;line-height:1.45;">${sub}</div>` : ''}</div>`;
@@ -505,6 +517,66 @@ function deleteLoanStatement(loanId, id) {
   L.statements = (L.statements || []).filter(s => s.id !== id);
   save(); render();
 }
+/* ---------- Plain-language parts ---------- */
+function toggleLoanFold(key) { ui.loanOpen = ui.loanOpen || {}; ui.loanOpen[key] = !ui.loanOpen[key]; render(); }
+function loanFold(key, title, summary, inner) {
+  const open = !!(ui.loanOpen || {})[key];
+  return `
+    <div class="card-dark loan-fold" style="margin-bottom:14px;">
+      <div class="row-flex" style="cursor:pointer;gap:10px;" onclick="toggleLoanFold('${key}')">
+        <div style="min-width:0;"><div style="font-weight:700;">${title}</div>${summary ? `<div style="font-size:12px;opacity:.6;margin-top:2px;">${summary}</div>` : ''}</div>
+        <span style="opacity:.7;font-size:13px;white-space:nowrap;">${open ? 'Hide ▴' : 'Show ▾'}</span>
+      </div>
+      ${open ? `<div class="loan-fold-body">${inner()}</div>` : ''}
+    </div>`;
+}
+function loanSummaryHtml(L, M) {
+  const sc = loanSelectedScenario(M), s = M.sched;
+  const diff = M.valueNow - M.debtNow;
+  const lines = [];
+  lines.push(`You borrowed <strong>${fmtMoney(loanNum(L.principal, 0))}</strong>${validYmd(L.startDate) ? ` on ${fmtDay(L.startDate)}` : ''} and invested <strong>${fmtMoney(M.invested)}</strong>${loanNum(L.spent, 0) ? ` (${fmtMoney(loanNum(L.spent, 0))} ${L.spentAs === 'cash' ? 'kept as cash' : 'kept aside for holidays'})` : ''}.`);
+  lines.push(`Today you owe <strong class="negative">${fmtMoney(M.debtNow)}</strong> (${fmtMoney(M.interestNow)} of interest so far), and your investments are worth <strong class="positive">${fmtMoney(M.valueNow - M.cash)}</strong>${M.estimated ? ' (estimated — tick your positions below)' : ''}.`);
+  lines.push(diff >= 0 ? `👉 Your investments are already <strong class="positive">${fmtMoney(diff)} above</strong> what you owe.` : `👉 They are <strong class="negative">${fmtMoney(-diff)} below</strong> what you owe for now.`);
+  if (s && sc) {
+    lines.push(sc.breakEven ? (sc.breakEven.already ? `If the markets return <strong>${sc.rate}% a year</strong>, you stay above the line.` : `If the markets return <strong>${sc.rate}% a year</strong>, your investments pass what you owe around <strong class="positive">${fmtMonth(sc.breakEven.date)}</strong>.`) : `If the markets return <strong>${sc.rate}% a year</strong>, your investments don't catch up with the loan before it ends.`);
+    lines.push(sc.valueAtEnd >= 0 ? `After paying back everything (${fmtMonth(s.endDate)}), you would keep about <strong class="positive">${fmtMoney(sc.valueAtEnd)}</strong>.` : `To pay back everything by ${fmtMonth(s.endDate)}, you would need to add about <strong class="negative">${fmtMoney(-sc.valueAtEnd)}</strong> of your own money.`);
+  }
+  return `<div class="loan-summary">${lines.map(l => `<p>${l}</p>`).join('')}</div>`;
+}
+function loanTimelineHtml(L, M) {
+  const s = M.sched;
+  if (!s) return '';
+  const steps = [
+    { date: L.startDate, title: 'Borrowed', text: fmtMoney(loanNum(L.principal, 0)) },
+    validYmd(L.investDate) ? { date: L.investDate, title: 'Invested', text: fmtMoney(M.invested) } : null,
+    s.hasDeferral ? { date: M.today, title: 'Now: nothing to pay', text: `interest is added to the loan ${({ semiannual: 'every 6 months', annual: 'every year', quarterly: 'every 3 months', monthly: 'every month', end: 'at the end' })[L.capitalization] || 'every 6 months'}`, now: true } : null,
+    s.hasDeferral ? { date: s.deferralEnd, title: 'Consolidation', text: `you owe about ${fmtMoney(s.atConsolidation)}` } : null,
+    s.N ? { date: s.firstPayment, title: `${s.N} monthly payments`, text: `${fmtMoney(s.monthlyPayment)} a month` } : null,
+    { date: s.endDate, title: 'Paid off', text: `${fmtMoney(s.totalInterest)} of interest in total` },
+  ].filter(Boolean);
+  return `<div class="loan-timeline">${steps.map(x => `<div class="loan-step ${x.now ? 'now' : ''}"><div class="loan-step-dot"></div><div class="loan-step-date">${x.now ? 'Today' : fmtMonth(x.date)}</div><div class="loan-step-title">${escHtml(x.title)}</div><div class="loan-step-text">${escHtml(x.text)}</div></div>`).join('')}</div>`;
+}
+function loanKeyFiguresHtml(L, M) {
+  const sc = loanSelectedScenario(M);
+  const diff = M.valueNow - M.debtNow;
+  return `
+    <div class="loan-kpis">
+      ${loanKpi('You owe today', fmtMoney(M.debtNow), 'capital + interest so far', 'negative')}
+      ${loanKpi('Your investments', fmtMoney(M.valueNow - M.cash), M.estimated ? 'estimated' : 'worth today', 'positive')}
+      ${loanKpi('Difference', `${diff >= 0 ? '+' : '−'}${fmtMoney(Math.abs(diff))}`, diff >= 0 ? 'above the line' : 'still to make up', diff >= 0 ? 'positive' : 'negative')}
+      ${loanKpi('Above the line from', sc && sc.breakEven ? (sc.breakEven.already ? 'Already' : fmtMonth(sc.breakEven.date)) : '—', sc ? `if markets return ${sc.rate}%/yr` : '', 'positive')}
+    </div>`;
+}
+function loanGlossaryHtml() {
+  return `<ul class="loan-glossary">
+    <li><strong>Deferral</strong> — while you study you pay nothing; the interest is added to what you owe instead.</li>
+    <li><strong>Interest added every 6 months</strong> — twice a year the interest of the last months becomes part of the loan, so it starts earning interest too.</li>
+    <li><strong>Consolidation</strong> — the end of the deferral: the amount owed is fixed and the monthly payments start.</li>
+    <li><strong>The rate you pay</strong> — the loan's rate is 2.77%, but you only bear part of it (e.g. 1.80%); the debt grows at your part.</li>
+    <li><strong>The line</strong> — the red line: what you'd need to repay everything today. Investments above it = you could repay the loan and keep the rest.</li>
+    <li><strong>Scenarios</strong> — nobody knows future returns, so the projection is shown for a few yearly returns; pick one above the chart. Each loan payment is taken out of the investments in the projection.</li>
+  </ul>`;
+}
 function renderLoanTab() {
   const list = loanList();
   if (!list.length) return `
@@ -513,18 +585,25 @@ function renderLoanTab() {
       <button class="btn primary" style="margin-top:14px;" onclick="addLoan()">+ Add my loan</button></div></div>`;
   const L = currentLoan();
   const M = loanModel(L);
+  const nSt = (L.statements || []).length, nPos = M.port.rows.length;
   return `
     ${list.length > 1 ? `<div class="chip-scroll" style="margin-bottom:14px;">${list.map(l => `<span class="chip" style="cursor:pointer;${l.id === L.id ? 'background:var(--light-accent-1);color:#fff;border-color:var(--light-accent-1);' : ''}" onclick="ui.loanId='${l.id}';render();">${escHtml(l.name || 'Loan')}</span>`).join('')}</div>` : ''}
-    <div class="card-dark" style="margin-bottom:20px;">
-      <div class="row-flex" style="margin-bottom:6px;">
-        <div><div style="font-weight:700;font-size:16px;">${escHtml(L.name || 'Loan')}</div>
-          <div style="font-size:12px;opacity:.6;">${fmtMoney(loanNum(L.principal, 0))} at ${loanNum(L.rate, 0)}%${loanNum(L.myRate, null) != null ? ` (you pay ${loanNum(L.myRate, 0)}%)` : ''} · ${fmtMoney(M.invested)} invested${validYmd(L.investDate) ? ` on ${fmtDay(L.investDate)}` : ''}${loanNum(L.spent, 0) ? ` · ${fmtMoney(loanNum(L.spent, 0))} set aside` : ''}</div></div>
+    <div class="card-dark" style="margin-bottom:14px;">
+      <div class="row-flex" style="margin-bottom:10px;">
+        <div style="font-weight:700;font-size:16px;">${escHtml(L.name || 'Loan')} — in short</div>
         <button class="btn small" onclick="addLoan()">+ Another loan</button>
       </div>
+      ${loanSummaryHtml(L, M)}
+      ${loanTimelineHtml(L, M)}
+    </div>
+    ${loanKeyFiguresHtml(L, M)}
+    <div class="card-dark" style="margin-bottom:14px;">
+      <div style="font-weight:700;margin-bottom:6px;">Will your investments beat the loan?</div>
       ${loanChartHtml(L, M)}
     </div>
-    ${loanKpisHtml(L, M)}
-    ${loanHoldingsHtml(L, M)}
-    ${loanStatementsHtml(L)}
-    ${loanSettingsHtml(L)}`;
+    ${loanFold('more', 'More figures', 'interest over the whole loan, monthly payment, what\'s left at the end for every scenario', () => loanKpisHtml(L, M))}
+    ${loanFold('positions', 'Positions bought with the loan', nPos ? `${nPos} position${nPos === 1 ? '' : 's'} · ${fmtMoney(M.port.value)}` : 'tick the positions paid with the loan', () => loanHoldingsHtml(L, M))}
+    ${loanFold('statements', 'Bank statements', nSt ? `${nSt} statement${nSt === 1 ? '' : 's'} — the real figures from your bank` : 'add the figures from your bank\'s screenshots', () => loanStatementsHtml(L))}
+    ${loanFold('details', 'Loan details', `${loanNum(L.rate, 0)}% (you pay ${loanNum(L.myRate, loanNum(L.rate, 0))}%) · tap to edit dates, rates and scenarios`, () => loanSettingsHtml(L))}
+    ${loanFold('help', 'How to read this page', 'deferral, consolidation, the line, scenarios — in plain words', loanGlossaryHtml)}`;
 }

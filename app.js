@@ -677,14 +677,24 @@ function syncUpdateConfig(patch) {
 function syncUserIsEditing() {
   if (ui.modal) return true;
   const el = document.activeElement;
-  return !!(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+  if (!el || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) return false;
+  // A ticked checkbox or a pressed button keeps the focus without anything being typed — that
+  // used to hold back the other device's changes for as long as you stayed on the page.
+  return !(el.tagName === 'INPUT' && /^(checkbox|radio|button|submit|range|file|color)$/i.test(el.type || ''));
+}
+/* Waiting for you to finish typing, but never forever: after 90 s the other device's changes
+   come in anyway. */
+function syncShouldWaitForUser() {
+  if (!syncUserIsEditing()) { syncState.waitingSince = null; return false; }
+  if (!syncState.waitingSince) syncState.waitingSince = Date.now();
+  return Date.now() - syncState.waitingSince < 90 * 1000;
 }
 function syncAdoptRemote(row) {
   try { localStorage.setItem(STORAGE_KEY + '-backup', JSON.stringify(data)); } catch (e) {}
   data = row.data;
   try { migrateCryptoModel(); } catch (e) { console.error('Migration failed', e); }
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
-  syncUpdateConfig({ lastSeenUpdatedAt: row.updated_at, pending: false });
+  syncUpdateConfig({ lastSeenUpdatedAt: row.updated_at, pending: false, lastReceivedAt: new Date().toISOString() });
   applyTheme();
   render();
 }
@@ -698,7 +708,7 @@ async function syncPush(expectedUpdatedAt) {
     syncDiverged({ data: result.server_data, updated_at: result.server_updated_at });
     return;
   }
-  syncUpdateConfig({ lastSeenUpdatedAt: result.updated_at, pending: syncEditSeq !== seq });
+  syncUpdateConfig({ lastSeenUpdatedAt: result.updated_at, pending: syncEditSeq !== seq, lastSentAt: new Date().toISOString() });
   if (syncEditSeq !== seq) syncRunAgain = true;
 }
 /* The cloud changed while this device also has (or may have) its own unsent edits. */
@@ -724,7 +734,7 @@ async function syncOnce() {
   if (!row) { await syncPush(null); return; } // nothing in the cloud yet: this device seeds it
   const remoteChanged = row.updated_at !== base;
   if (cfg.pending === false) {
-    if (remoteChanged && !syncUserIsEditing()) syncAdoptRemote(row);
+    if (remoteChanged && !syncShouldWaitForUser()) { syncState.waitingSince = null; syncAdoptRemote(row); }
     return;
   }
   if (cfg.pending === undefined) {
@@ -1960,6 +1970,7 @@ function renderApp(app) {
         </div>
       </div>
       <div class="main">
+        ${syncGlobalBannerHtml()}
         ${pageHtml}
       </div>
     </div>
@@ -2494,6 +2505,7 @@ function renderBudget() {
   const tabs = [
     { id: 'transactions', label: '🧾 Transactions' },
     { id: 'recurring', label: '🔄 Recurring' },
+    { id: 'totals', label: '📊 Totals' },
     { id: 'categories', label: '🏷️ Categories' },
     { id: 'import', label: '⬆ Import' },
   ];
@@ -2507,6 +2519,7 @@ function renderBudget() {
     </div>
     ${ui.budgetTab === 'transactions' ? budgetTransactionsTab() : ''}
     ${ui.budgetTab === 'recurring' ? budgetRecurringTab() : ''}
+    ${ui.budgetTab === 'totals' ? budgetTotalsTab() : ''}
     ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>` : ''}
     ${ui.budgetTab === 'import' ? (typeof budgetImportTab === 'function' ? budgetImportTab() : '') : ''}
   </div>`;
@@ -2572,6 +2585,89 @@ function budgetTransactionsTab() {
     </div>`;
 }
 
+/* ---- Budget → Totals: how much went to / came from each category ----
+   For the month on screen, the last 3 months, this year or everything, with each category's
+   sub-categories one tap away. Transfers are left out (they move your own money). */
+function budgetTotalsRange() {
+  const p = ui.budgetTotalsPeriod || 'month';
+  const m = ui.budgetMonth, today = todayYmd();
+  const ym = (y, mo) => `${y}-${String(mo + 1).padStart(2, '0')}`;
+  if (p === 'month') { const k = ym(m.getFullYear(), m.getMonth()); return { from: k + '-01', to: k + '-31', label: monthLabel(m), months: 1 }; }
+  if (p === '3m') { const s0 = new Date(m.getFullYear(), m.getMonth() - 2, 1); return { from: ym(s0.getFullYear(), s0.getMonth()) + '-01', to: ym(m.getFullYear(), m.getMonth()) + '-31', label: `${s0.toLocaleDateString('en-GB', { month: 'short' })} – ${m.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}`, months: 3 }; }
+  if (p === 'year') { const y = m.getFullYear(); return { from: `${y}-01-01`, to: `${y}-12-31`, label: String(y), months: y === appToday().getFullYear() ? appToday().getMonth() + 1 : 12 }; }
+  const dates = data.budgetTransactions.map(t => t.date).filter(Boolean).sort();
+  const first = dates[0] || today;
+  const months = Math.max(1, (appToday().getFullYear() - ymdToDate(first).getFullYear()) * 12 + appToday().getMonth() - ymdToDate(first).getMonth() + 1);
+  return { from: '0000-01-01', to: '9999-12-31', label: 'All time', months };
+}
+function budgetTotalsData(kind) {
+  const r = budgetTotalsRange(), today = todayYmd();
+  const txs = data.budgetTransactions.filter(t => t.type === kind && t.date >= r.from && t.date <= r.to && !(t.nature === 'Fixed' && t.date > today));
+  const cats = {};
+  txs.forEach(t => {
+    const cat = categoryById(kind, t.categoryId);
+    const key = cat ? cat.id : '_none';
+    const c = cats[key] || (cats[key] = { id: key, name: cat ? cat.name : 'Uncategorized', icon: cat ? cat.icon : '❓', total: 0, count: 0, subs: {} });
+    const eur = toEUR(t.amount, t.currency);
+    c.total += eur; c.count++;
+    const sub = cat ? (cat.subcategories || []).find(x => x.id === t.subCategoryId) : null;
+    const sk = sub ? sub.id : '_none';
+    const sc = c.subs[sk] || (c.subs[sk] = { name: sub ? sub.name : 'No sub-category', icon: sub ? sub.icon : '·', total: 0, count: 0 });
+    sc.total += eur; sc.count++;
+  });
+  const list = Object.values(cats).sort((a, b) => b.total - a.total);
+  return { list, total: list.reduce((s, c) => s + c.total, 0), range: r };
+}
+function setBudgetTotalsPeriod(p) { ui.budgetTotalsPeriod = p; render(); }
+function toggleBudgetTotalsCat(key) { ui.budgetTotalsOpen = ui.budgetTotalsOpen || {}; ui.budgetTotalsOpen[key] = !ui.budgetTotalsOpen[key]; render(); }
+function budgetTotalsSectionHtml(kind) {
+  const d = budgetTotalsData(kind);
+  const open = ui.budgetTotalsOpen || {};
+  const isInc = kind === 'income';
+  const perMonth = d.range.months > 1 ? ` · ${fmtMoney(d.total / d.range.months)}/month on average` : '';
+  return `
+    <div class="card" style="margin-bottom:20px;">
+      <div class="row-flex" style="margin-bottom:12px;align-items:baseline;">
+        <div class="eyebrow">${isInc ? 'Received' : 'Spent'} by category</div>
+        <div style="font-weight:700;" class="${isInc ? 'positive' : 'negative'}">${isInc ? '+' : '−'}${fmtMoney(d.total)}<span style="font-weight:500;font-size:12px;opacity:.6;color:var(--light-text);">${perMonth}</span></div>
+      </div>
+      ${d.list.length ? `<div class="totals-list">${d.list.map(c => {
+        const key = kind + ':' + c.id, pct = d.total ? c.total / d.total * 100 : 0;
+        const subs = Object.values(c.subs).sort((a, b) => b.total - a.total);
+        return `
+          <div class="totals-row" onclick="toggleBudgetTotalsCat('${key}')">
+            <div class="totals-main">
+              <span class="totals-icon">${c.icon || ''}</span>
+              <div style="min-width:0;flex:1;">
+                <div class="row-flex" style="gap:8px;"><span class="totals-name">${escHtml(c.name)}</span><strong>${fmtMoney(c.total)}</strong></div>
+                <div class="totals-bar"><span style="width:${pct.toFixed(1)}%;background:${hashColor(c.name)};"></span></div>
+                <div class="totals-sub">${pct.toFixed(0)}% · ${c.count} transaction${c.count === 1 ? '' : 's'}${d.range.months > 1 ? ` · ${fmtMoney(c.total / d.range.months)}/month` : ''} <span style="opacity:.7;">${open[key] ? '▴' : '▾'}</span></div>
+              </div>
+            </div>
+            ${open[key] ? `<div class="totals-subs">${subs.map(sc => `<div class="row-flex"><span>${sc.icon || ''} ${escHtml(sc.name)} <span style="opacity:.5;">· ${sc.count}</span></span><span>${fmtMoney(sc.total)} <span style="opacity:.5;">${c.total ? (sc.total / c.total * 100).toFixed(0) : 0}%</span></span></div>`).join('')}</div>` : ''}
+          </div>`;
+      }).join('')}</div>` : `<div style="opacity:.5;font-size:13px;">Nothing ${isInc ? 'received' : 'spent'} in this period.</div>`}
+    </div>`;
+}
+function budgetTotalsTab() {
+  const p = ui.budgetTotalsPeriod || 'month';
+  const r = budgetTotalsRange();
+  const inc = budgetTotalsData('income').total, exp = budgetTotalsData('expense').total;
+  const periods = [['month', 'Month'], ['3m', '3 months'], ['year', 'Year'], ['all', 'All time']];
+  return `
+    <div class="row-flex" style="margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+      <div class="chip-scroll" style="margin:0;">${periods.map(([k, l]) => `<span class="chip" style="cursor:pointer;${p === k ? 'background:var(--light-accent-1);border-color:var(--light-accent-1);color:#fff;' : ''}" onclick="setBudgetTotalsPeriod('${k}')">${l}</span>`).join('')}</div>
+      ${p !== 'all' ? `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? -12 : p === '3m' ? -3 : -1})">‹</button><div style="font-weight:700;">${escHtml(r.label)}</div><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? 12 : p === '3m' ? 3 : 1})">›</button></div>` : `<div style="font-weight:700;">All time</div>`}
+    </div>
+    <div class="grid-3" style="margin-bottom:20px;">
+      <div class="card"><div class="eyebrow">Received</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(inc)}</div></div>
+      <div class="card"><div class="eyebrow">Spent</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(exp)}</div></div>
+      <div class="card"><div class="eyebrow">Left over</div><div style="font-size:20px;font-weight:700;" class="${inc - exp >= 0 ? 'positive' : 'negative'}">${fmtMoney(inc - exp)}</div></div>
+    </div>
+    ${budgetTotalsSectionHtml('expense')}
+    ${budgetTotalsSectionHtml('income')}
+    <div style="font-size:12px;opacity:.55;">Tap a category to see its sub-categories. Transfers between your own accounts aren't counted.</div>`;
+}
 function categoryDonutCardHtml(title, segments, emptyText, animate) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   return `
@@ -2581,7 +2677,7 @@ function categoryDonutCardHtml(title, segments, emptyText, animate) {
         <div class="donut-body">
           ${svgDonut(segments, { size: 140, stroke: 22, animate })}
           <div class="stack-gap-8 donut-legend">
-            ${segments.map((s, i) => `<div class="donut-legend-row" style="animation-delay:${150 + i * 55}ms;" title="${escHtml(s.label)} · ${fmtMoney(s.value)}"><span class="donut-swatch" style="background:${s.color};"></span><span>${s.icon || ''} ${escHtml(s.label)} · ${(s.value / total * 100).toFixed(0)}%</span></div>`).join('')}
+            ${segments.map((s, i) => `<div class="donut-legend-row" style="animation-delay:${150 + i * 55}ms;" title="${escHtml(s.label)} · ${fmtMoney(s.value)}"><span class="donut-swatch" style="background:${s.color};"></span><span>${s.icon || ''} ${escHtml(s.label)} · <strong>${fmtMoney(s.value)}</strong> · ${(s.value / total * 100).toFixed(0)}%</span></div>`).join('')}
           </div>
         </div>` : `<div style="opacity:.5;font-size:13px;">${emptyText}</div>`}
     </div>`;
@@ -5809,6 +5905,36 @@ function syncConflictExplanationHtml() {
     : 'Changes were made here and on your other device before they could sync. Nothing has been overwritten.';
   return `${intro} Pick the one to keep — the other is replaced on both devices.<br>This device: last changed ${escHtml(localAt)} · Cloud: last changed ${escHtml(remoteAt)}`;
 }
+/* A short code derived from the project + secret: every device showing the same Sync ID shares
+   the same data in the cloud. Different IDs = different "rooms" (e.g. a mistyped secret), which
+   looks exactly like "sync doesn't work". Reveals nothing about the secret itself. */
+function syncIdOf(cfg) {
+  if (!cfg) return '';
+  let h = 0x811c9dc5;
+  const str = String(cfg.url || '').toLowerCase().replace(/\/+$/, '') + '|' + String(cfg.secret || '');
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36).toUpperCase().padStart(6, '0').slice(-6).replace(/(...)(...)/, '$1-$2');
+}
+/* Shown at the top of every page when sync is stuck, so it can't go unnoticed (a dot in the
+   sidebar was too easy to miss, and on a phone it's only a dot on Settings). */
+function syncGlobalBannerHtml() {
+  const cfg = loadSupabaseSyncConfig();
+  if (!cfg || ui.page === 'settings') return '';
+  if (syncState.conflict) return `
+    <div class="sync-banner">
+      <div><strong>Sync is paused — choose which data to keep.</strong> ${syncState.conflict.reason === 'unverified' ? 'This device and the cloud have different data.' : 'This device and another one were both changed.'} Until you choose, nothing is sent or received.</div>
+      <div class="sync-banner-actions">
+        <button class="btn small primary" onclick="resolveSyncConflictKeepLocal()">Keep this device's data</button>
+        <button class="btn small" onclick="resolveSyncConflictUseRemote()">Use the cloud's data</button>
+      </div>
+    </div>`;
+  if (syncStatusState() === 'warning' && (syncIsPending() || syncState.consecutiveFailures >= SYNC_WARN_AFTER_FAILURES)) return `
+    <div class="sync-banner">
+      <div><strong>Sync isn't working on this device.</strong> ${syncIsPending() ? 'Your changes are saved here but not sent yet.' : ''} ${escHtml(syncState.lastError ? supabaseSyncErrorMessage(syncState.lastError, 'sync') : '')}</div>
+      <div class="sync-banner-actions"><button class="btn small primary" onclick="manualSyncNow()">Try again</button><button class="btn small" onclick="goPage('settings');ui.settingsOpenSections={supabasesync:true};render();">Details</button></div>
+    </div>`;
+  return '';
+}
 function settingsSupabaseSyncHtml() {
   const cfg = loadSupabaseSyncConfig();
   const manualFieldsHtml = `
@@ -5824,8 +5950,11 @@ function settingsSupabaseSyncHtml() {
     : state === 'warning' ? "Can't reach the cloud right now — retrying automatically"
     : syncState.lastSuccessAt ? `Up to date · checked ${timeAgo(syncState.lastSuccessAt)}` : 'Checking…';
   return `
-    <div style="opacity:.65;font-size:13px;margin-bottom:16px;">
+    <div style="opacity:.65;font-size:13px;margin-bottom:12px;">
       Keeps your data identical on all your devices (e.g. this Mac and your iPhone). Changes are sent as soon as you make them and picked up on the other device within a few seconds, or the moment you reopen the app.
+    </div>
+    <div class="card-nested" style="margin-bottom:16px;font-size:12.5px;line-height:1.55;">
+      <strong>Good to know:</strong> Trackr opened in Safari and Trackr added to the Home Screen (iPhone) or the Dock (Mac) keep <em>separate</em> data, like two different devices. Each one has to be connected once. Check that every one of them shows the same Sync ID below.
     </div>
     ${cfg ? `
       ${syncConflictBannerHtml()}
@@ -5837,6 +5966,13 @@ function settingsSupabaseSyncHtml() {
           </div>
           <button class="btn small primary" onclick="manualSyncNow()">Sync now</button>
         </div>
+        <div class="sync-facts">
+          <div><span>Sync ID</span><strong>${escHtml(syncIdOf(cfg))}</strong></div>
+          <div><span>Last sent from here</span><strong>${cfg.lastSentAt ? escHtml(timeAgo(cfg.lastSentAt)) : '—'}</strong></div>
+          <div><span>Last received here</span><strong>${cfg.lastReceivedAt ? escHtml(timeAgo(cfg.lastReceivedAt)) : '—'}</strong></div>
+          <div><span>Changes waiting to be sent</span><strong>${syncIsPending() ? 'yes' : 'no'}</strong></div>
+        </div>
+        <div style="font-size:11.5px;opacity:.6;margin-top:8px;line-height:1.5;">The <strong>Sync ID</strong> must be the same on every device. If one shows a different ID, it's connected to a different place: on that device tap Disconnect, then paste the setup code from a device that has your real data.</div>
       </div>
       <div class="card-nested" style="margin-bottom:16px;">
         <div style="font-weight:700;margin-bottom:6px;">📱 Add another device</div>
@@ -6025,7 +6161,11 @@ function syncStatusState() {
    actually need attention. Clicking it always opens the same detail/resolution modal. */
 function syncStatusIndicatorHtml() {
   const state = syncStatusState();
-  if (!state) return '';
+  if (!state) return `
+    <button class="sync-indicator-sidebar" onclick="goPage('settings');ui.settingsOpenSections={supabasesync:true};render();" title="This copy of Trackr isn't connected to sync — its data stays here only" style="display:flex;align-items:center;gap:7px;width:100%;background:transparent;border:none;padding:6px 4px;margin-bottom:2px;cursor:pointer;font-family:inherit;font-size:11.5px;opacity:.55;color:inherit;text-align:left;">
+      <span style="width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:#8A8DA0;"></span>
+      <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Sync off — this device only</span>
+    </button>`;
   const label = state === 'conflict' ? 'Sync needs attention'
     : state === 'warning' ? (syncIsPending() ? 'Not sent yet — retrying' : syncState.lastSuccessAt ? `Sync issue — synced ${timeAgo(syncState.lastSuccessAt)}` : 'Sync issue — not synced yet')
     : syncIsPending() ? 'Sending changes…'
