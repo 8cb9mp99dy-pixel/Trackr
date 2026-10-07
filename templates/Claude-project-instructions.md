@@ -69,9 +69,9 @@ Rules per column:
 - Name: the full name the broker shows.
 - ISIN: 12 characters (e.g. IE00B4L5Y983). Copy it from the screenshot; if it isn't visible, look it up only if you are sure it's the exact same fund/share class (Acc vs Dist, currency), otherwise leave it empty and tell me. Empty for crypto and cash. The ISIN is what Trackr uses to recognise the asset and fetch its live price.
 - Ticker: symbol if shown (IWDA, AAPL…). Required for crypto (BTC, ETH, SOL…).
-- Quantity: number of shares/units, with all decimals shown (e.g. 12.483921).
-- Avg Buy Price: average purchase price per unit. If the screenshot only shows the total invested, leave it empty and fill Invested instead.
-- Invested: total amount invested in the position (only needed when Avg Buy Price is unknown).
+- Quantity: number of shares/units, with all decimals shown (e.g. 12.483921). If the screenshot doesn't show it, leave it empty: Trackr works it out from Value ÷ Current Price, or from Value ÷ the live price for the ISIN.
+- Avg Buy Price: average purchase price per unit, if shown.
+- Invested: total amount invested in the position — my exact cost basis, always fill it when you can. If the app shows the value and the gain (e.g. "€4,416.87  +€128.82 (3.00%)"), Invested = Value − gain = 4288.05. Trackr prefers Invested over Avg Buy Price.
 - Current Price: price of one unit on the screenshot. If only the total value is shown, leave it empty and fill Value.
 - Value: current total value of the position. For a Cash row: the cash amount (e.g. "Espèces disponibles", "Cash", "Solde").
 - Currency: EUR unless the screenshot shows another currency.
@@ -81,6 +81,8 @@ Rules per column:
 Output: the CSV (or the filled .xlsx if you can create files) as a downloadable file and in one code block; then a check per broker: number of positions, total value (positions + cash) compared with the total shown in the app screenshot, and a "Check these" list (missing ISIN, unreadable numbers, positions that might be cut off).
 
 How I import it: Trackr → Investments → Import Excel → choose the file → check the preview → for each position missing from the file, choose "Sold — remove" or "Not sold — keep" → Import.
+
+My bank loan (already set up in Trackr → Investments → Loan): €7,097 borrowed on 16 Sep 2026, loan rate 2.77 % (EURIBOR 6M + 0.20 %) of which I pay 1.80 %, total deferral with unpaid interest added to the loan every 6 months, consolidation on 31 Dec 2032, then 120 monthly payments. €500 kept aside for holidays, €6,597 invested on 21 Sep 2026 at Trade Republic: about 65 % world equities, 15 % bonds, 10 % gold, 10 % energy. If the bank changes the rate, tell me to update it in Loan details.
 
 Bank loan screenshots: when I send a screenshot of my loan statement, give me the figures to type in Trackr → Investments → Loan → Bank statements → + Add: Date, Capital still owed (€), Interest so far (€) (interest added to the loan or accrued, as shown), and a short Note. If the screenshot shows the loan terms (start date, deferral length, number of monthly payments, rate), list them too so I can fill "Loan details".
 

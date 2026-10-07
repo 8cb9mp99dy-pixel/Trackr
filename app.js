@@ -31,6 +31,36 @@ const ASSET_TYPE_COLORS = { Stocks: '#6C63FF', ETFs: '#4FA6D9', Crypto: '#E8963C
 function assetTypeColor(type) {
   return (data.settings.assetTypeColors && data.settings.assetTypeColors[type]) || ASSET_TYPE_COLORS[type] || '#8A8DA0';
 }
+/* ---- Investment type (your own grouping) and 5-year average return ----
+   Separate from the asset category (Stocks / ETFs / Gold… which decides the tab it shows in):
+   what the investment really is — World equities, Bonds, Gold, Energy… — used by "Invested by
+   type" and the Loan page. Set it by hand on each position; until you do, it's guessed from the
+   name, and falls back to the category. The 5-year average return (% per year) is also typed
+   by hand and feeds the Loan page's "your 5-yr averages" projection. */
+const ASSET_GROUP_SUGGESTIONS = ['World equities', 'US equities', 'Europe equities', 'Emerging markets', 'Bonds', 'Gold', 'Energy', 'Real estate', 'Crypto', 'Cash'];
+const ASSET_GROUP_COLORS = { 'World equities': '#4FA6D9', Bonds: '#B57BFF', Gold: '#E8A93C', Energy: '#46C2C8', Crypto: '#E8963C' };
+function guessAssetGroup(a) {
+  const n = String((a && a.name) || '').toLowerCase();
+  if (/energy|energie|oil|petrol/.test(n)) return 'Energy';
+  if (/gold|\bor\b|xetra-gold|bullion/.test(n)) return 'Gold';
+  if (/bond|aggregate|treasury|obligation|govt|government|corporate|gilt/.test(n)) return 'Bonds';
+  if (/msci world|ftse all-world|all-world|acwi|world index|global equity|core msci world/.test(n)) return 'World equities';
+  if (/emerging|\bem\b/.test(n)) return 'Emerging markets';
+  if (/s&p ?500|nasdaq|msci usa|us equity/.test(n)) return 'US equities';
+  return '';
+}
+function assetGroup(a) {
+  if (!a) return '';
+  return String(a.group || '').trim() || guessAssetGroup(a) || a.assetType || 'Other';
+}
+function assetGroupColor(g) { return ASSET_GROUP_COLORS[g] || (ASSET_TYPE_COLORS[g] ? assetTypeColor(g) : hashColor(g)); }
+function assetReturn5y(a) { const n = parseFloat(String(a && a.return5y != null ? a.return5y : '').replace(',', '.')); return isFinite(n) ? n : null; }
+function setAssetMeta(assetId, key, value) {
+  const a = assetById(assetId);
+  if (!a) return;
+  a[key] = String(value == null ? '' : value).trim();
+  save(); render();
+}
 function setAssetTypeColor(type, color) {
   data.settings.assetTypeColors = data.settings.assetTypeColors || {};
   data.settings.assetTypeColors[type] = color;
@@ -3556,7 +3586,7 @@ function renderInvestments() {
       </div>
     </div>
 
-    ${investedByTypeCardHtml(allByType)}
+    ${investedByTypeCardHtml()}
 
     <div class="tab-row" style="margin-bottom:20px;">
       <button class="tab-btn ${ui.investmentsTab === 'stocks' ? 'active' : ''}" onclick="setInvestmentsTab('stocks')">Stocks &amp; ETFs</button>
@@ -3571,31 +3601,42 @@ function renderInvestments() {
 function setInvestmentsTab(t) { ui.investmentsTab = t; render(); }
 /* How much money went into each kind of investment (cost basis), what it's worth now, and the
    difference — the "where did my money go" view next to the value-based breakdown above. */
-function investedByTypeCardHtml(allByType) {
-  const rows = allByType.map(x => {
-    const invested = x.positions.reduce((s, p) => s + positionCost(p), 0);
-    const value = x.positions.reduce((s, p) => s + positionValue(p), 0);
-    return { type: x.type, invested, value, pl: value - invested };
-  }).filter(r => r.invested > 0 || r.value > 0).sort((a, b) => b.invested - a.invested);
+function investedByTypeCardHtml() {
+  const groups = {};
+  allInvestmentPositions().forEach(p => {
+    const a = p.assetRef ? assetById(p.assetRef) : null;
+    const g = a ? assetGroup(a) : (p.assetType || 'Other');
+    const r = groups[g] || (groups[g] = { type: g, invested: 0, value: 0, retW: 0, retV: 0 });
+    const v = positionValue(p);
+    r.invested += positionCost(p);
+    r.value += v;
+    const ret = a ? assetReturn5y(a) : null;
+    if (ret != null) { r.retW += ret * v; r.retV += v; }
+  });
+  const rows = Object.values(groups).map(r => Object.assign(r, { pl: r.value - r.invested, ret: r.retV ? r.retW / r.retV : null }))
+    .filter(r => r.invested > 0 || r.value > 0).sort((a, b) => b.invested - a.invested);
   if (!rows.length) return '';
   const tot = rows.reduce((s, r) => ({ invested: s.invested + r.invested, value: s.value + r.value }), { invested: 0, value: 0 });
+  const anyRet = rows.some(r => r.ret != null);
   const pct = (pl, inv) => (inv ? ` (${pl >= 0 ? '+' : ''}${(pl / inv * 100).toFixed(1)}%)` : '');
   return `
     <div class="card-dark" style="margin-bottom:20px;">
-      <div style="font-weight:700;margin-bottom:12px;">Invested by type</div>
+      <div style="font-weight:700;margin-bottom:4px;">Invested by type</div>
+      <div style="font-size:12px;opacity:.55;margin-bottom:12px;">Set each investment's type and 5-year average return in its ✎ edit form.</div>
       <div style="overflow-x:auto;">
         <table class="data-table">
-          <thead><tr><th>Type</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value now</th><th class="num">Gain / loss</th></tr></thead>
+          <thead><tr><th>Type</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value now</th><th class="num">Gain / loss</th>${anyRet ? '<th class="num">5-yr avg</th>' : ''}</tr></thead>
           <tbody>
             ${rows.map(r => `<tr>
-              <td><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${assetTypeColor(r.type)};margin-right:7px;"></span>${escHtml(r.type)}</td>
+              <td><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${assetGroupColor(r.type)};margin-right:7px;"></span>${escHtml(r.type)}</td>
               <td class="num">${fmtMoney(r.invested)}</td>
               <td class="num" style="opacity:.6;">${tot.invested ? (r.invested / tot.invested * 100).toFixed(0) : 0}%</td>
               <td class="num">${fmtMoney(r.value)}</td>
               <td class="num ${r.pl >= 0 ? 'positive' : 'negative'}">${r.pl >= 0 ? '+' : ''}${fmtMoney(r.pl)}${pct(r.pl, r.invested)}</td>
+              ${anyRet ? `<td class="num">${r.ret != null ? r.ret.toFixed(1) + '%/yr' : '<span style="opacity:.4;">—</span>'}</td>` : ''}
             </tr>`).join('')}
             <tr style="font-weight:700;"><td>Total</td><td class="num">${fmtMoney(tot.invested)}</td><td class="num" style="opacity:.6;">100%</td><td class="num">${fmtMoney(tot.value)}</td>
-              <td class="num ${tot.value - tot.invested >= 0 ? 'positive' : 'negative'}">${tot.value - tot.invested >= 0 ? '+' : ''}${fmtMoney(tot.value - tot.invested)}${pct(tot.value - tot.invested, tot.invested)}</td></tr>
+              <td class="num ${tot.value - tot.invested >= 0 ? 'positive' : 'negative'}">${tot.value - tot.invested >= 0 ? '+' : ''}${fmtMoney(tot.value - tot.invested)}${pct(tot.value - tot.invested, tot.invested)}</td>${anyRet ? '<td></td>' : ''}</tr>
           </tbody>
         </table>
       </div>
@@ -3842,6 +3883,8 @@ window.__modalRenderers.position = function (payload) {
       </label>
       <label class="field"><span class="label-text">Price currency</span><select id="pf-currency">${CURRENCIES.map(c => `<option ${a.priceCurrency === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       <label class="field span-2"><span class="label-text">ISIN <span style="opacity:.6;">(for the live price)</span></span><input id="pf-isin" value="${escHtml(a.isin || '')}" placeholder="e.g. IE00B4L5Y983" autocapitalize="characters" spellcheck="false"></label>
+      <label class="field"><span class="label-text">Investment type</span><input id="pf-group" list="pf-group-list" value="${escHtml(a.group || '')}" placeholder="${escHtml(guessAssetGroup(a) || a.assetType)}"><datalist id="pf-group-list">${Array.from(new Set(ASSET_GROUP_SUGGESTIONS.concat(data.assets.map(x => x.group).filter(Boolean)))).map(g => `<option value="${escHtml(g)}">`).join('')}</datalist></label>
+      <label class="field"><span class="label-text">Average return over 5 years (% per year)</span><input id="pf-return5y" inputmode="decimal" value="${escHtml(a.return5y != null ? String(a.return5y) : '')}" placeholder="e.g. 11.2"></label>
       <label class="field span-2"><span class="label-text">Logo URL <span style="opacity:.6;">(optional)</span></span>
         <div style="display:flex;gap:6px;align-items:center;"><input id="pf-logo" style="flex:1;" value="${escHtml(a.logo || '')}" placeholder="https://…">${logoPickerButtonHtml('pf-logo')}</div>
         ${logoPickerPopoverHtml('pf-logo')}
@@ -3945,6 +3988,8 @@ function savePositionForm(id) {
     manualPrice: manualRaw.trim() === '' ? null : parseFloat(manualRaw),
     logo: document.getElementById('pf-logo').value.trim(),
     isin: document.getElementById('pf-isin').value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+    group: document.getElementById('pf-group').value.trim(),
+    return5y: document.getElementById('pf-return5y').value.trim().replace(',', '.'),
   });
   if (isNaN(asset.currentPrice)) asset.currentPrice = null;
   save(); closeModal();

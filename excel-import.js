@@ -23,9 +23,9 @@ const PI_COLUMNS = [
   { key: 'name', label: 'Name', width: 36, help: 'Full name of the asset, as the broker shows it.', aliases: ['nom', 'asset', 'instrument', 'titre', 'libelle', 'security', 'produit'] },
   { key: 'isin', label: 'ISIN', width: 15, help: '12 characters, e.g. IE00B4L5Y983. Used to recognise the asset and to fetch its live price. Leave empty for crypto and cash.', aliases: ['code isin'] },
   { key: 'ticker', label: 'Ticker', width: 10, help: 'Symbol, e.g. IWDA, AAPL, BTC. Required for crypto.', aliases: ['symbol', 'symbole', 'mnemo', 'mnemonique'] },
-  { key: 'quantity', label: 'Quantity', width: 12, help: 'Number of shares / units held at this broker (decimals allowed).', aliases: ['quantite', 'qty', 'parts', 'units', 'shares', 'nombre', 'nombre de parts', 'pieces'] },
+  { key: 'quantity', label: 'Quantity', width: 12, help: 'Number of shares / units held at this broker (decimals allowed). If unknown, give Value and Current Price instead.', aliases: ['quantite', 'qty', 'parts', 'units', 'shares', 'nombre', 'nombre de parts', 'pieces'] },
   { key: 'avgprice', label: 'Avg Buy Price', width: 14, help: 'Average purchase price per unit (PRU).', aliases: ['avg price', 'average price', 'average buy price', 'pru', 'prix moyen', 'prix de revient', 'prix de revient unitaire', 'prix d achat moyen', 'prix moyen d achat', 'buy price', 'cost per share'] },
-  { key: 'invested', label: 'Invested', width: 12, help: 'Optional — total amount invested in this position. Used when Avg Buy Price is empty.', aliases: ['montant investi', 'investi', 'cost basis', 'total invested', 'prix de revient total', 'cout total'] },
+  { key: 'invested', label: 'Invested', width: 12, help: 'Total amount invested in this position (your exact cost basis). If the app shows Value and gain, Invested = Value − gain. Preferred over Avg Buy Price when both are given.', aliases: ['montant investi', 'investi', 'cost basis', 'total invested', 'prix de revient total', 'cout total'] },
   { key: 'price', label: 'Current Price', width: 14, help: 'Price of one unit on the screenshot.', aliases: ['prix actuel', 'cours', 'cours actuel', 'dernier cours', 'last price', 'market price', 'price', 'prix'] },
   { key: 'value', label: 'Value', width: 12, help: 'Current total value of the position. For a Cash row: the cash amount.', aliases: ['valeur', 'valeur actuelle', 'montant', 'market value', 'amount', 'total', 'valorisation'] },
   { key: 'currency', label: 'Currency', width: 9, help: 'EUR, USD, GBP or CHF. Empty = EUR.', aliases: ['devise', 'ccy', 'monnaie'] },
@@ -255,7 +255,9 @@ async function handleExcelImportFile(file) {
     if (!picked) throw new Error('This file has no sheets.');
     const missing = PI_COLUMNS.filter(c => c.required && picked.map[c.key] == null);
     if (missing.length) throw new Error(`Missing column${missing.length > 1 ? 's' : ''}: ${missing.map(c => c.label).join(', ')}. Found: ${picked.header.filter(Boolean).join(', ') || '(none)'}.`);
-    ui.excelImportState = Object.assign({ step: 'preview', fileName: file.name }, piBuildPreview(picked));
+    const preview = piBuildPreview(picked);
+    await piResolvePendingQuantities(preview, status);
+    ui.excelImportState = Object.assign({ step: 'preview', fileName: file.name }, preview);
     ui.page = 'positions-import';
     render();
   } catch (e) {
@@ -338,7 +340,7 @@ function piBuildPreview(picked) {
     const currencyRaw = str(r, 'currency').toUpperCase().replace('€', 'EUR').replace('$', 'USD').replace('£', 'GBP');
     const currency = currencyRaw || 'EUR';
     if (currencyRaw && !CURRENCIES.includes(currencyRaw)) reasons.push(`Currency "${currencyRaw}" isn't one of ${CURRENCIES.join(', ')}`);
-    const quantity = piNumber(cell(r, 'quantity'));
+    let quantity = piNumber(cell(r, 'quantity'));
     const avgRaw = piNumber(cell(r, 'avgprice')), invested = piNumber(cell(r, 'invested'));
     const priceRaw = piNumber(cell(r, 'price')), value = piNumber(cell(r, 'value'));
     const date = piDate(cell(r, 'date'));
@@ -352,16 +354,23 @@ function piBuildPreview(picked) {
       return;
     }
     if (!name && !str(r, 'ticker')) reasons.push('Name is empty');
-    if (isNaN(quantity) || quantity <= 0) reasons.push('Quantity is missing or not a positive number');
-    const avgPrice = !isNaN(avgRaw) && avgRaw > 0 ? avgRaw : (!isNaN(invested) && invested > 0 && quantity > 0 ? invested / quantity : NaN);
-    if (isNaN(avgPrice)) reasons.push('Avg Buy Price (or Invested) is missing');
+    // Screenshots often show only the value and the price: the quantity follows from them.
+    if ((isNaN(quantity) || quantity <= 0) && value > 0 && priceRaw > 0) { quantity = value / priceRaw; notes.push('Quantity worked out from Value ÷ Current Price'); }
+    // Only Value (+ ISIN) known: the quantity is worked out from the live price once the file is read.
+    const isinEarly = piIsin(str(r, 'isin'));
+    const pendingQty = (isNaN(quantity) || quantity <= 0) && value > 0 && !!isinEarly && t.kind === 'asset';
+    if ((isNaN(quantity) || quantity <= 0) && !pendingQty) reasons.push('Quantity is missing (or give Value and Current Price)');
+    // The exact amount invested wins over a rounded average price, so the cost basis stays exact.
+    const avgPrice = !isNaN(invested) && invested > 0 && quantity > 0 ? invested / quantity : (!isNaN(avgRaw) && avgRaw > 0 ? avgRaw : NaN);
+    if (invested > 0 && avgRaw > 0 && quantity > 0 && Math.abs(invested / quantity - avgRaw) / avgRaw > 0.01) notes.push(`Invested ÷ Quantity (${(invested / quantity).toFixed(4)}) differs from Avg Buy Price (${avgRaw}) — Invested was used`);
+    if (isNaN(avgPrice) && !(pendingQty && (invested > 0 || avgRaw > 0))) reasons.push('Avg Buy Price (or Invested) is missing');
     const ticker = str(r, 'ticker');
     if (t.kind === 'crypto' && !ticker) reasons.push('Crypto rows need the Ticker (BTC, ETH…)');
     const isinRaw = str(r, 'isin'), isin = piIsin(isinRaw);
     if (isinRaw && !isin) notes.push(`ISIN "${isinRaw}" doesn't look valid — ignored`);
     if (reasons.length) { errors.push({ rowNum, reasons }); return; }
     const price = !isNaN(priceRaw) && priceRaw > 0 ? priceRaw : (!isNaN(value) && value > 0 && quantity > 0 ? value / quantity : null);
-    const row = { rowNum, kind: t.kind, type: t.type, name: name || ticker, ticker, isin, quantity, avgPrice, price, currency, date, notes, included: true, choice: 'suggested' };
+    const row = { rowNum, kind: t.kind, type: t.type, name: name || ticker, ticker, isin, quantity, avgPrice, price, currency, date, notes, included: true, choice: 'suggested', pendingQty, value, invested, avgRaw };
     const g = groupFor(broker);
     if (t.kind === 'crypto') {
       Object.assign(row, piMatchCrypto(row));
@@ -375,7 +384,7 @@ function piBuildPreview(picked) {
       const entry = asset && g.brokerId ? data.assetEntries.find(e => e.assetId === asset.id && e.broker === g.brokerId) : null;
       row.old = entry ? { quantity: entry.quantity, price: entry.price, currency: entry.currency } : null;
     }
-    const dup = g.rows.find(x => x.kind === row.kind && (row.kind === 'crypto' ? x.symbol === row.symbol : (x.assetId && x.assetId === row.assetId) || (row.isin && x.isin === row.isin)));
+    const dup = !pendingQty && g.rows.find(x => x.kind === row.kind && (row.kind === 'crypto' ? x.symbol === row.symbol : (x.assetId && x.assetId === row.assetId) || (row.isin && x.isin === row.isin)));
     if (dup) {
       const cost = dup.quantity * dup.avgPrice + row.quantity * row.avgPrice;
       dup.quantity += row.quantity;
@@ -387,6 +396,33 @@ function piBuildPreview(picked) {
   });
   groups.forEach(g => { g.missing = piMissingFor(g); });
   return { groups, errors };
+}
+/* Rows that gave only a Value (and an ISIN): quantity = value ÷ today's live price by ISIN.
+   Without live prices (sync not connected, or the price lookup not installed) they can't be
+   imported and are listed with what to add. */
+async function piResolvePendingQuantities(preview, status) {
+  const pending = preview.groups.flatMap(g => g.rows.filter(r => r.pendingQty));
+  if (!pending.length) return;
+  if (status) status.textContent = 'Looking up live prices to work out quantities…';
+  const quotes = (typeof fetchIsinQuotes === 'function' ? await fetchIsinQuotes(Array.from(new Set(pending.map(r => r.isin)))) : null) || {};
+  pending.forEach(r => {
+    const q = quotes[r.isin], p = q && parseFloat(q.price);
+    if (!(p > 0)) return;
+    const price = convertCurrency(p, q.currency || 'EUR', r.currency);
+    r.quantity = r.value / price;
+    r.price = price;
+    r.avgPrice = r.invested > 0 ? r.invested / r.quantity : r.avgRaw;
+    r.pendingQty = false;
+    r.notes.push(`Quantity worked out from Value ÷ today's live price (${fmtMoney(price, r.currency)}) — check it against your broker`);
+  });
+  preview.groups.forEach(g => {
+    g.rows = g.rows.filter(r => {
+      if (!r.pendingQty) return true;
+      preview.errors.push({ rowNum: r.rowNum, reasons: ['Quantity is missing and no live price was found for its ISIN — add Quantity or Current Price'] });
+      return false;
+    });
+    g.missing = piMissingFor(g);
+  });
 }
 function piOldCrypto(asset, brokerName) {
   if (!asset) return null;
