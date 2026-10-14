@@ -34,6 +34,11 @@ just open a file in your browser.
   Regenerate after changing its columns: `node tools/build-positions-template.js`.
 - `templates/Claude-project-instructions.md` — instructions for a Claude project that fills
   these files from bank statements and broker screenshots.
+- `safety.js` — undo (10 s after any deletion or big change), daily restore points (14 days on
+  the device, 30 days in Supabase once the setup SQL has been run) in Settings → Backup &
+  Restore, and the offline mode. `sw.js` is the service worker that keeps a copy of the app so
+  it opens instantly and works without a connection; when a new version is online the app
+  offers to reload. (Add any new app file to its SHELL list.)
 - `loan.js` — Investments → Loan: a bank loan you invested, what you owe and the interest
   over time, the real and projected value of the positions bought with it, and when they
   pass what you owe.

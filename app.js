@@ -1343,7 +1343,7 @@ function clearAssetPriceManual(assetId) {
 
 /* ===================== Formatters ===================== */
 function fmtMoney(n, currency) {
-  if (data.settings.privacyMode) return '•••••';
+  if (privacyOn()) return '•••••';
   currency = currency || data.settings.defaultCurrency;
   const sym = CURRENCY_SYMBOL[currency] || currency;
   const digits = data.settings.showCents ? 2 : 0;
@@ -1848,7 +1848,7 @@ function monotonePath(pts) {
 }
 /* Short amounts for the chart scale: no cents, thousands as "k" from 10k up. */
 function fmtAxisMoney(v) {
-  if (data.settings.privacyMode) return '•••';
+  if (privacyOn()) return '•••';
   const sym = CURRENCY_SYMBOL[data.settings.defaultCurrency] || data.settings.defaultCurrency;
   const a = Math.abs(v);
   const body = a >= 10000 ? (+(a / 1000).toFixed(a >= 100000 ? 0 : 1)).toLocaleString('en-IE') + 'k' : Math.round(a).toLocaleString('en-IE');
@@ -1964,8 +1964,8 @@ function renderApp(app) {
         </ul>
         <div class="sidebar-footer">
           ${syncStatusIndicatorHtml()}
-          <button class="privacy-toggle ${data.settings.privacyMode ? 'on' : ''}" onclick="togglePrivacy()">
-            <div class="toggle ${data.settings.privacyMode ? 'on' : ''}"></div><span>${data.settings.privacyMode ? 'Hidden' : 'Visible'}</span>
+          <button class="privacy-toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()" title="${privacyOn() ? 'Show the amounts' : 'Hide every amount (e.g. in public)'} — only on this device">
+            <span class="pv-icon">${privacyOn() ? '🙈' : '👁'}</span><span class="pv-long">${privacyOn() ? 'Amounts hidden' : 'Amounts visible'}</span><span class="pv-short">${privacyOn() ? 'Hidden' : 'Shown'}</span>
           </button>
         </div>
       </div>
@@ -2002,7 +2002,20 @@ function downloadRawDataBackup() {
 }
 
 function goPage(page) { ui.page = page; ui.modal = null; if (page === 'budget') ui.investedAnimate = true; render(); }
-function togglePrivacy() { data.settings.privacyMode = !data.settings.privacyMode; save(); render(); }
+/* Hiding the amounts is a choice for the screen in front of you (e.g. on the phone in public), so
+   it's kept on this device only — it used to be part of the synced data, which hid the amounts
+   on every device at once and sent a sync each time. */
+const PRIVACY_KEY = 'trackr-privacy';
+function privacyOn() {
+  let v = null;
+  try { v = localStorage.getItem(PRIVACY_KEY); } catch (e) {}
+  if (v === null) return !!(data && data.settings && data.settings.privacyMode);
+  return v === '1';
+}
+function togglePrivacy() {
+  try { localStorage.setItem(PRIVACY_KEY, privacyOn() ? '0' : '1'); } catch (e) {}
+  render();
+}
 function closeModal() { ui.modal = null; render(); }
 
 /* ===================== Modal dispatcher (filled in per-page) ===================== */
@@ -5321,7 +5334,7 @@ function settingsDisplayHtml() {
       ${boolSettingRow('Show cents (decimals)', 'showCents')}
       ${boolSettingRow('Show performance indicators', 'showPerformanceIndicators')}
       ${boolSettingRow('Compact mode', 'compactMode')}
-      ${boolSettingRow('Privacy mode', 'privacyMode')}
+      <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.55;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
       <label class="field"><span class="label-text">Twelve Data API key <span style="opacity:.6;">(ticker search &amp; live prices)</span></span>
         <input id="settings-twelvedata-key" value="${escHtml(s.twelveDataApiKey || '')}" placeholder="Paste your free API key from twelvedata.com" onchange="updateSetting('twelveDataApiKey', this.value.trim())">
       </label>
@@ -5927,7 +5940,65 @@ begin
 end;
 $$;
 
-grant execute on function get_isin_quotes(text, text[]) to anon;`;
+grant execute on function get_isin_quotes(text, text[]) to anon;
+
+-- Daily copies of your data (the last 30 days), so any recent day can be restored from
+-- Settings → Backup & Restore. Same protection as above: only reachable with your secret.
+create table if not exists trackr_backups (
+  id text not null,
+  day date not null,
+  data jsonb not null,
+  saved_at timestamptz not null default now(),
+  primary key (id, day)
+);
+alter table trackr_backups enable row level security;
+
+create or replace function save_trackr_backup(secret text, p_day date, new_data jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  row_id text := encode(digest(secret, 'sha256'), 'hex');
+begin
+  if not exists (select 1 from trackr_data where id = row_id) then
+    return;
+  end if;
+  insert into trackr_backups (id, day, data, saved_at) values (row_id, p_day, new_data, now())
+  on conflict (id, day) do update set data = excluded.data, saved_at = excluded.saved_at;
+  delete from trackr_backups where id = row_id and day < current_date - 30;
+end;
+$$;
+
+create or replace function list_trackr_backups(secret text)
+returns jsonb
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'day', b.day, 'saved_at', b.saved_at,
+           'accounts', coalesce(jsonb_array_length(b.data->'accounts'), 0),
+           'transactions', coalesce(jsonb_array_length(b.data->'budgetTransactions'), 0))
+         order by b.day desc), '[]'::jsonb)
+    from trackr_backups b
+   where b.id = encode(digest(secret, 'sha256'), 'hex');
+$$;
+
+create or replace function get_trackr_backup(secret text, p_day date)
+returns jsonb
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select b.data from trackr_backups b
+   where b.id = encode(digest(secret, 'sha256'), 'hex') and b.day = p_day;
+$$;
+
+grant execute on function save_trackr_backup(text, date, jsonb) to anon;
+grant execute on function list_trackr_backups(text) to anon;
+grant execute on function get_trackr_backup(text, date) to anon;`;
 function toggleSupabaseSetupSql() { ui.supabaseSetupSqlOpen = !ui.supabaseSetupSqlOpen; render(); }
 function toggleSupabaseManualSetup() { ui.supabaseManualOpen = !ui.supabaseManualOpen; render(); }
 /* The setup code is the three connection values (project URL, anon key, secret) packed into one

@@ -217,6 +217,8 @@ button, input, select, textarea { font-family: inherit; }
 }
 .privacy-toggle:hover { color: var(--dark-text); border-color: var(--dark-text-dim); }
 .privacy-toggle.on { color: var(--accent-1); border-color: var(--accent-1); }
+.privacy-toggle .pv-icon { font-size: 16px; line-height: 1; }
+.privacy-toggle .pv-short { display: none; }
 
 .main { flex: 1; min-width: 0; }
 .page { padding: 34px 40px 60px; min-height: 100vh; }
@@ -410,12 +412,13 @@ label.field span.label-text { font-weight: 500; }
      plain class rule regardless of media query. */
   .sync-indicator-sidebar { display: none !important; }
   .privacy-toggle {
-    flex-direction: column; gap: 2px; padding: 6px 2px; border: none;
-    font-size: 9px; width: auto; align-items: center;
+    flex-direction: column; gap: 3px; padding: 6px 4px; border: none;
+    font-size: 10px; width: auto; align-items: center; color: inherit; opacity: .8;
   }
-  .privacy-toggle .toggle { width: 30px; height: 18px; }
-  .privacy-toggle .toggle::after { width: 14px; height: 14px; }
-  .privacy-toggle.on .toggle::after { transform: translateX(12px); }
+  .privacy-toggle.on { opacity: 1; }
+  .privacy-toggle .pv-icon { font-size: 19px; }
+  .privacy-toggle .pv-long { display: none; }
+  .privacy-toggle .pv-short { display: block; }
 
   .main { min-width: 0; }
   .page { padding: 16px 14px calc(84px + env(safe-area-inset-bottom)); }
@@ -526,6 +529,14 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
   .tx-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .tx-step { font-size: 11.5px; padding: 8px 4px; }
 }
+
+/* Safety net: undo bar and restore points */
+.safety-toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 140%); z-index: 300; display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); padding: 12px 14px 12px 18px; border-radius: 14px; background: #12141C; color: #F2F2F7; box-shadow: 0 10px 30px rgba(0,0,0,.35); font-size: 13.5px; transition: transform .25s ease, opacity .25s ease; opacity: 0; pointer-events: none; }
+.safety-toast.show { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.safety-toast button { background: #F2F2F7; color: #12141C; border: none; border-radius: 9px; padding: 7px 12px; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+@media (max-width: 640px) { .safety-toast { bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); justify-content: space-between; } }
+.restore-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--light-border); font-size: 13px; }
+.restore-row:first-of-type { border-top: none; }
 
 /* Budget → Totals */
 .totals-list { display: flex; flex-direction: column; gap: 4px; }
