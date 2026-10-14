@@ -3446,96 +3446,159 @@ function blankTxDraft() {
 }
 function openTxForm(id) {
   const existing = id ? data.budgetTransactions.find(t => t.id === id) : null;
-  ui.modal = { type: 'tx', payload: existing ? Object.assign({}, existing) : blankTxDraft() };
+  ui.modal = { type: 'tx', payload: existing ? Object.assign({}, existing, { step: 1 }) : Object.assign(blankTxDraft(), { step: 1 }) };
   ui.txSuggestions = [];
   render();
+  txFocusStep();
 }
-window.__modalRenderers.tx = function (payload) {
-  const isEdit = !!payload.id;
-  const isTransfer = payload.type === 'transfer';
-  const cats = data.categories[payload.type === 'income' ? 'income' : 'expense'];
-  const endpointSelect = (field, value) => `
-        <select onchange="updateTxField('${field}',this.value)">
-          <option value="">Select…</option>
-          ${transferEndpointOptions().map(g => `<optgroup label="${escHtml(g.label)}">${g.items.map(it => `<option value="${escHtml(it.ref)}" ${value === it.ref ? 'selected' : ''}>${escHtml(it.label)}</option>`).join('')}</optgroup>`).join('')}
-        </select>`;
-  const selectedCat = cats.find(c => c.id === payload.categoryId);
-  const subcats = selectedCat ? (selectedCat.subcategories || []) : [];
-  return `
-    <div class="modal-head"><div class="modal-title">${isEdit ? 'Edit transaction' : 'Add transaction'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
-    <div class="form-grid">
-      <label class="field span-2"><span class="label-text">Name / payee</span>
-        <input id="tx-name" value="${escHtml(payload.comment || '')}" placeholder="e.g. Albert Heijn" oninput="onTxNameInput(this.value)" onchange="updateTxField('comment',this.value)">
-      </label>
-      <div class="span-2" id="tx-suggestions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:-6px;">
-        ${(ui.txSuggestions || []).map(s => `<span class="chip" style="cursor:pointer;font-size:12px;padding:6px 10px;" onclick="applyTxSuggestion('${escHtml(s).replace(/'/g, "\\'")}')">${escHtml(s)}</span>`).join('')}
+window.__modalRenderers.tx = function (p) {
+  const isEdit = !!p.id;
+  const isTransfer = p.type === 'transfer';
+  const step = p.step || 1;
+  const cats = data.categories[p.type === 'income' ? 'income' : 'expense'] || [];
+  const cat = cats.find(c => c.id === p.categoryId);
+  const subcats = cat ? (cat.subcategories || []) : [];
+  const steps = [['Amount', 1], [isTransfer ? 'From → To' : 'Category', 2], ['Details', 3]];
+  const done = txStepDone(p);
+  const complete = done[1] && done[2];
+  const chip = (on, onclick, html, extra) => `<button type="button" class="tx-chip ${on ? 'on' : ''}" onclick="${onclick}" ${extra || ''}>${html}</button>`;
+  const summary = () => {
+    const amt = parseFloat(p.amount);
+    const sub = cat && subcats.find(sc => sc.id === p.subCategoryId);
+    const what = isTransfer ? [((transferEndpoint(p.from) || {}).label), ((transferEndpoint(p.to) || {}).label)].filter(Boolean).join(' → ')
+      : [p.comment, cat ? `${cat.icon || ''} ${cat.name}${sub ? ' · ' + sub.name : ''}` : ''].filter(Boolean).join(' · ');
+    return `<div class="tx-summary"><span class="${p.type === 'income' ? 'positive' : p.type === 'expense' ? 'negative' : ''}">${p.type === 'income' ? '+' : p.type === 'expense' ? '−' : ''}${isNaN(amt) ? '—' : fmtMoney(amt, p.currency)}</span>${what ? `<span>${escHtml(what)}</span>` : ''}</div>`;
+  };
+  let body = '';
+  if (step === 1) {
+    body = `
+      <div class="tx-seg">
+        ${[['expense', '💸 Expense'], ['income', '💰 Income'], ['transfer', '🔁 Transfer']].map(([v, l]) => `<button type="button" class="${p.type === v ? 'on' : ''}" onclick="updateTxField('type','${v}')">${l}</button>`).join('')}
       </div>
-      <label class="field span-2"><span class="label-text">Date</span><input type="date" value="${payload.date}" onchange="updateTxField('date',this.value)"></label>
-      <label class="field"><span class="label-text">Type</span>
-        <select onchange="updateTxField('type',this.value)">
-          <option value="expense" ${payload.type === 'expense' ? 'selected' : ''}>💸 Expense</option>
-          <option value="income" ${payload.type === 'income' ? 'selected' : ''}>💰 Income</option>
-          <option value="transfer" ${payload.type === 'transfer' ? 'selected' : ''}>🔁 Transfer</option>
-        </select>
+      <div class="tx-amount">
+        <input id="tx-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" value="${escHtml(String(p.amount == null ? '' : p.amount))}" oninput="txAmountInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();txNext();}">
+        <select onchange="updateTxField('currency',this.value)">${CURRENCIES.map(c => `<option ${p.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+      </div>
+      ${isTransfer ? '' : `
+      <label class="field"><span class="label-text">${p.type === 'income' ? 'From whom?' : 'Where / who?'} <span style="opacity:.6;">(start typing — past names are suggested)</span></span>
+        <input id="tx-name" value="${escHtml(p.comment || '')}" placeholder="${p.type === 'income' ? 'e.g. Salary, Parents' : 'e.g. Albert Heijn'}" autocomplete="off" oninput="onTxNameInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();txNext();}">
       </label>
-      ${isTransfer ? '' : `<label class="field"><span class="label-text">Category</span>
-        <select onchange="updateTxField('categoryId',this.value)">
-          <option value="">Select…</option>
-          ${cats.map(c => `<option value="${c.id}" ${payload.categoryId === c.id ? 'selected' : ''}>${c.icon || ''} ${escHtml(c.name)}</option>`).join('')}
-        </select>
-      </label>
-      <label class="field"><span class="label-text">Sub-category</span>
-        <select onchange="updateTxField('subCategoryId',this.value)" ${subcats.length ? '' : 'disabled'}>
-          <option value="">${subcats.length ? 'Select…' : '—'}</option>
-          ${subcats.map(sc => `<option value="${sc.id}" ${payload.subCategoryId === sc.id ? 'selected' : ''}>${sc.icon || ''} ${escHtml(sc.name)}</option>`).join('')}
-        </select>
-      </label>`}
-      <label class="field"><span class="label-text">Recurring</span>
-        <select onchange="updateTxField('nature',this.value)">
-          <option value="Variable" ${payload.nature === 'Variable' ? 'selected' : ''}>One-off / Variable</option>
-          <option value="Fixed" ${payload.nature === 'Fixed' ? 'selected' : ''}>🔄 Fixed / Recurring</option>
-        </select>
-      </label>
-      ${isTransfer ? `
-      <label class="field span-2"><span class="label-text">From</span>${endpointSelect('from', payload.from)}</label>
-      <label class="field span-2"><span class="label-text">To</span>${endpointSelect('to', payload.to)}</label>
-      <div class="span-2" style="font-size:11.5px;opacity:.55;margin-top:-4px;">Moves the money between the two places (bank, pocket, broker or exchange cash) and converts currencies automatically. A balance you edit on the Accounts or Investments page always wins.</div>
-      ` : `<label class="field"><span class="label-text">Payment method</span>
-        <select onchange="updateTxField('paymentMethodId',this.value)">
-          <option value="">Select…</option>
-          ${data.paymentMethods.map(pm => `<option value="${pm.id}" ${payload.paymentMethodId === pm.id ? 'selected' : ''}>${pm.icon || ''} ${escHtml(pm.name)}</option>`).join('')}
-        </select>
-      </label>
-      <label class="field"><span class="label-text">Account <span style="opacity:.6;">(optional — keeps its balance in sync)</span></span>
-        <select onchange="updateTxField('accountId',this.value)">
-          <option value="">None</option>
-          ${data.accounts.map(a => `<option value="${a.id}" ${payload.accountId === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}
-        </select>
-      </label>
-      <label class="field"><span class="label-text">Personal impact <span style="opacity:.6;">(optional)</span></span>
-        <select onchange="updateTxField('impact',this.value)">
-          <option value="" ${!payload.impact ? 'selected' : ''}>— Neutral</option>
-          <option value="positive" ${payload.impact === 'positive' ? 'selected' : ''}>🙂 Positive (e.g. donation)</option>
-          <option value="negative" ${payload.impact === 'negative' ? 'selected' : ''}>🙁 Negative (e.g. tobacco)</option>
-        </select>
-      </label>`}
-      <label class="field"><span class="label-text">Currency</span>
-        <select onchange="updateTxField('currency',this.value)">${CURRENCIES.map(c => `<option ${payload.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
-      </label>
-      <label class="field"><span class="label-text">Amount</span><input type="number" step="0.01" value="${payload.amount}" onchange="updateTxField('amount',this.value)"></label>
-      ${isTransfer ? '' : `<label class="field span-2"><span class="label-text">Location <span style="opacity:.6;">(optional)</span></span><input value="${escHtml(payload.location || '')}" placeholder="e.g. Amsterdam" onchange="updateTxField('location',this.value)"></label>`}
-      <label class="field span-2"><span class="label-text">Description <span style="opacity:.6;">(optional)</span></span><input value="${escHtml(payload.description || '')}" placeholder="Any extra detail" onchange="updateTxField('description',this.value)"></label>
-      ${isTransfer ? '' : `<label class="field span-2"><span class="label-text">Logo URL <span style="opacity:.6;">(optional — reused automatically next time you log this name)</span></span>
-        <div style="display:flex;gap:6px;align-items:center;"><input id="tf-logo" style="flex:1;" value="${escHtml(payload.logo || '')}" placeholder="https://…" onchange="updateTxField('logo',this.value)">${logoPickerButtonHtml('tf-logo')}</div>
-        ${logoPickerPopoverHtml('tf-logo')}
-      </label>
-      ${payload.logo ? `<div class="span-2" style="display:flex;align-items:center;gap:8px;">${assetLogoHtml(payload.logo, 'Other', 28)}<span style="font-size:12px;opacity:.6;">Current logo</span></div>` : ''}`}
-    </div>
-    <div class="modal-actions">
-      ${isEdit ? `<button class="btn danger ghost" onclick="deleteBudgetTx('${payload.id}')">🗑 Delete</button>` : ''}
-      <button class="btn primary" onclick="saveTxForm()">✓ Save</button>
+      <div id="tx-suggestions" class="tx-suggestions">${txSuggestionsHtml()}</div>`}`;
+  } else if (step === 2 && isTransfer) {
+    const endpointSelect = (field, value) => `
+      <select class="tx-big-select" onchange="updateTxField('${field}',this.value)">
+        <option value="">Choose…</option>
+        ${transferEndpointOptions().map(g => `<optgroup label="${escHtml(g.label)}">${g.items.map(it => `<option value="${escHtml(it.ref)}" ${value === it.ref ? 'selected' : ''}>${escHtml(it.label)}</option>`).join('')}</optgroup>`).join('')}
+      </select>`;
+    body = `
+      ${summary()}
+      <label class="field"><span class="label-text">From</span>${endpointSelect('from', p.from)}</label>
+      <div style="text-align:center;font-size:20px;opacity:.5;margin:2px 0;">↓</div>
+      <label class="field"><span class="label-text">To</span>${endpointSelect('to', p.to)}</label>
+      <div style="font-size:12px;opacity:.55;margin-top:10px;line-height:1.5;">Moves your own money between two places (bank, pocket, broker or exchange cash) — it isn't counted as income or spending. Currencies are converted automatically.</div>`;
+  } else if (step === 2) {
+    body = `
+      ${summary()}
+      <div class="tx-label">Category</div>
+      <div class="tx-tiles">
+        ${cats.map(c => `<button type="button" class="tx-tile ${p.categoryId === c.id ? 'on' : ''}" onclick="txPickCategory('${c.id}')"><span class="tx-tile-icon">${c.icon || '•'}</span><span class="tx-tile-name">${escHtml(c.name)}</span></button>`).join('')}
+      </div>
+      ${subcats.length ? `
+        <div class="tx-label" id="tx-sub-label" style="margin-top:16px;">${escHtml(cat.name)} — which one? <span style="opacity:.5;font-weight:500;">(optional)</span></div>
+        <div class="tx-chips">${subcats.map(sc => chip(p.subCategoryId === sc.id, `txPickSub('${sc.id}')`, `${sc.icon || ''} ${escHtml(sc.name)}`)).join('')}</div>` : ''}`;
+  } else {
+    const today = todayYmd(), yest = dateToYmd(new Date(appToday().getTime() - 864e5));
+    const other = p.date !== today && p.date !== yest;
+    const more = !!p._more || !!(p.location || p.description || p.logo || p.impact);
+    body = `
+      ${summary()}
+      <div class="tx-label">When?</div>
+      <div class="tx-chips">
+        ${chip(p.date === today, `updateTxField('date','${today}')`, 'Today')}
+        ${chip(p.date === yest, `updateTxField('date','${yest}')`, 'Yesterday')}
+        <label class="tx-chip ${other ? 'on' : ''} tx-date-chip">📅 ${other ? escHtml(ymdToDate(p.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) : 'Other day'}<input type="date" value="${escHtml(p.date || '')}" onchange="updateTxField('date',this.value)"></label>
+      </div>
+      ${isTransfer ? '' : `
+      ${data.accounts.length ? `<div class="tx-label">Account <span style="opacity:.5;font-weight:500;">(its balance follows)</span></div>
+      <div class="tx-chips">
+        ${chip(!p.accountId, `updateTxField('accountId','')`, 'None')}
+        ${data.accounts.map(a => chip(p.accountId === a.id, `updateTxField('accountId','${a.id}')`, `${escHtml(a.name)}`)).join('')}
+      </div>` : ''}
+      <div class="tx-label">Paid with</div>
+      <div class="tx-chips">
+        ${data.paymentMethods.map(pm => chip(p.paymentMethodId === pm.id, `updateTxField('paymentMethodId','${p.paymentMethodId === pm.id ? '' : pm.id}')`, `${pm.icon || ''} ${escHtml(pm.name)}`)).join('')}
+      </div>`}
+      <div class="tx-toggle-row" onclick="updateTxField('nature','${p.nature === 'Fixed' ? 'Variable' : 'Fixed'}')">
+        <div><div style="font-weight:600;">🔄 Repeats every month</div><div style="font-size:12px;opacity:.6;">Rent, subscriptions, salary… added by itself on the same day each month</div></div>
+        <div class="toggle ${p.nature === 'Fixed' ? 'on' : ''}"></div>
+      </div>
+      <button type="button" class="tx-more-btn" onclick="ui.modal.payload._more=!${more};render();">${more ? '▴ Fewer options' : '▾ More options'} <span style="opacity:.55;">${isTransfer ? 'note' : 'note, place, logo, personal impact'}</span></button>
+      ${more ? `
+        <label class="field"><span class="label-text">Note</span><input value="${escHtml(p.description || '')}" placeholder="Any extra detail" onchange="updateTxField('description',this.value)"></label>
+        ${isTransfer ? '' : `
+        <label class="field"><span class="label-text">Place</span><input value="${escHtml(p.location || '')}" placeholder="e.g. Maastricht" onchange="updateTxField('location',this.value)"></label>
+        <div class="tx-label">Personal impact</div>
+        <div class="tx-chips">
+          ${chip(!p.impact, `updateTxField('impact','')`, 'Neutral')}
+          ${chip(p.impact === 'positive', `updateTxField('impact','positive')`, '🙂 Positive')}
+          ${chip(p.impact === 'negative', `updateTxField('impact','negative')`, '🙁 Negative')}
+        </div>
+        <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(reused next time you log this name)</span></span>
+          <div style="display:flex;gap:6px;align-items:center;"><input id="tf-logo" style="flex:1;" value="${escHtml(p.logo || '')}" placeholder="https://…" onchange="updateTxField('logo',this.value)">${logoPickerButtonHtml('tf-logo')}</div>
+          ${logoPickerPopoverHtml('tf-logo')}
+        </label>`}` : ''}`;
+  }
+  return `
+    <div class="modal-head"><div class="modal-title">${isEdit ? 'Edit transaction' : 'New transaction'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="tx-steps">${steps.map(([l, n]) => `<button type="button" class="tx-step ${step === n ? 'on' : ''} ${n < 3 && done[n] ? 'done' : ''}" onclick="txGo(${n})" ${n > 1 && !done[1] && !isEdit ? 'disabled' : ''}><span>${n < 3 && done[n] && step !== n ? '✓' : n}</span>${l}</button>`).join('')}</div>
+    <div class="tx-body">${body}</div>
+    <div class="tx-footer">
+      ${step > 1 ? `<button class="btn" onclick="txGo(${step - 1})">← Back</button>` : (isEdit ? `<button class="btn danger ghost" onclick="deleteBudgetTx('${p.id}');closeModal();">🗑 Delete</button>` : '<span></span>')}
+      ${step < 3 ? `<button class="btn ${complete && step === 1 ? '' : 'primary'}" id="tx-next" onclick="txNext()" ${done[step] ? '' : 'disabled'}>Next →</button>` : ''}
+      ${complete && (step === 3 || isEdit || p._fromSuggestion) ? `<button class="btn primary" onclick="saveTxForm()">✓ Save</button>` : ''}
     </div>`;
 };
+/* Which steps are filled in: 1 = an amount above 0; 2 = a category (or both ends of a transfer). */
+function txStepDone(p) {
+  const amt = parseFloat(String(p.amount).replace(',', '.'));
+  return { 1: amt > 0, 2: p.type === 'transfer' ? !!(p.from && p.to && p.from !== p.to) : !!p.categoryId, 3: true };
+}
+function txAmountInput(v) {
+  if (!ui.modal) return;
+  ui.modal.payload.amount = v.replace(',', '.');
+  const btn = document.getElementById('tx-next');
+  if (btn) btn.disabled = !txStepDone(ui.modal.payload)[1];
+}
+function txGo(n) { if (!ui.modal) return; ui.modal.payload.step = n; render(); txFocusStep(); }
+function txNext() {
+  const p = ui.modal && ui.modal.payload;
+  if (!p) return;
+  const step = p.step || 1;
+  if (!txStepDone(p)[step]) return;
+  txGo(Math.min(3, step + 1));
+}
+function txPickCategory(id) {
+  const p = ui.modal.payload;
+  if (p.categoryId !== id) { p.categoryId = id; p.subCategoryId = ''; }
+  const cats = data.categories[p.type === 'income' ? 'income' : 'expense'] || [];
+  const c = cats.find(x => x.id === id);
+  render();
+  // No sub-categories to pick from: straight on to the details.
+  if (!c || !(c.subcategories || []).length) { txGo(3); return; }
+  const lbl = document.getElementById('tx-sub-label');
+  if (lbl) lbl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+function txPickSub(id) { const p = ui.modal.payload; p.subCategoryId = p.subCategoryId === id ? '' : id; txGo(3); }
+/* Puts the cursor where you type next, so on a phone the right keyboard is already open. */
+function txFocusStep() {
+  const p = ui.modal && ui.modal.payload;
+  if (!p || (p.step || 1) !== 1) return;
+  const el = document.getElementById(p.amount ? (p.type === 'transfer' ? 'tx-amount' : 'tx-name') : 'tx-amount');
+  if (el && document.activeElement !== el) { try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); } }
+}
+function txSuggestionsHtml() {
+  return (ui.txSuggestions || []).map(s => `<button type="button" class="tx-chip" onclick="applyTxSuggestion('${escHtml(s).replace(/'/g, "\\'")}')">${escHtml(s)}</button>`).join('');
+}
 function updateTxField(field, value) {
   if (!ui.modal) return;
   ui.modal.payload[field] = value;
@@ -3562,7 +3625,7 @@ function onTxNameInput(value) {
     : [];
   ui.txSuggestions = matches;
   const container = document.getElementById('tx-suggestions');
-  if (container) container.innerHTML = matches.map(s => `<span class="chip" style="cursor:pointer;font-size:12px;padding:6px 10px;" onclick="applyTxSuggestion('${escHtml(s).replace(/'/g, "\\'")}')">${escHtml(s)}</span>`).join('');
+  if (container) container.innerHTML = txSuggestionsHtml();
 }
 /* Item 9: clicking a suggestion auto-fills every field that can reasonably be reused from the
    most recent past transaction with that exact name — category, sub-category, logo, location,
@@ -3580,6 +3643,9 @@ function applyTxSuggestion(name) {
     from: match.from || '', to: match.to || '',
   });
   ui.txSuggestions = [];
+  // Everything but the amount and date is known now: Save is offered right away, and Next goes
+  // to the details in case you want to change something.
+  p._fromSuggestion = true;
   render();
 }
 function saveTxForm() {

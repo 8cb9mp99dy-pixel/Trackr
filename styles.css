@@ -479,6 +479,54 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
 .surface-dark .lc { color: var(--dark-text); }
 .surface-dark .lc-dot { background: var(--dark-text); box-shadow: 0 0 0 3px var(--dark-card); }
 .surface-dark .lc-tip { background: var(--dark-text); color: var(--dark-card); }
+/* Add / edit transaction: three short steps */
+.tx-steps { display: flex; gap: 6px; margin: -6px 0 16px; }
+.tx-step { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 6px; border-radius: 999px; border: 1px solid var(--dark-border); background: transparent; color: inherit; font: inherit; font-size: 12.5px; font-weight: 600; opacity: .55; cursor: pointer; }
+.tx-step span { width: 18px; height: 18px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; background: var(--dark-card-2); }
+.tx-step.on { opacity: 1; border-color: var(--accent-1); }
+.tx-step.on span, .tx-step.done span { background: var(--accent-1); color: #fff; }
+.tx-step.done { opacity: .85; }
+.tx-step:disabled { cursor: default; }
+.tx-body { display: flex; flex-direction: column; gap: 12px; }
+.tx-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 4px; border-radius: 14px; background: var(--dark-card-2); }
+.tx-seg button { padding: 11px 6px; border-radius: 10px; border: none; background: transparent; color: inherit; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.tx-seg button.on { background: var(--accent-1); color: #fff; }
+.tx-amount { display: flex; gap: 8px; align-items: stretch; }
+.tx-amount input { font-size: 34px !important; font-weight: 700; padding: 14px 16px !important; letter-spacing: -0.01em; flex: 1; min-width: 0; }
+.tx-amount select { width: 92px; flex: none; font-weight: 600; }
+.tx-label { font-size: 12.5px; font-weight: 600; opacity: .75; margin-top: 2px; }
+.tx-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.tx-chip { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 10px 14px; border-radius: 999px; border: 1px solid var(--dark-border); background: var(--dark-card-2); color: inherit; font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; min-height: 40px; }
+.tx-chip.on { background: var(--accent-1); border-color: var(--accent-1); color: #fff; }
+.tx-date-chip input[type=date] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; padding: 0; border: none; }
+.tx-suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -4px; }
+.tx-suggestions:empty { display: none; }
+.tx-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(98px, 1fr)); gap: 8px; }
+.tx-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px 6px; min-height: 84px; border-radius: 14px; border: 1px solid var(--dark-border); background: var(--dark-card-2); color: inherit; font: inherit; cursor: pointer; text-align: center; }
+.tx-tile.on { border-color: var(--accent-1); background: color-mix(in srgb, var(--accent-1) 22%, var(--dark-card-2)); box-shadow: 0 0 0 1px var(--accent-1); }
+.tx-tile-icon { font-size: 24px; line-height: 1; }
+.tx-tile-name { font-size: 12px; font-weight: 600; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tx-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 10px 14px; border-radius: 12px; background: var(--dark-card-2); font-size: 13px; }
+.tx-summary span:first-child { font-size: 18px; font-weight: 700; }
+.tx-summary span + span { opacity: .75; }
+.tx-big-select { font-size: 15px !important; padding: 13px 38px 13px 14px !important; }
+.tx-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 12px; background: var(--dark-card-2); cursor: pointer; font-size: 14px; }
+.tx-more-btn { align-self: flex-start; background: none; border: none; color: inherit; font: inherit; font-size: 13px; font-weight: 600; padding: 4px 0; cursor: pointer; }
+.tx-footer { position: sticky; bottom: -26px; margin: 18px -26px -26px; padding: 14px 26px; background: var(--dark-card); border-top: 1px solid var(--dark-border); display: flex; gap: 10px; justify-content: space-between; }
+.tx-footer .btn { flex: 1; padding-top: 12px; padding-bottom: 12px; }
+.tx-footer span:empty { display: none; }
+.tx-footer .btn:disabled { opacity: .4; cursor: default; }
+.modal .btn:not(.primary):not(.danger) { background: var(--dark-card-2); color: var(--dark-text); border-color: var(--dark-border); }
+@media (max-width: 640px) {
+  /* On a phone every window is a sheet that slides up from the bottom, full width. */
+  .modal-backdrop { padding: 0; align-items: flex-end; }
+  .modal { max-width: 100%; max-height: 94vh; max-height: 94dvh; border-radius: 20px 20px 0 0; padding: 20px 16px 16px; border-bottom: none; }
+  .modal input, .modal select, .modal textarea { font-size: 16px; } /* 16px+ keeps iOS from zooming in */
+  .tx-footer { bottom: -16px; margin: 16px -16px -16px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .tx-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tx-step { font-size: 11.5px; padding: 8px 4px; }
+}
+
 /* Budget → Totals */
 .totals-list { display: flex; flex-direction: column; gap: 4px; }
 .totals-row { padding: 10px 4px; border-radius: 10px; cursor: pointer; }
