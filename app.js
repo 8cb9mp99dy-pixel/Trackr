@@ -2069,6 +2069,8 @@ function renderDashboard() {
       <div class="chip-scroll">${accountChips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>
     </div>
 
+    ${typeof loanDashboardHtml === 'function' ? loanDashboardHtml(netWorth) : ''}
+
     <div class="grid-3" style="margin-bottom:20px;">
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(income)}</div></div><span style="font-size:20px;">📈</span></div></div>
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div><span style="font-size:20px;">📉</span></div></div>
