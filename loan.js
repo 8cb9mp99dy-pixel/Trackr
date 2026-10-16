@@ -299,6 +299,19 @@ async function loanRefreshPrices(L, opts) {
   render();
   return any;
 }
+/* ↻ Live prices: fetches again and says what happened — never claims an update that didn't. */
+async function loanRefreshNow(id) {
+  const L = loanById(id); if (!L) return;
+  const list = loanPositions(L).filter(p => p.isin);
+  const before = list.map(p => p.priceAt);
+  const ok = await loanRefreshPrices(L, { derive: true });
+  const updated = list.filter((p, i) => p.priceAt && p.priceAt !== before[i]);
+  if (typeof refreshToast !== 'function') return;
+  if (!list.length) refreshToast('None of the loan positions has an ISIN yet — add one so its price can be looked up.', false);
+  else if (ok && updated.length === list.length) refreshToast(`All ${list.length} loan positions updated just now.`, true);
+  else if (updated.length) refreshToast(`${updated.length} of ${list.length} loan positions updated. ${list.filter(p => !updated.includes(p)).map(p => escHtml(p.name)).join(', ')} keep their last value.`, false);
+  else refreshToast(`No live price found${navigator.onLine === false ? ' — you are offline' : ''}. The values shown are the last known ones.`, false);
+}
 function loanMaybeAutoRefresh(L) {
   if (ui.loanPricesFetching || (ui.loanPricesCheckedAt && Date.now() - ui.loanPricesCheckedAt < 60 * 60 * 1000)) return;
   if (!loanPositions(L).some(p => p.isin)) return;
@@ -449,7 +462,7 @@ function loanPortfolioHtml(L, M) {
     <div class="grid-3" style="margin-bottom:14px;">
       <button class="btn primary" onclick="openLoanPositionForm('${L.id}')">+ Add position</button>
       <button class="btn" onclick="openLoanValuesForm('${L.id}')">Update values</button>
-      <button class="btn" onclick="loanRefreshPrices(loanById('${L.id}'),{derive:true})">${ui.loanPricesFetching ? '…' : '↻'} Live prices</button>
+      <button class="btn" onclick="loanRefreshNow('${L.id}')">${ui.loanPricesFetching ? '…' : '↻'} Live prices</button>
     </div>
     <div class="card-dark" style="margin-bottom:14px;">
       <div class="row-flex" style="margin-bottom:14px;">

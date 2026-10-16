@@ -1276,12 +1276,13 @@ async function cryptoResolveCoinGeckoId(c) {
   cgSearchTried[sym] = Date.now();
   return null;
 }
-async function fetchCryptoPrices(force) {
+async function fetchCryptoPrices(force, onlySymbols) {
   // A forced (explicit ↻) refresh fetches every coin, manual overrides included — clicking refresh
   // always gets the live price. The background refresh skips manual overrides and fresh prices.
   // A coin no source knows is only looked up again after an hour, not on every refresh.
-  const toFetch = data.cryptoAssets.filter(c => c.symbol && (force || (c.priceAuto !== false && cryptoPriceIsStale(c) && !(cryptoMissTried[c.symbol] && Date.now() - cryptoMissTried[c.symbol] < 60 * 60 * 1000))));
-  if (!toFetch.length || ui.cryptoPriceFetching) return false;
+  const toFetch = data.cryptoAssets.filter(c => c.symbol && (!onlySymbols || onlySymbols.includes(c.symbol)) && (force || (c.priceAuto !== false && cryptoPriceIsStale(c) && !(cryptoMissTried[c.symbol] && Date.now() - cryptoMissTried[c.symbol] < 60 * 60 * 1000))));
+  if (!toFetch.length) return { ok: false, updated: [], failed: [], total: 0 };
+  if (ui.cryptoPriceFetching) { await new Promise(r => setTimeout(r, 1500)); if (ui.cryptoPriceFetching) return { ok: false, updated: [], failed: toFetch, total: toFetch.length, busy: true }; }
   ui.cryptoPriceFetching = true;
   ui.cryptoPriceFetchError = false;
   if (ui.page === 'investments') render();
@@ -1338,11 +1339,11 @@ async function fetchCryptoPrices(force) {
     ui.cryptoPriceFetchError = done.size < toFetch.length;
     ui.cryptoPriceMissing = toFetch.filter(c => !done.has(c)).map(c => c.symbol);
     toFetch.forEach(c => { if (done.has(c)) delete cryptoMissTried[c.symbol]; else cryptoMissTried[c.symbol] = Date.now(); });
-    return any;
+    return { ok: done.size === toFetch.length, updated: toFetch.filter(c => done.has(c)), failed: toFetch.filter(c => !done.has(c)), total: toFetch.length };
   } catch (e) {
     console.error('Crypto live price fetch failed, keeping last known price(s)', e);
     ui.cryptoPriceFetchError = true;
-    return false;
+    return { ok: false, updated: [], failed: toFetch, total: toFetch.length };
   } finally {
     ui.cryptoPriceFetching = false;
     if (ui.page === 'investments' || ui.page === 'dashboard') { if (typeof syncUserIsEditing !== 'function' || !syncUserIsEditing()) render(); }
@@ -1382,7 +1383,7 @@ function clearCryptoPriceManual(symbol) {
   fetchCryptoPrices(true);
 }
 
-/* ===================== Live Stock/ETF/other-asset prices (Twelve Data) ===================== */
+/* ===================== Live Stock/ETF/other-asset prices (by ISIN, Twelve Data as backup) ===================== */
 function assetPriceIsStale(asset) {
   if (!asset.priceUpdatedAt) return true;
   return (Date.now() - new Date(asset.priceUpdatedAt).getTime()) > 60 * 60 * 1000; // 1h, same cadence as crypto
@@ -1403,24 +1404,82 @@ function assetPriceIsStale(asset) {
    Never invents a price: anything neither source returns keeps its last price (from your last
    import/screenshot, or typed by hand). A manually-overridden price is only replaced by an
    explicit refresh (the ↻ button), same as crypto. */
-async function fetchIsinQuotes(isins) {
-  const cfg = loadSupabaseSyncConfig();
-  if (!cfg || !isins.length) { ui.isinQuoteStatus = cfg ? ui.isinQuoteStatus : 'nosync'; return null; }
-  try {
-    const out = await supabaseRpc('get_isin_quotes', { secret: cfg.secret, isins });
-    ui.isinQuoteStatus = 'ok';
-    return out || {};
-  } catch (e) {
-    ui.isinQuoteStatus = e && e.status === 404 ? 'missing' : 'error';
-    console.error('Live ISIN prices unavailable, keeping last known prices', e);
-    return null;
-  }
+/* Live prices by ISIN — no setup needed. Sources, tried in this order for each ISIN:
+   1. TradingView's market scanner: one request for all ISINs, returns every listing of each
+      (Lang & Schwarz, Xetra, Tradegate, Euronext…). The euro listing on the venue you're most
+      likely trading on is used: Lang & Schwarz (Trade Republic's exchange), then Xetra, etc.
+   2. Your Supabase database (get_isin_quotes, Lang & Schwarz) — only if that script was run.
+   3. allorigins — an open-source relay (github.com/gnuns/allorigins) — to reach Lang & Schwarz
+      directly, which browsers otherwise block.
+   Returns { ISIN: { price, currency, venue } } with whatever was found (possibly empty). */
+const TV_VENUES = { LS: 'Lang & Schwarz', LSX: 'Lang & Schwarz', XETR: 'Xetra', TRADEGATE: 'Tradegate', GETTEX: 'gettex', FWB: 'Frankfurt', HAM: 'Hamburg', DUS: 'Düsseldorf', MUN: 'Munich', SWB: 'Stuttgart', HAN: 'Hanover', EURONEXT: 'Euronext', BX: 'BX Swiss', SIX: 'SIX', LSE: 'London', NASDAQ: 'Nasdaq', NYSE: 'NYSE', AMEX: 'NYSE American' };
+const TV_ORDER = ['LS', 'LSX', 'XETR', 'TRADEGATE', 'GETTEX', 'FWB', 'HAM', 'DUS', 'MUN', 'SWB', 'HAN', 'EURONEXT', 'NASDAQ', 'NYSE', 'AMEX', 'SIX', 'BX', 'LSE'];
+function tvPickListing(list) {
+  const usable = (list || []).map(l => (l.currency === 'GBX' ? Object.assign({}, l, { close: l.close / 100, currency: 'GBP' }) : l))
+    // Only well-known exchanges: TradingView also lists odd derivatives (e.g. a Chilean Apple
+    // line at 340,000 "USD") that would give a nonsense price.
+    .filter(l => l.close > 0 && CURRENCIES.includes(l.currency) && TV_ORDER.includes(l.ex));
+  const rank = l => (l.currency === 'EUR' ? 0 : 1000) + TV_ORDER.indexOf(l.ex);
+  return usable.sort((a, b) => rank(a) - rank(b))[0] || null;
 }
-async function fetchAssetPrices(force) {
-  const toFetch = data.assets.filter(a => force || (a.manualPrice == null && assetPriceIsStale(a)));
+// fetch that gives up after `ms`, so a slow or dead source can't leave a ↻ button spinning forever.
+function fetchWithTimeout(url, opts, ms) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), ms || 10000);
+  return fetch(url, Object.assign({}, opts, { signal: ctl.signal })).finally(() => clearTimeout(t));
+}
+async function tvQuotes(isins) {
+  const res = await fetchWithTimeout('https://scanner.tradingview.com/global/scan', {
+    // Sent as plain text on purpose: a JSON content type makes the browser ask permission first
+    // (a "preflight"), which TradingView refuses. Plain text goes straight through.
+    method: 'POST', headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ filter: [{ left: 'isin', operation: 'in_range', right: isins }], columns: ['close', 'currency', 'isin'], range: [0, 2000] }),
+  }, 12000);
+  if (!res.ok) throw new Error('TradingView HTTP ' + res.status);
+  const j = await res.json();
+  const byIsin = {};
+  (j.data || []).forEach(d => { const [close, currency, isin] = d.d || []; if (!isin) return; (byIsin[isin] = byIsin[isin] || []).push({ ex: String(d.s).split(':')[0], close: parseFloat(close), currency }); });
+  const out = {};
+  Object.keys(byIsin).forEach(isin => { const l = tvPickListing(byIsin[isin]); if (l) out[isin] = { price: l.close, currency: l.currency, venue: `TradingView · ${TV_VENUES[l.ex] || l.ex}` }; });
+  return out;
+}
+async function lsViaRelay(isin) {
+  const relay = u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u);
+  const found = await (await fetchWithTimeout(relay(`https://www.ls-tc.de/_rpc/json/.lstc/instrument/search/main?q=${isin}&localeId=2`), {}, 8000)).json();
+  const iid = found && found[0] && found[0].instrumentId;
+  if (!iid) return null;
+  const chart = await (await fetchWithTimeout(relay(`https://www.ls-tc.de/_rpc/json/instrument/chart/dataForInstrument?instrumentId=${iid}`), {}, 8000)).json();
+  const pts = chart && chart.series && chart.series.intraday && chart.series.intraday.data;
+  const last = Array.isArray(pts) && pts.length ? pts[pts.length - 1][1] : (chart && chart.info && chart.info.plotlines && chart.info.plotlines[0] && chart.info.plotlines[0].value);
+  return last > 0 ? { price: last, currency: 'EUR', venue: 'Lang & Schwarz' } : null;
+}
+async function fetchIsinQuotes(isins) {
+  const list = Array.from(new Set((isins || []).map(i => String(i).toUpperCase()).filter(i => /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(i))));
+  const out = {};
+  if (!list.length) return out;
+  try { Object.assign(out, await tvQuotes(list)); ui.isinQuoteStatus = 'ok'; }
+  catch (e) { console.warn('TradingView prices unavailable, trying the other sources', e); }
+  let missing = list.filter(i => !out[i]);
+  const cfg = loadSupabaseSyncConfig();
+  if (missing.length && cfg) {
+    try {
+      const q = await supabaseRpc('get_isin_quotes', { secret: cfg.secret, isins: missing });
+      Object.keys(q || {}).forEach(i => { if (parseFloat(q[i].price) > 0) out[i] = { price: parseFloat(q[i].price), currency: q[i].currency || 'EUR', venue: q[i].venue || 'Lang & Schwarz' }; });
+    } catch (e) { /* not installed or offline — next source */ }
+  }
+  missing = list.filter(i => !out[i]);
+  for (const i of missing.slice(0, 10)) {
+    try { const q = await lsViaRelay(i); if (q) out[i] = q; } catch (e) { /* relay down */ }
+  }
+  ui.isinQuoteStatus = Object.keys(out).length ? 'ok' : (list.length ? 'error' : ui.isinQuoteStatus);
+  return out;
+}
+async function fetchAssetPrices(force, onlyIds) {
+  const toFetch = data.assets.filter(a => (!onlyIds || onlyIds.includes(a.id)) && (force || (a.manualPrice == null && assetPriceIsStale(a))));
   const apiKey = data.settings.twelveDataApiKey;
   const withIsin = toFetch.filter(a => /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(String(a.isin || '').toUpperCase()));
-  if (!toFetch.length || (!withIsin.length && !apiKey)) return false;
+  if (!toFetch.length) return { ok: false, updated: [], failed: [], total: 0 };
+  if (!withIsin.length && !apiKey) return { ok: false, updated: [], failed: toFetch, total: toFetch.length, reason: 'noisin' };
   ui.assetPriceFetching = true;
   ui.assetPriceFetchError = false;
   if (ui.page === 'investments' || ui.page === 'manual-prices') render();
@@ -1438,14 +1497,14 @@ async function fetchAssetPrices(force) {
       if (quotes) withIsin.forEach(a => {
         const q = quotes[a.isin.toUpperCase()];
         const p = q && parseFloat(q.price);
-        if (p > 0) setPrice(a, convertCurrency(p, q.currency || 'EUR', a.priceCurrency || 'EUR'), q.venue || 'Lang & Schwarz');
+        if (p > 0) setPrice(a, convertCurrency(p, q.currency || 'EUR', a.priceCurrency || 'EUR'), q.venue || 'Live');
       });
     }
     const rest = toFetch.filter(a => !done.has(a.id) && a.ticker);
     if (apiKey && rest.length) {
       try {
         const symbols = Array.from(new Set(rest.map(a => a.ticker)));
-        const res = await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${encodeURIComponent(apiKey)}`);
+        const res = await fetchWithTimeout(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${encodeURIComponent(apiKey)}`, {}, 10000);
         if (!res.ok) throw new Error('bad response');
         const json = await res.json();
         rest.forEach(a => {
@@ -1457,12 +1516,12 @@ async function fetchAssetPrices(force) {
     }
     const any = done.size > 0;
     if (any) save({ auto: !force });
-    if (!any || done.size < toFetch.length) ui.assetPriceFetchError = !any;
-    return any;
+    ui.assetPriceFetchError = done.size < toFetch.length;
+    return { ok: done.size === toFetch.length, updated: toFetch.filter(a => done.has(a.id)), failed: toFetch.filter(a => !done.has(a.id)), total: toFetch.length };
   } catch (e) {
     console.error('Live price fetch failed, keeping last known price(s)', e);
     ui.assetPriceFetchError = true;
-    return false;
+    return { ok: false, updated: [], failed: toFetch, total: toFetch.length };
   } finally {
     ui.assetPriceFetching = false;
     if (ui.page === 'investments' || ui.page === 'manual-prices') render();
@@ -4103,7 +4162,7 @@ function renderInvestments() {
   <div class="page surface-dark">
     <div class="page-head">
       <div><h1 class="page-title">Portfolio</h1><div class="page-subtitle">Investment overview</div></div>
-      <button class="btn" onclick="refreshPrices()" title="Fetch the latest live price for every Stock/ETF/other asset (Twelve Data) and every crypto holding (CoinGecko)">${ui.assetPriceFetching || ui.cryptoPriceFetching ? '…' : '↻'} Refresh</button>
+      <button class="btn" onclick="refreshPrices()" title="Fetch the latest live price for every Stock/ETF/other asset (by ISIN) and every crypto holding">${ui.assetPriceFetching || ui.cryptoPriceFetching ? '…' : '↻'} Refresh</button>
     </div>
 
     <div class="card-dark stack-gap-8" style="margin-bottom:20px;">
@@ -4358,13 +4417,13 @@ function positionRowHtml(p) {
       <div></div>
       <div style="display:flex;gap:2px;">
         <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="${p.cryptoRef ? 'Edit crypto asset' : 'Edit asset'}" onclick="${editAction}">${ic('edit')}</button>
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Update current price" onclick="togglePositionRefresh('${refreshKey}')">↻</button>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Fetch the live price again" onclick="${p.cryptoRef ? `refreshCryptoPriceNow('${p.cryptoRef}','${refreshKey}')` : `refreshAssetPriceNow('${p.assetRef}','${refreshKey}')`}">${ui.refreshingKey === refreshKey ? '…' : '↻'}</button>
         <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="${deleteTitle}" onclick="${deleteAction}">${ic('trash')}</button>
       </div>
     </div>
     ${refreshOpen ? `
       <div style="display:flex;gap:8px;margin-top:8px;">
-        <input type="number" step="any" id="pos-refresh-${refreshKey}" placeholder="New current price" value="${p.currentPrice != null ? p.currentPrice : ''}">
+        <input type="number" step="any" id="pos-refresh-${refreshKey}" placeholder="Type the current price" value="${p.currentPrice != null ? p.currentPrice : ''}">
         <button class="btn small primary" onclick="${setRefreshAction}">Set</button>
       </div>` : ''}
   </div>`;
@@ -4444,7 +4503,7 @@ window.__modalRenderers.position = function (payload) {
     <div class="card-nested" style="margin-bottom:16px;">
       <div class="row-flex" style="margin-bottom:0;">
         <div class="eyebrow" style="margin-bottom:0;">Price <span class="badge" style="background:${a.manualPrice != null ? 'rgba(232,150,60,0.18)' : 'rgba(34,181,115,0.18)'};color:${a.manualPrice != null ? 'var(--manual-accent)' : 'var(--positive)'};margin-left:4px;">${a.manualPrice != null ? 'manual override' : 'auto'}</span></div>
-        <button type="button" class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" title="Refresh live price" onclick="fetchAssetPrices(true)">${ui.assetPriceFetching ? '…' : '↻'}</button>
+        <button type="button" class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" title="Fetch the live price again" onclick="refreshAssetPriceNow('${a.id}')">${ui.assetPriceFetching ? '…' : '↻'}</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;">
         <label class="field" style="max-width:150px;"><span class="label-text">Current price</span><input type="number" step="any" id="pf-current" value="${a.currentPrice != null ? a.currentPrice : ''}"></label>
@@ -4547,9 +4606,53 @@ function savePositionForm(id) {
    price (CoinGecko) in one go, then re-records today's snapshot. This used to just re-save
    whatever was already set (no real fetch) — now it actually pulls current market prices,
    same as the individual crypto refresh already did. */
+/* The refresh buttons (↻) always fetch again — even a price fetched a minute ago — and then say
+   exactly what happened: what was updated and from where, or what couldn't be, and that those
+   keep their last price. Never claims an update that didn't happen. */
+function refreshToast(msg, ok) {
+  if (typeof safetyToast === 'function') safetyToast(`<span>${msg}</span>`, { ms: ok ? 4500 : 9000 });
+  else alert(msg.replace(/<[^>]+>/g, ''));
+}
+const lastPriceText = iso => (iso ? `the price from ${escHtml(timeAgo(iso))}` : 'its last price');
 async function refreshPrices() {
-  await Promise.all([fetchAssetPrices(true), fetchCryptoPrices(true)]);
-  save(); render();
+  const [a, c] = await Promise.all([fetchAssetPrices(true), fetchCryptoPrices(true)]);
+  render();
+  const total = a.total + c.total, updated = a.updated.length + c.updated.length;
+  const failed = a.failed.map(x => escHtml(x.ticker || x.name)).concat(c.failed.map(x => escHtml(x.symbol)));
+  if (!total) refreshToast('Nothing to refresh yet — add a stock, ETF or crypto first.', true);
+  else if (updated === total) refreshToast(`All ${total} prices updated just now.`, true);
+  else if (updated) refreshToast(`${updated} of ${total} prices updated. No live price for ${failed.join(', ')} — ${failed.length === 1 ? 'it keeps its' : 'they keep their'} last price.`, false);
+  else refreshToast(`No price could be updated${navigator.onLine === false ? ' — you are offline' : ''}. The prices shown are the last known ones.`, false);
+}
+async function refreshAssetPriceNow(id, rowKey) {
+  const a = assetById(id);
+  if (!a) return;
+  const before = a.priceUpdatedAt;
+  ui.refreshingKey = rowKey || id; render();
+  const r = await fetchAssetPrices(true, [id]);
+  ui.refreshingKey = null;
+  // Nothing found: open the box to type the price by hand, right where you clicked.
+  if (!r.updated.length && rowKey) ui.positionRefreshOpen = rowKey;
+  render();
+  if (r.updated.length) refreshToast(`${escHtml(a.name)}: <strong>${fmtMoney(a.currentPrice, a.priceCurrency)}</strong> from ${escHtml(a.priceSource || 'the market')}, just now.`, true);
+  else refreshToast(`No live price found for ${escHtml(a.name)}${a.isin ? '' : ' — add its ISIN (edit form) so it can be looked up'}${navigator.onLine === false ? ' — you are offline' : ''}. Still showing ${lastPriceText(before)}.`, false);
+}
+async function refreshCryptoPriceNow(symbol, rowKey) {
+  const c = cryptoAssetBySymbol(symbol);
+  if (!c) return;
+  const before = c.priceUpdatedAt;
+  ui.refreshingKey = rowKey || symbol; render();
+  const r = await fetchCryptoPrices(true, [symbol]);
+  ui.refreshingKey = null;
+  if (!r.updated.length && rowKey) ui.positionRefreshOpen = rowKey;
+  render();
+  if (r.updated.length) refreshToast(`${escHtml(symbol)}: <strong>${fmtMoney(c.currentPriceEUR, 'EUR')}</strong> from ${escHtml(c.priceSource || 'the market')}, just now.`, true);
+  else refreshToast(`No live price found for ${escHtml(symbol)}${navigator.onLine === false ? ' — you are offline' : ''}. Still showing ${lastPriceText(before)}.`, false);
+}
+async function refreshFxNow() {
+  const ok = await fetchEurUsdRate();
+  if (ok) refreshToast(`Exchange rates updated just now: 1 € = $${eurUsd().toFixed(4)}${data.settings.fxRates && data.settings.fxRates.GBP ? ` · £${data.settings.fxRates.GBP.toFixed(4)}` : ''}${data.settings.fxRates && data.settings.fxRates.CHF ? ` · CHF ${data.settings.fxRates.CHF.toFixed(4)}` : ''}.`, true);
+  else refreshToast(`Couldn't reach the exchange-rate services${navigator.onLine === false ? ' — you are offline' : ''}. Still using the rates from ${escHtml(timeAgo(data.settings.fxRatesUpdatedAt || data.settings.eurUsdRateUpdatedAt || new Date().toISOString()))}.`, false);
 }
 function deleteBroker(id) {
   data.brokers = data.brokers.filter(b => b.id !== id);
@@ -4603,7 +4706,7 @@ function renderCryptoTab() {
         ` : `
           <span>EUR/USD: ${eurUsd().toFixed(4)}</span>
           <span class="badge" style="background:${data.settings.eurUsdRateAuto ? 'rgba(34,181,115,0.18)' : 'rgba(232,150,60,0.18)'};color:${data.settings.eurUsdRateAuto ? 'var(--positive)' : 'var(--manual-accent)'};">${data.settings.eurUsdRateAuto ? 'live' : 'manual'}</span>
-          <button class="icon-btn-round" style="width:22px;height:22px;background:none;border:none;" title="Refresh live EUR/USD rate" onclick="fetchEurUsdRate()">${ui.eurUsdRateFetching ? '…' : '↻'}</button>
+          <button class="icon-btn-round" style="width:22px;height:22px;background:none;border:none;" title="Refresh live EUR/USD rate" onclick="refreshFxNow()">${ui.eurUsdRateFetching ? '…' : '↻'}</button>
           <span style="cursor:pointer;text-decoration:underline;" onclick="ui.eurUsdRateEditOpen=true;render();">edit</span>
         `}
       </div>
@@ -4885,7 +4988,7 @@ function cryptoPriceRowHtml(symbol) {
           <div id="cs-price-${symbol}" style="font-size:22px;font-weight:800;">${fmtMoney(price, ccy)}</div>
           <div style="display:flex;gap:2px;align-items:center;">
             ${asset.priceUpdatedAt ? `<span style="font-size:11px;opacity:.5;margin-right:4px;">${new Date(asset.priceUpdatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
-            <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Refresh live price" onclick="fetchCryptoPrices(true)">${ui.cryptoPriceFetching ? '…' : '↻'}</button>
+            <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Fetch the live price again" onclick="refreshCryptoPriceNow('${symbol}')">${ui.cryptoPriceFetching ? '…' : '↻'}</button>
             <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Enter price manually" onclick="toggleCryptoManualEntry('${symbol}')">${ic('edit')}</button>
           </div>
         </div>
@@ -5365,26 +5468,22 @@ function renderManualPrices() {
 }
 /* Where live prices come from, and the one-time step if the ISIN price lookup isn't installed
    in Supabase yet. Manual prices always keep working either way. */
+/* Where live prices come from, in plain words. Manual prices always keep working. */
 function livePricesStatusCardHtml() {
   const withIsin = data.assets.filter(a => a.isin).length;
   const st = ui.isinQuoteStatus;
-  const line = !loadSupabaseSyncConfig() ? 'Connect sync first (Settings → Supabase Sync): your Supabase database fetches the prices for the app.'
-    : st === 'ok' ? 'Working — prices by ISIN from the Lang & Schwarz Exchange (Trade Republic\'s exchange), in EUR, refreshed every hour.'
-    : st === 'missing' ? 'One-time step: in Supabase → SQL Editor, paste the setup script below and press Run. It adds the price lookup; your data is not touched.'
-    : st === 'error' ? "Couldn't get live prices right now — the last known or manual prices are used. Try ↻ later."
-    : 'Prices by ISIN from the Lang & Schwarz Exchange, in EUR. Press ↻ to check.';
+  const line = st === 'error' ? "No live price could be found on the last try — the last known or manual prices are used. Press Refresh to try again."
+    : 'Stocks and ETFs: by ISIN from TradingView, using the euro listing on Lang & Schwarz (Trade Republic\'s exchange) or Xetra. Crypto: CoinGecko, then Coinbase. Nothing to set up.';
   return `
     <div class="card-dark" style="margin-bottom:16px;">
       <div class="row-flex" style="gap:10px;">
         <div style="min-width:0;">
-          <div style="font-weight:700;margin-bottom:4px;">Live prices by ISIN</div>
+          <div style="font-weight:700;margin-bottom:4px;">Live prices</div>
           <div style="font-size:12.5px;opacity:.7;line-height:1.5;">${escHtml(line)}</div>
-          <div style="font-size:11.5px;opacity:.5;margin-top:4px;">${withIsin} of ${data.assets.length} asset${data.assets.length === 1 ? '' : 's'} have an ISIN. Without one (or if the lookup fails) the price from your last import or the manual price is used.</div>
+          <div style="font-size:11.5px;opacity:.5;margin-top:4px;">${withIsin} of ${data.assets.length} stock${data.assets.length === 1 ? '' : 's'}/ETF${data.assets.length === 1 ? '' : 's'} have an ISIN. Without one, the price from your last import or the manual price is used. Prices refresh by themselves while the app is open.</div>
         </div>
-        <button class="btn small" onclick="refreshPrices()">${ui.assetPriceFetching ? '…' : '↻'} Refresh</button>
+        <button class="btn small" onclick="refreshPrices()">${ui.assetPriceFetching || ui.cryptoPriceFetching ? '…' : '↻'} Refresh</button>
       </div>
-      ${st === 'missing' ? `<button type="button" class="btn small" style="margin-top:10px;" onclick="toggleSupabaseSetupSql()">${ui.supabaseSetupSqlOpen ? 'Hide' : 'Show'} setup SQL</button>
-        ${ui.supabaseSetupSqlOpen ? `<pre style="font-size:10.5px;background:var(--dark-card-2);padding:10px;border-radius:var(--radius-sm);overflow:auto;margin-top:8px;white-space:pre-wrap;user-select:all;">${escHtml(SUPABASE_SETUP_SQL)}</pre>` : ''}` : ''}
     </div>`;
 }
 function saveManualPrices() {
@@ -5706,7 +5805,7 @@ function fxRatesLineHtml() {
           <div style="font-size:11.5px;opacity:.6;margin-top:2px;">${s.eurUsdRateAuto === false ? 'USD set by hand · ' : ''}${at ? 'updated ' + escHtml(timeAgo(at)) : 'not fetched yet'} · used for every conversion in the app</div>
           ${ui.eurUsdRateFetchError ? '<div style="font-size:11.5px;color:var(--negative);margin-top:2px;">Couldn\'t reach the rate services — the last known rates are used.</div>' : ''}
         </div>
-        <button class="btn small" onclick="fetchEurUsdRate()">${ui.eurUsdRateFetching ? '…' : '↻'} Refresh</button>
+        <button class="btn small" onclick="refreshFxNow()">${ui.eurUsdRateFetching ? '…' : '↻'} Refresh</button>
       </div>
     </div>`;
 }
