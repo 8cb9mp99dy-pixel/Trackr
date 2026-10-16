@@ -2233,6 +2233,7 @@ function renderApp(app) {
     wealth: () => (typeof renderWealth === 'function' ? renderWealth() : ''),
     goals: () => (typeof renderGoals === 'function' ? renderGoals() : ''),
     analysis: () => (typeof renderAnalysis === 'function' ? renderAnalysis() : ''),
+    investAccount: () => (typeof renderInvestAccount === 'function' ? renderInvestAccount() : renderInvestments()),
     'manual-prices': renderManualPrices,
     'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
   };
@@ -2245,7 +2246,7 @@ function renderApp(app) {
         <ul class="nav-list">
           ${NAV_ITEMS.map(item => `
             <li class="${item.phone ? 'nav-phone' : 'nav-desk'}">
-              <button class="nav-item ${ui.page === item.id ? 'active' : ''}" onclick="${item.id === 'settings' ? settingsNavItemOnClick() : `goPage('${item.id}')`}">
+              <button class="nav-item ${ui.page === item.id || (item.id === 'investments' && ui.page === 'investAccount') ? 'active' : ''}" onclick="${item.id === 'settings' ? settingsNavItemOnClick() : `goPage('${item.id}')`}">
                 <span class="nav-icon">${ic(item.icon, 19)}${item.id === 'settings' ? navSyncBadgeHtml() : ''}</span><span class="label">${item.label}</span>
               </button>
             </li>`).join('')}
@@ -4286,6 +4287,7 @@ function renderInvestments() {
       </div>
     </div>
 
+    ${typeof investAccountsStripHtml === 'function' ? investAccountsStripHtml() : ''}
     ${investedByTypeCardHtml()}
 
     <div class="tab-row" style="margin-bottom:20px;">
