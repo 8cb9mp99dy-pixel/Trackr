@@ -17,12 +17,13 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 <style>
-  /* Loading screen: shown from the very first frame (inline, so it needs nothing else to load),
-     the logo's star turning inside its icon, removed as soon as the app has drawn its first page. */
-  #splash { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #F4F5F8; transition: opacity .45s ease, visibility .45s ease; }
-  #splash .splash-icon { width: 104px; height: 104px; border-radius: 24px; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(18,20,28,.18); animation: splash-in .5s cubic-bezier(.2,.8,.2,1) both; transition: transform .45s cubic-bezier(.2,.8,.2,1); }
+  /* Loading screen: shown from the very first frame (inline, so it needs nothing else to load).
+     Black like the logo's own background, so only its white star shows, turning; it fades into
+     the app as soon as the first page is drawn. */
+  #splash { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #000; transition: opacity .45s ease, visibility .45s ease; }
+  #splash .splash-icon { width: 104px; height: 104px; border-radius: 24px; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; animation: splash-in .5s cubic-bezier(.2,.8,.2,1) both; transition: transform .45s cubic-bezier(.2,.8,.2,1); }
   #splash .splash-icon img { width: 104px; height: 104px; border-radius: 50%; animation: splash-spin 1.4s cubic-bezier(.45,.05,.35,1) infinite; }
-  #splash .splash-name { font-family: 'Inter', -apple-system, sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.01em; color: #12141C; opacity: 0; animation: splash-fade .5s .15s ease forwards; }
+  #splash .splash-name { font-family: 'Inter', -apple-system, sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.01em; color: #FFFFFF; opacity: 0; animation: splash-fade .5s .15s ease forwards; }
   #splash.done { opacity: 0; visibility: hidden; }
   #splash.done .splash-icon { transform: scale(1.18); }
   @keyframes splash-spin { to { transform: rotate(360deg); } }
