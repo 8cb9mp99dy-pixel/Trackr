@@ -7,3 +7,7 @@ trackr-asset-prices.csv
 trackr-budget-transactions.xls
 backup.json
 trackr-backup*.json
+# Backups of your data — never on GitHub
+/Backups/
+Trackr-backup-*.xlsx
+*.xlsx.enc

@@ -130,3 +130,58 @@ function overviewPerformanceCardHtml() {
         : `<div class="empty-state" style="padding:24px 10px;"><div class="title">No data yet</div><div class="sub">Add a position or a crypto to see how each one is doing.</div><button class="btn primary" style="margin-top:12px;" onclick="openAddMenu()">${ic('plus', 15)} Add</button></div>`}
     </div>`;
 }
+
+/* ---- By broker: one split bar, then each broker / exchange with its positions, cash and gain.
+   Tapping one opens its page (Investments → account). ---- */
+function brokerBreakdownRows() {
+  if (typeof investAccounts !== 'function') return [];
+  return investAccounts().map(acc => {
+    const holdings = investHoldings(acc);
+    const cash = investCash(acc);
+    let cost = 0, valueWithCost = 0;
+    if (acc.kind === 'broker') positionsByBroker(acc.id).forEach(p => { cost += positionCost(p); valueWithCost += positionValue(p); });
+    (data.cryptoAssets || []).forEach(c => cryptoByExchange(c.symbol).filter(x => txNameKey(x.exchange) === txNameKey(acc.name)).forEach(x => { cost += x.costEUR; valueWithCost += x.valueEUR; }));
+    const value = holdings.reduce((s, h) => s + h.value, 0) + cash;
+    return { acc, key: acc.kind + ':' + acc.id, name: acc.name, logo: acc.logo, value, cash, count: holdings.length, gain: valueWithCost - cost, cost };
+  }).filter(r => r.value > 0).sort((a, b) => b.value - a.value).map((r, i) => Object.assign(r, { color: BROKER_COLORS[i % BROKER_COLORS.length] }));
+}
+const BROKER_COLORS = ['#3B5BDB', '#4FA6D9', '#22A39F', '#E8963C', '#8B5CF6', '#E5484D', '#9AA3B5'];
+function overviewBrokersCardHtml() {
+  const rows = brokerBreakdownRows();
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  return `
+    <div class="card">
+      <div class="row-flex" style="margin-bottom:12px;"><div class="eyebrow">By broker</div><b>${fmtMoney(total)}</b></div>
+      ${rows.length ? `
+        <div class="split-bar">${rows.map(r => `<span style="width:${(r.value / total * 100).toFixed(2)}%;background:${r.color};" title="${escHtml(r.name)} · ${(r.value / total * 100).toFixed(1)}%"></span>`).join('')}</div>
+        <div class="brk-list">${rows.map(r => `
+          <button class="brk-row" onclick="openInvestAccount('${escHtml(r.key).replace(/'/g, "\\'")}')">
+            <span class="brk-logo" style="--c:${r.color};">${logoImg(r.logo, 30)}</span>
+            <span class="nm"><span class="nm-1">${escHtml(r.name)}</span><span class="nm-2">${r.count} position${r.count === 1 ? '' : 's'}${r.cash > 0.005 ? ` · ${fmtMoney(r.cash)} cash` : ''}</span></span>
+            <span class="brk-val"><b>${fmtMoney(r.value)}</b><span>${r.cost ? `<span class="${r.gain >= 0 ? 'positive' : 'negative'}">${r.gain >= 0 ? '+' : '−'}${fmtPct(Math.abs(r.gain / r.cost * 100), false)}</span> · ` : ''}${(r.value / total * 100).toFixed(0)}%</span></span>
+            <span class="brk-chev">${ic('chevronRight', 16)}</span>
+          </button>`).join('')}</div>`
+        : `<div class="empty-state" style="padding:20px 10px;"><div class="title">No data yet</div><div class="sub">Add a broker or a crypto exchange.</div><button class="btn primary" style="margin-top:12px;" onclick="openAddMenu()">${ic('plus', 15)} Add</button></div>`}
+    </div>`;
+}
+/* ---- Wealth allocation: everything you own by type (bank, savings, ETFs, crypto…). ---- */
+function overviewAllocationCardHtml() {
+  const rows = typeof wealthAssetRows === 'function' ? wealthAssetRows().filter(r => !r.loan && r.value > 0) : [];
+  const byType = {};
+  rows.forEach(r => { byType[r.type] = (byType[r.type] || 0) + r.value; });
+  const segs = Object.keys(byType).map(t => ({ label: t, value: byType[t], color: typeColor(t) })).sort((a, b) => b.value - a.value);
+  const total = segs.reduce((s, x) => s + x.value, 0);
+  const focus = ui.wealthFocus != null ? segs[ui.wealthFocus] : null;
+  return `
+    <div class="card">
+      <div class="row-flex" style="margin-bottom:12px;"><div class="eyebrow">Wealth allocation</div><button class="link-btn" onclick="goPage('wealth')">Details ${ic('chevronRight', 14)}</button></div>
+      ${segs.length ? `<div class="alloc-body">
+        <div class="donut-wrap" onpointerleave="wealthDonutFocus(null)">${wealthDonutSvg(segs)}
+          <div class="donut-center"><b>${fmtMoney(focus ? focus.value : total)}</b><span>${focus ? `${escHtml(focus.label)} · ${(focus.value / total * 100).toFixed(1)}%` : 'Total'}</span></div></div>
+        <div class="alloc-legend">${segs.map((s, i) => `<div class="alloc-row ${ui.wealthFocus === i ? 'on' : ''}" onpointerenter="wealthDonutFocus(${i})" onclick="wealthDonutFocus(${ui.wealthFocus === i ? 'null' : i})">
+          <span class="alloc-name"><span class="donut-swatch" style="background:${s.color};"></span>${escHtml(s.label)}</span>
+          <span class="alloc-amt">${fmtMoney(s.value)}</span>
+          <span class="alloc-pct">${(s.value / total * 100).toFixed(1)}%</span></div>`).join('')}</div>
+      </div>` : `<div class="empty-state" style="padding:20px 10px;"><div class="title">No data yet</div><div class="sub">Add a bank account or a position.</div></div>`}
+    </div>`;
+}

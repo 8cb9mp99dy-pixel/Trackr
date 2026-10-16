@@ -2194,8 +2194,12 @@ function lineChartHover(ev, id) {
    writes anything back; this only guards against a display crash, not a data-loss one. */
 function render() {
   const app = document.getElementById('app');
+  // The live price bar keeps scrolling through redraws: the same bar (same holdings) is put back.
+  const keepTicker = app && app.querySelector('.ticker');
   try {
     renderApp(app);
+    const newTicker = keepTicker && app.querySelector('.ticker');
+    if (newTicker && newTicker.dataset.sig === keepTicker.dataset.sig) newTicker.replaceWith(keepTicker);
     dimBigCents(app);
     if (typeof afterRenderMotion === 'function') afterRenderMotion(app);
   } catch (e) {
@@ -2341,14 +2345,6 @@ function renderDashboard() {
   const income = monthIncome(now), expenses = monthExpenses(now), balance = income - expenses;
 
 
-  const byBroker = dashboardBrokerBreakdown();
-  const byBrokerMax = Math.max(...byBroker.map(x => x.value), 1);
-
-  const allocSegments = [
-    { label: 'Bank', value: total, color: 'var(--light-accent-2)' },
-    { label: 'Portfolio', value: invested, color: 'var(--light-accent-1)' },
-  ].filter(s => s.value > 0).sort((a, b) => b.value - a.value);
-  const allocTotal = allocSegments.reduce((s, x) => s + x.value, 0) || 1;
 
   return `
   <div class="page surface-light">
@@ -2359,6 +2355,7 @@ function renderDashboard() {
       </div>
     </div>
 
+    ${typeof liveTickerHtml === 'function' ? liveTickerHtml() : ''}
     ${recapBannerHtml()}
     <div class="card stack-gap-16" style="margin-bottom:20px;">
       <div>
@@ -2388,29 +2385,7 @@ function renderDashboard() {
     ${typeof overviewHistoryCardHtml === 'function' ? overviewHistoryCardHtml() : ''}
     ${typeof overviewPerformanceCardHtml === 'function' ? overviewPerformanceCardHtml() : ''}
 
-    <div class="card" style="margin-bottom:20px;">
-      <div style="font-weight:700;margin-bottom:14px;">BY BROKER</div>
-      <div class="stack-gap-12">
-        ${byBroker.length ? byBroker.map(({ name, logo, value }) => `
-          <div>
-            <div class="row-flex" style="margin-bottom:6px;">
-              <div style="display:flex;align-items:center;gap:10px;">${logoImg(logo, 26)} <span style="font-weight:600;font-size:13.5px;">${escHtml(name)}</span></div>
-              <div style="font-weight:700;font-size:13.5px;">${fmtMoney(value)} <span style="opacity:.5;font-weight:500;">${(value / (invested || 1) * 100).toFixed(0)}%</span></div>
-            </div>
-            <div style="height:6px;border-radius:4px;background:var(--light-border);overflow:hidden;"><div style="height:100%;width:${(value / byBrokerMax * 100).toFixed(1)}%;background:var(--light-accent-1);border-radius:4px;"></div></div>
-          </div>`).join('') : '<div style="opacity:.5;font-size:13px;">No broker holdings yet</div>'}
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:20px;">
-      <div style="font-weight:700;margin-bottom:14px;">Wealth allocation</div>
-      <div style="display:flex;align-items:center;gap:26px;flex-wrap:wrap;">
-        ${svgDonut(allocSegments, { size: 140, stroke: 22 })}
-        <div class="stack-gap-8">
-          ${allocSegments.map(s => `<div style="display:flex;align-items:center;gap:8px;font-size:13.5px;"><span style="width:10px;height:10px;border-radius:3px;background:${s.color};display:inline-block;"></span>${s.label} · ${(s.value / allocTotal * 100).toFixed(0)}%</div>`).join('')}
-        </div>
-      </div>
-    </div>
+    ${typeof overviewBrokersCardHtml === 'function' ? `<div class="ov-pair">${overviewBrokersCardHtml()}${overviewAllocationCardHtml()}</div>` : ''}
 
   </div>`;
 }
@@ -6047,7 +6022,13 @@ function settingsBackupRestoreHtml() {
       <button class="btn primary" onclick="exportFullBackup()">Download backup (JSON)</button>
       <button class="btn" onclick="triggerImportBackup()">Restore from backup</button>
     </div>
+    <div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-bottom:8px;">
+      <button class="btn primary" onclick="exportExcelBackup()">${ic('download', 15)} Excel backup</button>
+      <button class="btn" onclick="document.getElementById('import-excel-backup').click()">Restore from Excel</button>
+    </div>
+    <div style="font-size:11.5px;opacity:.55;margin-bottom:14px;">The Excel backup has one readable sheet per part of the app, plus a "Restore" sheet with everything, checked by a fingerprint before any restore. Keep it private: it holds all your financial data.</div>
     <input type="file" id="import-backup-file" accept="application/json,.json" style="display:none;" onchange="handleImportBackupFile(this.files[0])">
+    <input type="file" id="import-excel-backup" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none;" onchange="restoreExcelBackup(this.files[0]);this.value=''">
     <div style="font-size:11.5px;opacity:.55;">Restoring replaces everything currently in this browser. You'll see exactly what's in the file — and what it would overwrite — and have to confirm, before anything changes.</div>`;
 }
 function exportFullBackup() {
@@ -6058,6 +6039,51 @@ function exportFullBackup() {
   URL.revokeObjectURL(url);
 }
 function triggerImportBackup() { document.getElementById('import-backup-file').click(); }
+/* ---- Excel backup (see backup-excel.js) ---- */
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function exportExcelBackup() {
+  try {
+    const json = JSON.stringify(data);
+    const wb = TrackrExcelBackup.buildWorkbook(XLSX, data, json, await sha256Hex(json), { source: 'Trackr app (' + location.host + ')' });
+    const bytes = XLSX.write(wb, { bookType: 'xlsx', type: 'array', compression: true });
+    const ts = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
+    const name = `Trackr-backup-${ts}.xlsx`;
+    const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    // Where the browser allows it (Chrome/Edge on a computer), you choose where to save it —
+    // e.g. the Backups folder inside Trackr. Elsewhere it goes to Downloads.
+    if (window.showSaveFilePicker) {
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'Excel workbook', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }] });
+        const w = await h.createWritable(); await w.write(blob); await w.close();
+        safetyToast(`<span>Excel backup saved: ${escHtml(h.name)}</span>`, { ms: 5000 });
+        return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    safetyToast(`<span>Excel backup downloaded: ${escHtml(name)}. Move it to your Trackr/Backups folder.</span>`, { ms: 7000 });
+  } catch (e) {
+    console.error('Excel backup failed', e);
+    alert("The Excel backup couldn't be made: " + (e.message || e));
+  }
+}
+async function restoreExcelBackup(file) {
+  if (!file) return;
+  try {
+    const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type: 'array' });
+    const { json, expected } = TrackrExcelBackup.readWorkbook(XLSX, wb);
+    if ((await sha256Hex(json)) !== expected) throw new Error("The data in this file doesn't match its fingerprint — it was changed or damaged, so it won't be restored.");
+    const parsed = JSON.parse(json);
+    if (!(parsed && Array.isArray(parsed.accounts) && Array.isArray(parsed.budgetTransactions) && parsed.settings)) throw new Error("This doesn't contain Trackr data.");
+    await restoreFromJson(json, `the Excel backup "${file.name}"`);
+  } catch (e) {
+    alert("Can't restore this file: " + (e.message || e));
+  }
+}
 /* Rough counts used to summarize a backup in the confirm prompt below — not exhaustive, just
    enough for a human to sanity-check "yes, that's roughly my data" (or "wait, that's way less
    than I have now") before agreeing to overwrite anything. */
