@@ -849,6 +849,7 @@ async function load() {
   if (eurUsdRateIsStale()) fetchEurUsdRate(true);
   fetchCryptoPrices();
   fetchAssetPrices();
+  startPriceRefresh();
 }
 
 /* Upgrades pre-existing saves (Crypto tracked as aggregated `positions`) to the
@@ -1241,42 +1242,102 @@ function setEurUsdRateManual(v) {
 }
 
 /* ===================== Live crypto prices (CoinGecko, USD + EUR) ===================== */
+/* Live crypto prices — three sources, tried in this order, so a coin gets a price as long as any
+   of them knows it:
+   1. CoinGecko (live, by coin id). A coin's id is found automatically from its symbol through
+      CoinGecko's search (the best-ranked coin with exactly that symbol) and remembered.
+   2. Coinbase (live, by symbol) for anything CoinGecko didn't answer — e.g. when its free limit
+      of requests is reached.
+   3. fawazahmed0/exchange-api — an open-source project on GitHub, served free through jsDelivr
+      (and Cloudflare Pages as a mirror) — daily rates, as a last resort.
+   Never invents a price: a coin none of them knows keeps its last (or manual) price. Refreshed
+   every 10 minutes while the app is open (see startPriceRefresh). */
+const CRYPTO_STALE_MS = 10 * 60 * 1000;
 function cryptoPriceIsStale(asset) {
   if (!asset.priceUpdatedAt) return true;
-  return (Date.now() - new Date(asset.priceUpdatedAt).getTime()) > 60 * 60 * 1000; // 1h
+  return (Date.now() - new Date(asset.priceUpdatedAt).getTime()) > CRYPTO_STALE_MS;
 }
-/* Fetches live USD+EUR prices for every auto-tracked coin with a coingeckoId, in one request.
-   Never invents a price: on failure (or for coins missing a coingeckoId) the existing
-   live/manual price is left untouched, so the UI can prompt for a manual entry instead. */
+const cgSearchTried = {}; // symbol → time of a search that found nothing (not retried for a day)
+const cryptoMissTried = {}; // symbol → last time no source had a price for it
+async function cryptoResolveCoinGeckoId(c) {
+  if (c.coingeckoId) return c.coingeckoId;
+  const sym = String(c.symbol || '').toUpperCase();
+  if (COMMON_COINGECKO_IDS[sym]) return (c.coingeckoId = COMMON_COINGECKO_IDS[sym]);
+  if (cgSearchTried[sym] && Date.now() - cgSearchTried[sym] < 864e5) return null;
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/search?query=' + encodeURIComponent(sym));
+    if (res.ok) {
+      const j = await res.json();
+      const hit = (j.coins || []).filter(x => String(x.symbol).toUpperCase() === sym)
+        .sort((a, b) => (a.market_cap_rank || 1e9) - (b.market_cap_rank || 1e9))[0];
+      if (hit) return (c.coingeckoId = hit.id);
+    }
+  } catch (e) { /* offline or rate-limited — the other sources still try by symbol */ }
+  cgSearchTried[sym] = Date.now();
+  return null;
+}
 async function fetchCryptoPrices(force) {
-  // A forced (explicit ↻ click) refresh always fetches every tracked coin, including ones
-  // with a manual override — clicking refresh should always get you the live price. The
-  // passive background fetch (force=false) is more conservative: it skips coins you've
-  // manually overridden and coins whose price isn't stale yet.
-  const toFetch = data.cryptoAssets.filter(c => c.coingeckoId && (force || (c.priceAuto !== false && cryptoPriceIsStale(c))));
-  if (!toFetch.length) return false;
+  // A forced (explicit ↻) refresh fetches every coin, manual overrides included — clicking refresh
+  // always gets the live price. The background refresh skips manual overrides and fresh prices.
+  // A coin no source knows is only looked up again after an hour, not on every refresh.
+  const toFetch = data.cryptoAssets.filter(c => c.symbol && (force || (c.priceAuto !== false && cryptoPriceIsStale(c) && !(cryptoMissTried[c.symbol] && Date.now() - cryptoMissTried[c.symbol] < 60 * 60 * 1000))));
+  if (!toFetch.length || ui.cryptoPriceFetching) return false;
   ui.cryptoPriceFetching = true;
   ui.cryptoPriceFetchError = false;
   if (ui.page === 'investments') render();
+  const now = new Date().toISOString(), done = new Set();
+  const setPrice = (c, eur, usd, source) => {
+    if (!(eur > 0) && !(usd > 0)) return;
+    c.currentPriceEUR = eur > 0 ? eur : usd / eurUsd();
+    c.currentPriceUSD = usd > 0 ? usd : eur * eurUsd();
+    c.manualPrice = null; // a refresh always shows the live price, not a stale manual one
+    c.priceAuto = true;
+    c.priceUpdatedAt = now;
+    c.priceSource = source;
+    done.add(c);
+  };
   try {
-    const ids = Array.from(new Set(toFetch.map(c => c.coingeckoId))).join(',');
-    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd,eur`);
-    if (!res.ok) throw new Error('bad response');
-    const json = await res.json();
-    let any = false;
-    toFetch.forEach(c => {
-      const p = json[c.coingeckoId];
-      if (p && p.usd != null) {
-        c.currentPriceUSD = p.usd;
-        c.currentPriceEUR = p.eur != null ? p.eur : null;
-        c.manualPrice = null; // a refresh always shows the live price, not a stale manual one
-        c.priceAuto = true;
-        c.priceUpdatedAt = new Date().toISOString();
-        any = true;
+    // 1. CoinGecko — ids first (a few searches per run at most, to stay within its free limit).
+    let searches = 0;
+    for (const c of toFetch) { if (!c.coingeckoId && searches < 5) { searches++; await cryptoResolveCoinGeckoId(c); } else if (!c.coingeckoId) cryptoResolveCoinGeckoId(c); }
+    const withId = toFetch.filter(c => c.coingeckoId);
+    if (withId.length) {
+      try {
+        const ids = Array.from(new Set(withId.map(c => c.coingeckoId))).join(',');
+        const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids)}&vs_currencies=usd,eur`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const json = await res.json();
+        withId.forEach(c => { const p = json[c.coingeckoId]; if (p) setPrice(c, p.eur, p.usd, 'CoinGecko'); });
+      } catch (e) { console.warn('CoinGecko unavailable, trying Coinbase', e); }
+    }
+    // 2. Coinbase — one small request per remaining coin.
+    const rest1 = toFetch.filter(c => !done.has(c));
+    await Promise.all(rest1.map(async c => {
+      try {
+        const res = await fetch(`https://api.coinbase.com/v2/prices/${encodeURIComponent(c.symbol.toUpperCase())}-EUR/spot`);
+        if (!res.ok) return;
+        const j = await res.json();
+        setPrice(c, parseFloat(j && j.data && j.data.amount), null, 'Coinbase');
+      } catch (e) { /* next source */ }
+    }));
+    // 3. exchange-api (GitHub, daily) — one file with every coin.
+    const rest2 = toFetch.filter(c => !done.has(c));
+    if (rest2.length) {
+      for (const url of ['https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/eur.min.json', 'https://latest.currency-api.pages.dev/v1/currencies/eur.min.json']) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) continue;
+          const table = (await res.json()).eur || {};
+          rest2.forEach(c => { const perEur = parseFloat(table[c.symbol.toLowerCase()]); if (perEur > 0) setPrice(c, 1 / perEur, null, 'exchange-api (daily)'); });
+          break;
+        } catch (e) { /* mirror */ }
       }
-    });
+    }
+    const any = done.size > 0;
     if (any) { ui.cryptoManualEntryOpen = null; save({ auto: !force }); }
-    if (!any) ui.cryptoPriceFetchError = true;
+    ui.cryptoPriceFetchError = done.size < toFetch.length;
+    ui.cryptoPriceMissing = toFetch.filter(c => !done.has(c)).map(c => c.symbol);
+    toFetch.forEach(c => { if (done.has(c)) delete cryptoMissTried[c.symbol]; else cryptoMissTried[c.symbol] = Date.now(); });
     return any;
   } catch (e) {
     console.error('Crypto live price fetch failed, keeping last known price(s)', e);
@@ -1284,8 +1345,23 @@ async function fetchCryptoPrices(force) {
     return false;
   } finally {
     ui.cryptoPriceFetching = false;
-    if (ui.page === 'investments') render();
+    if (ui.page === 'investments' || ui.page === 'dashboard') { if (typeof syncUserIsEditing !== 'function' || !syncUserIsEditing()) render(); }
   }
+}
+/* Keeps prices moving while the app is open: crypto every 10 minutes, stocks/ETFs and exchange
+   rates when they're over an hour old — and right away when you come back to the app. */
+let priceRefreshStarted = false;
+function startPriceRefresh() {
+  if (priceRefreshStarted) return;
+  priceRefreshStarted = true;
+  const tick = () => {
+    if (document.hidden) return;
+    fetchCryptoPrices();
+    fetchAssetPrices();
+    if (eurUsdRateIsStale()) fetchEurUsdRate(true);
+  };
+  setInterval(tick, 5 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 }
 function setCryptoPriceManual(symbol, value, currency) {
   const v = parseFloat(value);
@@ -4808,13 +4884,14 @@ function cryptoPriceRowHtml(symbol) {
         <div class="row-flex">
           <div id="cs-price-${symbol}" style="font-size:22px;font-weight:800;">${fmtMoney(price, ccy)}</div>
           <div style="display:flex;gap:2px;align-items:center;">
-            ${asset.priceUpdatedAt ? `<span style="font-size:11px;opacity:.5;margin-right:4px;">${new Date(asset.priceUpdatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}
+            ${asset.priceUpdatedAt ? `<span style="font-size:11px;opacity:.5;margin-right:4px;">${new Date(asset.priceUpdatedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>` : ''}
             <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Refresh live price" onclick="fetchCryptoPrices(true)">${ui.cryptoPriceFetching ? '…' : '↻'}</button>
             <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Enter price manually" onclick="toggleCryptoManualEntry('${symbol}')">${ic('edit')}</button>
           </div>
         </div>
       ` : `<div style="opacity:.65;font-size:13px;">No live price yet — enter it manually below.</div>`}
-      ${ui.cryptoPriceFetchError ? `<div style="font-size:11px;color:var(--negative);margin-top:6px;">Couldn't reach the price service — try again, or enter it manually below.</div>` : ''}
+      ${(ui.cryptoPriceMissing || []).includes(symbol) ? `<div style="font-size:11px;color:var(--negative);margin-top:6px;">No live price found for ${escHtml(symbol)} (CoinGecko, Coinbase and exchange-api tried) — check the symbol, or enter the price manually below.</div>` : ''}
+      ${asset.priceSource && price != null ? `<div style="font-size:11px;opacity:.5;margin-top:4px;">Price from ${escHtml(asset.priceSource)}</div>` : ''}
       ${manualOpen ? `
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
           <input type="number" step="any" id="manual-price-${symbol}" placeholder="Price" style="max-width:140px;" value="${isManual ? asset.manualPrice : ''}">
