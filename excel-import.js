@@ -505,7 +505,7 @@ function piGroupHtml(g, gi) {
           <tbody>${g.rows.map((r, ri) => piRowHtml(r, gi, ri)).join('') || '<tr><td colspan="7" style="opacity:.5;">No positions in the file for this broker.</td></tr>'}</tbody>
         </table>
       </div>
-      ${g.cash ? `<div class="card-nested" style="margin-top:12px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">💶 Cash not invested</div><div style="font-size:13px;"><span style="opacity:.5;">${fmtMoney(cashNow, g.brokerId ? brokerCashCurrency(brokerById(g.brokerId)) : g.cash.currency)} →</span> <strong>${fmtMoney(g.cash.amount, g.cash.currency)}</strong></div></div>${g.brokerId && linkedAccountForBroker(brokerById(g.brokerId)) ? `<div style="font-size:11px;opacity:.55;margin-top:4px;">🔗 Also updates your ${escHtml(linkedAccountForBroker(brokerById(g.brokerId)).name)} bank account balance.</div>` : ''}</div>`
+      ${g.cash ? `<div class="card-nested" style="margin-top:12px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">Cash not invested</div><div style="font-size:13px;"><span style="opacity:.5;">${fmtMoney(cashNow, g.brokerId ? brokerCashCurrency(brokerById(g.brokerId)) : g.cash.currency)} →</span> <strong>${fmtMoney(g.cash.amount, g.cash.currency)}</strong></div></div>${g.brokerId && linkedAccountForBroker(brokerById(g.brokerId)) ? `<div style="font-size:11px;opacity:.55;margin-top:4px;">Also updates your ${escHtml(linkedAccountForBroker(brokerById(g.brokerId)).name)} bank account balance.</div>` : ''}</div>`
         : `<div style="font-size:12px;opacity:.55;margin-top:10px;">No Cash row for this broker — its cash stays as it is.</div>`}
       ${g.missing.length ? `
         <div class="card-nested" style="margin-top:12px;border:1px solid var(--manual-accent,#E8963C);">
@@ -531,13 +531,13 @@ function piPreviewHtml(st) {
     <div style="font-size:12.5px;opacity:.6;margin-bottom:12px;">${escHtml(st.fileName)}</div>
     ${st.errors.length ? `
       <div class="card-nested" style="margin-bottom:16px;border:1px solid var(--negative);">
-        <div style="font-weight:700;margin-bottom:6px;color:var(--negative);">⚠️ ${st.errors.length} row${st.errors.length === 1 ? '' : 's'} can't be imported</div>
+        <div style="font-weight:700;margin-bottom:6px;color:var(--negative);">${st.errors.length} row${st.errors.length === 1 ? '' : 's'} can't be imported</div>
         <div style="font-size:12px;opacity:.8;max-height:160px;overflow-y:auto;">${st.errors.map(e => `<div>Row ${e.rowNum}: ${escHtml(e.reasons.join('; '))}</div>`).join('')}</div>
       </div>` : ''}
     ${st.groups.map((g, gi) => piGroupHtml(g, gi)).join('') || '<div class="card-dark" style="opacity:.6;">No rows found.</div>'}
     <div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
-      <button class="btn primary" onclick="applyExcelImport()" ${n || st.groups.some(g => g.cash) || sold ? '' : 'disabled style="opacity:.5;"'}>✓ Import ${n} position${n === 1 ? '' : 's'}${sold ? ` · remove ${sold} sold` : ''}</button>
-      <button class="btn ghost" onclick="cancelExcelImport()">✕ Cancel</button>
+      <button class="btn primary" onclick="applyExcelImport()" ${n || st.groups.some(g => g.cash) || sold ? '' : 'disabled style="opacity:.5;"'}>Import ${n} position${n === 1 ? '' : 's'}${sold ? ` · remove ${sold} sold` : ''}</button>
+      <button class="btn ghost" onclick="cancelExcelImport()">Cancel</button>
     </div>
     <div style="font-size:11.5px;opacity:.5;margin-top:8px;">Brokers that aren't in the file are not touched. Everything stays editable afterwards in Investments.</div>`;
 }
@@ -623,7 +623,7 @@ async function applyExcelImport() {
 function piDoneHtml(st) {
   return `
     <div class="card-dark" style="margin-bottom:16px;">
-      <div style="font-weight:700;margin-bottom:10px;">✓ Import done</div>
+      <div style="font-weight:700;margin-bottom:10px;">Import done</div>
       <div class="stack-gap-8" style="font-size:13px;">
         ${st.summary.map(s => `<div><strong>${escHtml(s.broker)}</strong>${s.created ? ' (new)' : ''} — ${s.updated} updated, ${s.added} added${s.removed ? `, ${s.removed} removed (sold)` : ''}${s.cash ? ` · cash ${fmtMoney(s.cash.amount, s.cash.currency)}` : ''}</div>`).join('')}
       </div>
@@ -645,8 +645,8 @@ function piStartHtml() {
         Tip: give the template to a Claude chat with screenshots of your broker apps and let it fill it in.
       </div>
       <div class="row-flex" style="flex-wrap:wrap;gap:10px;justify-content:flex-start;">
-        <button class="btn primary" onclick="triggerExcelImport()">📥 Choose file (.xlsx or .csv)</button>
-        <button class="btn" onclick="piDownloadTemplate()">⬇ Download template</button>
+        <button class="btn primary" onclick="triggerExcelImport()">Choose file (.xlsx or .csv)</button>
+        <button class="btn" onclick="piDownloadTemplate()">Download template</button>
       </div>
       <input type="file" id="excel-import-file" accept=".xlsx,.xls,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none;" onchange="handleExcelImportFile(this.files[0])">
       <div id="excel-import-status" style="margin-top:10px;font-size:12.5px;"></div>
@@ -671,8 +671,8 @@ function settingsExcelImportHtml() {
   return `
     <div style="opacity:.65;font-size:13px;margin-bottom:12px;">Update every position, price and cash balance of your brokers from one Excel or CSV file.</div>
     <div class="row-flex" style="flex-wrap:wrap;gap:10px;justify-content:flex-start;">
-      <button class="btn primary" onclick="goPositionsImport()">📥 Open the import</button>
-      <button class="btn" onclick="piDownloadTemplate()">⬇ Download template</button>
+      <button class="btn primary" onclick="goPositionsImport()">Open the import</button>
+      <button class="btn" onclick="piDownloadTemplate()">Download template</button>
     </div>`;
 }
 

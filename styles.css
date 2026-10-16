@@ -2,161 +2,55 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--dark-bg);
   color: var(--dark-text);
   -webkit-font-smoothing: antialiased;
 }
 a { color: inherit; }
 button, input, select, textarea { font-family: inherit; }
-.mono { font-family: 'IBM Plex Mono', monospace; }
-.boot-loading { padding: 80px; text-align: center; color: #8A8DA0; font-family: 'IBM Plex Mono', monospace; }
+.mono { font-variant-numeric: tabular-nums; }
+.boot-loading { padding: 80px; text-align: center; color: #6B7080; }
+body { font-feature-settings: 'tnum' 0; }
+.ic { display: inline-block; vertical-align: -3px; flex: none; }
 
-/* ============ Theme variable sets ============ */
-:root,
-[data-theme="default"] {
-  --dark-bg: #0A0A14;
-  --dark-card: #14162A;
-  --dark-card-2: #1B1E38;
-  --dark-border: rgba(255,255,255,0.08);
-  --dark-text: #F2F2F7;
-  --dark-text-dim: #8A8DA0;
-
-  --accent-1: #6C63FF; /* indigo - primary */
-  --accent-2: #34C77B; /* green */
-  --accent-3: #E8963C; /* orange */
-  --accent-4: #4FA6D9; /* blue */
-  --on-accent-1: #0A0A14; /* text color guaranteed readable on top of --accent-1 */
-
-  --sidebar-bg: #0A0A14;
-}
-[data-theme="maritime"] {
-  --dark-bg: #0F2A33;
-  --dark-card: #163944;
-  --dark-card-2: #1E4753;
-  --dark-border: rgba(255,255,255,0.08);
-  --dark-text: #EAF3F4;
-  --dark-text-dim: #9BB6BB;
-
-  --accent-1: #C79A5B; /* gold */
-  --accent-2: #6FA8AA; /* aqua */
-  --accent-3: #B8C4CC; /* light blue-grey */
-  --accent-4: #2A5A6E; /* navy */
-  --on-accent-1: #0A0A14;
-
-  --sidebar-bg: #0B222A;
-}
-[data-theme="emerald"] {
-  --dark-bg: #12261A;
-  --dark-card: #1B3A26;
-  --dark-card-2: #234830;
-  --dark-border: rgba(255,255,255,0.08);
-  --dark-text: #EFFAF2;
-  --dark-text-dim: #9FC2AC;
-
-  --accent-1: #6FBF7F; /* forest */
-  --accent-2: #C7E36B; /* lime */
-  --accent-3: #D9EFC8; /* pale green */
-  --accent-4: #3FBF7F;
-  --on-accent-1: #0A0A14;
-
-  --sidebar-bg: #0E1F15;
-}
-[data-theme="arctic"] {
-  --dark-bg: #0F2320;
-  --dark-card: #16332E;
-  --dark-card-2: #1E403A;
-  --dark-border: rgba(255,255,255,0.08);
-  --dark-text: #EAF7F3;
-  --dark-text-dim: #93B8AF;
-
-  --accent-1: #8FE0C9; /* mint */
-  --accent-2: #E8A93C; /* warm yellow */
-  --accent-3: #5FB6A0; /* teal (was identical to --dark-card, made badge text invisible) */
-  --accent-4: #5FB6A0;
-  --on-accent-1: #0A0A14;
-
-  --sidebar-bg: #0B1C19;
-}
-[data-theme="palladian"] {
-  --dark-bg: #2B3242;
-  --dark-card: #3A4356;
-  --dark-card-2: #454F65;
-  --dark-border: rgba(255,255,255,0.10);
-  --dark-text: #F5F1E8;
-  --dark-text-dim: #B7BAC9;
-
-  --accent-1: #E0895A; /* flame */
-  --accent-2: #EDE8DE; /* cream */
-  --accent-3: #EDE4D2; /* warm white */
-  --accent-4: #7B92C9; /* blue */
-  --on-accent-1: #0A0A14;
-
-  --sidebar-bg: #232938;
-}
-[data-theme="neon"] {
-  --dark-bg: #0A0A0A;
-  --dark-card: #141414;
-  --dark-card-2: #1C1C1C;
-  --dark-border: rgba(255,255,255,0.10);
-  --dark-text: #F5F5F5;
-  --dark-text-dim: #8A8A8A;
-
-  --accent-1: #C6E92F; /* lime */
-  --accent-2: #FFFFFF;
-  --accent-3: #8A8A8A;
-  --accent-4: #C6E92F;
-  --on-accent-1: #0A0A14;
-
-  --sidebar-bg: #000000;
-}
-[data-theme="clean"] {
-  --dark-bg: #FFFFFF;
-  --dark-card: #F5F6F8;
-  --dark-card-2: #ECEEF2;
-  --dark-border: rgba(18,20,28,0.10);
+/* ============ One minimalist theme ============
+   Light everywhere, white cards, black text, one blue accent (design "F", Plus Jakarta Sans).
+   The --dark-* names are kept from the old dark pages so nothing else needs to change: they're
+   simply light now, so Investments, the sidebar and every window look like the rest. */
+:root {
+  --dark-bg: #F4F5F8;
+  --dark-card: #FFFFFF;
+  --dark-card-2: #F2F3F7;
+  --dark-border: rgba(18,20,28,0.08);
   --dark-text: #12141C;
-  --dark-text-dim: #7A7F8C;
+  --dark-text-dim: #6B7080;
 
-  --accent-1: #12141C;
-  --accent-2: #9CA3AF;
-  --accent-3: #4F5563;
-  --accent-4: #6B7280;
-  --on-accent-1: #FFFFFF; /* accent-1 is near-black for this theme, so its own text must be light */
+  --accent-1: #3B5BDB;
+  --accent-2: #4FA6D9;
+  --accent-3: #6B7080;
+  --accent-4: #3B5BDB;
+  --on-accent-1: #FFFFFF;
+  --accent-soft: #EDF1FF;
 
   --sidebar-bg: #FFFFFF;
-}
 
-/* Light surface (Dashboard / Budget main content) stays constant across themes for consistency */
-:root {
-  --light-bg: #F3F4F7;
+  --light-bg: #F4F5F8;
   --light-card: #FFFFFF;
   --light-border: rgba(18,20,28,0.08);
   --light-text: #12141C;
-  --light-text-dim: #8A8DA0;
+  --light-text-dim: #6B7080;
 
-  --positive: #22B573;
+  --positive: #16A34A;
   --negative: #E5484D;
 
-  /* Fixed (non-theme) accents for the light surface (Dashboard/Budget) and other spots
-     where a dark-theme accent could wash out against a background it wasn't designed for
-     (e.g. Neon Lime's bright lime accent is unreadable on a white card). */
-  --light-accent-1: #6C63FF;
+  --light-accent-1: #3B5BDB;
   --light-accent-2: #4FA6D9;
   --manual-accent: #E8963C;
 
-  --radius-lg: 22px;
+  --radius-lg: 20px;
   --radius-md: 14px;
-  --radius-sm: 9px;
-}
-[data-theme="clean"] {
-  /* Clean White theme: dark-surface pages also go light, for a fully bright app */
-  --dark-bg: #FFFFFF;
-  --dark-card: #F5F6F8;
-  --dark-card-2: #ECEEF2;
-  --dark-text: #12141C;
-  --dark-text-dim: #7A7F8C;
-  --sidebar-bg: #FAFAFB;
+  --radius-sm: 10px;
 }
 
 /* ============ App shell ============ */
@@ -178,6 +72,7 @@ button, input, select, textarea { font-family: inherit; }
   height: 100vh;
 }
 .sidebar-logo {
+  font-family: 'Inter', -apple-system, sans-serif; /* the Trackr wordmark keeps its original font */
   font-weight: 800;
   font-size: 20px;
   color: var(--dark-text);
@@ -196,7 +91,7 @@ button, input, select, textarea { font-family: inherit; }
 }
 .nav-item .nav-icon { position: relative; font-size: 16px; width: 18px; text-align: center; }
 .nav-item:hover { background: var(--dark-card); color: var(--dark-text); }
-.nav-item.active { background: var(--accent-1); color: var(--on-accent-1); font-weight: 600; }
+.nav-item.active { background: var(--accent-soft); color: var(--accent-1); font-weight: 700; }
 /* Small badge on the Settings nav icon, mirroring the full sidebar-footer sync indicator — the
    only one of the two actually visible on a phone (see the max-width:640px rule further down),
    since the bottom tab bar has no room for the text version. Purely visual (see
@@ -226,7 +121,8 @@ button, input, select, textarea { font-family: inherit; }
 .page.surface-dark { background: var(--dark-bg); color: var(--dark-text); }
 
 .page-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
-.page-title { font-size: 30px; font-weight: 800; letter-spacing: -0.01em; margin: 0; }
+.page-title { font-size: 30px; font-weight: 800; letter-spacing: -0.025em; margin: 0; }
+.tx-rec { font-size: 12px; opacity: .45; margin-left: 2px; }
 .page-subtitle { font-size: 14px; margin-top: 4px; opacity: 0.65; }
 .icon-btn-round {
   width: 42px; height: 42px; border-radius: var(--radius-sm);
@@ -247,8 +143,9 @@ button, input, select, textarea { font-family: inherit; }
 .card-dark { background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius-lg); padding: 22px; color: var(--dark-text); }
 .card-nested { background: rgba(128,128,128,0.08); border-radius: var(--radius-md); padding: 16px; }
 
-.eyebrow { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.55; margin-bottom: 6px; }
-.big-number { font-size: 40px; font-weight: 800; letter-spacing: -0.02em; }
+.eyebrow { font-size: 12.5px; font-weight: 600; letter-spacing: 0.005em; opacity: 0.6; margin-bottom: 6px; }
+.big-number { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.cents { opacity: .4; }
 .positive { color: var(--positive); }
 .negative { color: var(--negative); }
 .accent-text { color: var(--accent-1); }
@@ -344,7 +241,7 @@ label.field span.label-text { font-weight: 500; }
 .swatch-custom input[type="color"] { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); border: none; padding: 0; cursor: pointer; opacity: 0; }
 
 .empty-state { text-align: center; padding: 50px 20px; }
-.empty-state .emoji { font-size: 38px; margin-bottom: 12px; }
+.empty-state .emoji { display: none; }
 .empty-state .title { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
 .empty-state .sub { opacity: 0.6; font-size: 13.5px; }
 
@@ -356,11 +253,10 @@ label.field span.label-text { font-weight: 500; }
 .accordion.open .chevron { transform: rotate(180deg); }
 .accordion-body { padding: 0 20px 20px; border-top: 1px solid var(--dark-border); padding-top: 16px; }
 
-.tab-row { display: flex; gap: 4px; background: var(--dark-card); border-radius: var(--radius-md); padding: 5px; margin-bottom: 20px; }
-.tab-btn { flex: 1; min-width: 0; padding: 10px; border-radius: 10px; border: none; background: none; color: var(--dark-text-dim); font-weight: 600; font-size: 13.5px; cursor: pointer; }
-.tab-btn.active { background: var(--dark-bg); color: var(--dark-text); }
-[data-theme="clean"] .tab-btn.active,
-[data-theme="palladian"] .tab-btn.active { background: var(--accent-1); color: var(--on-accent-1); }
+.tab-row { display: flex; gap: 4px; background: var(--dark-card-2); border-radius: var(--radius-md); padding: 4px; margin-bottom: 20px; overflow-x: auto; scrollbar-width: none; }
+.tab-row::-webkit-scrollbar { display: none; }
+.tab-btn { flex: 1; min-width: 0; padding: 9px 10px; border-radius: 10px; border: none; background: none; color: var(--dark-text-dim); font-weight: 600; font-size: 13.5px; cursor: pointer; white-space: nowrap; }
+.tab-btn.active { background: var(--dark-card); color: var(--dark-text); box-shadow: 0 1px 3px rgba(18,20,28,.08); }
 
 .row-flex { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .stack-gap-8 > * + * { margin-top: 8px; }
@@ -549,6 +445,18 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
 .totals-bar span { display: block; height: 100%; border-radius: 3px; }
 .totals-sub { font-size: 11.5px; opacity: .6; }
 .totals-subs { margin: 8px 0 0 46px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+/* Budgets, recap, learned categories */
+.bl-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 4px; }
+.bl-input { width: 82px !important; display: inline-block; padding: 4px 8px !important; font-size: 13px !important; text-align: right; border-radius: 8px !important; }
+.recap-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.recap-num { font-size: 20px; font-weight: 800; margin-top: 2px; }
+.recap-sub { font-size: 11.5px; opacity: .6; }
+.recap-line { margin-top: 12px; font-size: 14px; line-height: 1.5; }
+.recap-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; cursor: pointer; border: 1px solid var(--light-accent-1); }
+.tx-auto { font-size: 12.5px; padding: 8px 12px; border-radius: 10px; background: var(--dark-card-2); }
+.tx-auto a { color: inherit; font-weight: 700; }
+@media (max-width: 640px) { .recap-num { font-size: 17px; } }
+
 /* Sync stuck: banner on every page */
 .sync-banner { position: sticky; top: 0; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 12px 40px; background: #FFF1DC; color: #4A3000; border-bottom: 1px solid #E8963C; font-size: 13px; line-height: 1.45; }
 .sync-banner .btn { background: #fff; color: #4A3000; border-color: #E8963C; }
@@ -639,4 +547,4 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
 .bi-table td { vertical-align: top; }
 .bi-table tr.bi-off td { opacity: .38; }
 .bi-table tr.bi-off td:first-child { opacity: 1; }
-@media (max-width: 640px) { .tab-row { gap: 2px; padding: 4px; } .tab-btn { padding: 8px 3px; font-size: 12px; } }
+@media (max-width: 640px) { .tab-row { gap: 2px; padding: 4px; } .tab-btn { flex: 0 0 auto; padding: 8px 12px; font-size: 13px; } }

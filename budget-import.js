@@ -464,7 +464,8 @@ function biParseRows(picked) {
     let cat = biResolveCategory(type, str('category'), str('subcategory'));
     if (!str('category') && !str('subcategory') && name0) {
       // Bank files have no categories — reuse the one you gave this payee last time.
-      const past = data.budgetTransactions.filter(t => t.type === type && t.categoryId && !['inc_other', 'exp_other'].includes(t.categoryId) && biNorm(t.comment) === biNorm(name0)).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+      const past = typeof learnedTxFor === 'function' ? learnedTxFor(name0, type)
+        : data.budgetTransactions.filter(t => t.type === type && t.categoryId && !['inc_other', 'exp_other'].includes(t.categoryId) && biNorm(t.comment) === biNorm(name0)).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
       const pc = past && categoryById(type, past.categoryId);
       if (pc) {
         const ps = past.subCategoryId ? (pc.subcategories || []).find(x => x.id === past.subCategoryId) : null;
@@ -527,8 +528,8 @@ function biStartHtml(error) {
         anything is added — nothing is saved until you press Import, and transactions already in Trackr are skipped.
       </div>
       <div class="grid-2">
-        <button class="btn" onclick="biDownloadTemplate()">📄 Download template (.xlsx)</button>
-        <button class="btn primary" onclick="biChooseFile()">📥 Choose file…</button>
+        <button class="btn" onclick="biDownloadTemplate()">Download template (.xlsx)</button>
+        <button class="btn primary" onclick="biChooseFile()">Choose file…</button>
       </div>
       <input type="file" id="bi-file" accept=".xlsx,.xls,.csv,.txt,.tsv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="display:none;" onchange="biHandleFile(this.files[0])">
       <div id="bi-status" style="margin-top:12px;font-size:13px;${error ? 'color:var(--negative);' : 'opacity:.65;'}">${error ? escHtml(error) : 'Accepts .xlsx, .xls and .csv.'}</div>
@@ -645,7 +646,7 @@ function biPreviewHtml(st) {
           <div style="font-weight:700;font-size:16px;">Review before importing</div>
           <div style="font-size:12.5px;opacity:.6;overflow-wrap:anywhere;">${escHtml(st.fileName)} · sheet “${escHtml(st.sheetName)}” · ${st.rows.length + st.errors.length} row${st.rows.length + st.errors.length === 1 ? '' : 's'}</div>
         </div>
-        <button class="btn small ghost" onclick="biCancel()">✕ Cancel</button>
+        <button class="btn small ghost" onclick="biCancel()">Cancel</button>
       </div>
       <div id="bi-summary">${biSummaryHtml(st)}</div>
       <details style="font-size:12.5px;margin-bottom:12px;">
@@ -683,7 +684,7 @@ function biPreviewHtml(st) {
     </div>` : ''}
     <button class="btn primary full" id="bi-import-btn" onclick="biApply()" ${s.count ? '' : 'disabled style="opacity:.5;cursor:default;"'}>${biImportLabel(s.count)}</button>`;
 }
-const biImportLabel = n => (n ? `✓ Import ${n} transaction${n === 1 ? '' : 's'}` : 'Nothing selected');
+const biImportLabel = n => (n ? `Import ${n} transaction${n === 1 ? '' : 's'}` : 'Nothing selected');
 /* Ticking a row only patches the summary and button — no full re-render, so a long list keeps its
    scroll position. */
 function biToggleRow(i, on) {
@@ -763,7 +764,7 @@ function biDoneHtml(st) {
   ].filter(Boolean).join(' · ');
   return `
     <div class="card" style="text-align:center;padding:32px 20px;">
-      <div style="font-size:34px;margin-bottom:8px;">✅</div>
+      
       <div style="font-weight:700;font-size:17px;">${st.count} transaction${st.count === 1 ? '' : 's'} imported</div>
       <div style="font-size:13px;opacity:.65;margin-top:4px;">${escHtml(fmtDate(st.from))}${st.to !== st.from ? ' → ' + escHtml(fmtDate(st.to)) : ''}${extra ? ' · ' + escHtml(extra) : ''}</div>
       <div class="grid-2" style="margin-top:20px;">

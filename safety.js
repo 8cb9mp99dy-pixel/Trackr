@@ -179,7 +179,7 @@ function restorePointsHtml() {
   const sumTxt = s => s ? `${s.accounts} accounts · ${s.transactions} transactions · ${s.assets} investments` : '';
   return `
     <div class="card-nested" style="margin-top:18px;">
-      <div style="font-weight:700;margin-bottom:4px;">🛟 Restore points</div>
+      <div style="font-weight:700;margin-bottom:4px;">Restore points</div>
       <div style="font-size:12.5px;opacity:.7;line-height:1.5;margin-bottom:12px;">A copy of everything is kept automatically every day. If something goes wrong, go back to any of these days. After a restore you can still undo it.</div>
       <div class="tx-label" style="margin-bottom:6px;">On this device (last ${SAFETY_KEEP_LOCAL} days)</div>
       ${local.length ? local.map(p => line(p.label || fmtSafetyDay(p.day), sumTxt(p.summary) + ` · saved ${new Date(p.savedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`, `restoreLocalPoint('${p.key}')`)).join('') : `<div style="font-size:12.5px;opacity:.55;">${ui.restoreLoaded ? 'The first copy is made a few seconds after opening the app.' : 'Loading…'}</div>`}

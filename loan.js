@@ -331,8 +331,8 @@ window.__modalRenderers.loanPosition = function (p) {
     </div>
     <div style="font-size:11.5px;opacity:.55;line-height:1.5;">With an ISIN, the value then follows the live market price (the quantity is worked out from the value you type). Without one, update the value from your broker app now and then — "Update values" does all of them at once.</div>
     <div class="modal-actions">
-      ${p.id ? `<button class="btn danger ghost" onclick="deleteLoanPosition('${p.loanId}','${p.id}')">🗑 Delete</button>` : ''}
-      <button class="btn primary" onclick="saveLoanPosition()">✓ Save</button>
+      ${p.id ? `<button class="btn danger ghost" onclick="deleteLoanPosition('${p.loanId}','${p.id}')">Delete</button>` : ''}
+      <button class="btn primary" onclick="saveLoanPosition()">Save</button>
     </div>`;
 };
 function saveLoanPosition() {
@@ -384,7 +384,7 @@ window.__modalRenderers.loanValues = function (p) {
     <div class="stack-gap-12">${list.map(x => `
       <label class="field"><span class="label-text">${escHtml(x.name)} <span style="opacity:.55;">· ${escHtml(x.broker || '')}${loanPosLive(x) ? ' · live' : x.valueDate ? ' · typed ' + fmtDay(x.valueDate) : ''}</span></span>
         <input id="lv-${x.id}" inputmode="decimal" value="${Math.round(loanPosValue(x) * 100) / 100}"></label>`).join('')}</div>
-    <div class="modal-actions"><button class="btn primary" onclick="saveLoanValues('${p.loanId}')">✓ Save</button></div>`;
+    <div class="modal-actions"><button class="btn primary" onclick="saveLoanValues('${p.loanId}')">Save</button></div>`;
 };
 function saveLoanValues(loanId) {
   const L = loanById(loanId); if (!L) return;
@@ -436,7 +436,7 @@ function loanPortfolioHtml(L, M) {
       </div>
       <div class="loan-weight"><div class="loan-weight-bar"><span style="width:${Math.min(100, w).toFixed(1)}%;background:${assetGroupColor(p.group || 'Other')};"></span>${t != null ? `<i style="left:${Math.min(100, t)}%;"></i>` : ''}</div>
         <div class="loan-weight-txt"><strong>${w.toFixed(1)}%</strong>${t != null ? ` / ${t}% target` : ''}${loanNum(p.expectedReturn, null) != null ? ` · expects ${loanNum(p.expectedReturn, 0)}%/yr` : ''}</div>
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit" onclick="openLoanPositionForm('${L.id}','${p.id}')">✎</button></div>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit" onclick="openLoanPositionForm('${L.id}','${p.id}')">${ic('edit')}</button></div>
     </div>`;
   };
   return `
@@ -448,7 +448,7 @@ function loanPortfolioHtml(L, M) {
     </div>
     <div class="grid-3" style="margin-bottom:14px;">
       <button class="btn primary" onclick="openLoanPositionForm('${L.id}')">+ Add position</button>
-      <button class="btn" onclick="openLoanValuesForm('${L.id}')">✎ Update values</button>
+      <button class="btn" onclick="openLoanValuesForm('${L.id}')">Update values</button>
       <button class="btn" onclick="loanRefreshPrices(loanById('${L.id}'),{derive:true})">${ui.loanPricesFetching ? '…' : '↻'} Live prices</button>
     </div>
     <div class="card-dark" style="margin-bottom:14px;">
@@ -552,7 +552,7 @@ function multiLineHover(ev, id) {
 /* ---------- Page ----------
    One question: is what the loan's investments have earned more than what the loan costs you —
    the interest, plus the money set aside and spent? Three numbers, one chart, and where the
-   money is invested. The loan's terms are edited in a small window (✎). */
+   money is invested. The loan's terms are edited in a small window (pencil button). */
 const fmtDay = ymd => (validYmd(ymd) ? ymdToDate(ymd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 const fmtMonth = ymd => (validYmd(ymd) ? ymdToDate(ymd).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '—');
 const fmtSigned = v => (v >= 0 ? `+${fmtMoney(v)}` : `−${fmtMoney(-v)}`);
@@ -633,7 +633,7 @@ function loanGainChartHtml(L, G) {
   return `
     <div class="chip-scroll" style="margin:4px 0 10px;">${ranges.map(([k, l]) => `<span class="chip" style="cursor:pointer;font-size:12.5px;padding:7px 12px;${r === k ? 'background:var(--positive);border-color:var(--positive);color:#fff;' : ''}" onclick="setLoanRange('${k}')">${escHtml(l)}</span>`).join('')}</div>
     <div class="mlc-legend">${series.map(s => `<span class="mlc-chip" style="cursor:default;"><span style="${swatch(s)}"></span>${escHtml(s.label)}</span>`).join('')}</div>
-    ${multiLineChartHtml(series, { xMin: ymdMs(G.start), xMax: ymdMs(end), markers, h: 260, empty: 'Add the loan details (✎) to see the chart.' })}
+    ${multiLineChartHtml(series, { xMin: ymdMs(G.start), xMax: ymdMs(end), markers, h: 260, empty: 'Add the loan details (pencil button) to see the chart.' })}
     <div style="font-size:11.5px;opacity:.55;margin-top:8px;line-height:1.5;">Green = what your investments have earned. Orange = the interest the loan adds. ${G.spent ? 'When green gets above the red dashed line, the investments have paid for the interest and the money you spent.' : 'When green gets above orange, the investments have paid for the interest.'} Touch the chart to read the values.</div>`;
 }
 function loanStat(label, value, sub, cls) {
@@ -649,16 +649,16 @@ function renderLoanTab() {
   loanMaybeAutoRefresh(L);
   const G = loanGainModel(L), M = G.M;
   const sentence = G.passes
-    ? (G.passes.already ? `Your investments have already earned more than the interest${G.spent ? ` and the ${fmtMoney(G.spent)} spent` : ''}. 🎉`
+    ? (G.passes.already ? `Your investments have already earned more than the interest${G.spent ? ` and the ${fmtMoney(G.spent)} spent` : ''}.`
       : `At ${G.rate}% a year${G.own ? ' (your positions\' returns)' : ''}, your gain passes the interest${G.spent ? ` + ${fmtMoney(G.spent)}` : ''} around <strong>${fmtMonth(G.passes.date)}</strong>.`)
-    : (G.s ? `At ${G.rate}% a year, your gain doesn't pass the interest${G.spent ? ` + ${fmtMoney(G.spent)}` : ''} before ${fmtMonth(G.end)}.` : 'Add the loan details (✎) to compare.');
+    : (G.s ? `At ${G.rate}% a year, your gain doesn't pass the interest${G.spent ? ` + ${fmtMoney(G.spent)}` : ''} before ${fmtMonth(G.end)}.` : 'Add the loan details (pencil button) to compare.');
   return `
     ${list.length > 1 ? `<div class="chip-scroll" style="margin-bottom:14px;">${list.map(l => `<span class="chip" style="cursor:pointer;${l.id === L.id ? 'background:var(--light-accent-1);color:#fff;border-color:var(--light-accent-1);' : ''}" onclick="ui.loanId='${l.id}';render();">${escHtml(l.name || 'Loan')}</span>`).join('')}</div>` : ''}
     <div class="card-dark" style="margin-bottom:14px;">
       <div class="row-flex" style="margin-bottom:14px;">
         <div><div style="font-weight:700;font-size:16px;">${escHtml(L.name || 'Loan')}</div>
           <div style="font-size:12px;opacity:.6;">${fmtMoney(loanNum(L.principal, 0))} borrowed · you owe ${fmtMoney(M.debtNow)} today</div></div>
-        <button class="icon-btn-round" title="Loan details" onclick="openLoanDetails('${L.id}')">✎</button>
+        <button class="icon-btn-round" title="Loan details" onclick="openLoanDetails('${L.id}')">${ic('edit')}</button>
       </div>
       <div class="loan-stats">
         ${loanStat('Your gain', fmtSigned(G.gainNow), M.estimated ? 'add your positions below' : `on ${fmtMoney(G.cost)} invested`, G.gainNow >= 0 ? 'positive' : 'negative')}
@@ -674,7 +674,7 @@ function renderLoanTab() {
     <div class="loan-section-title">Where the loan is invested</div>
     ${loanPortfolioHtml(L, M)}`;
 }
-/* ---------- Loan details (✎) ---------- */
+/* ---------- Loan details (pencil button) ---------- */
 function loanField(L, key, label, opts) {
   opts = opts || {};
   const v = L[key] == null ? '' : L[key];
@@ -710,7 +710,7 @@ window.__modalRenderers.loanDetails = function (p) {
     </div>
     <div style="font-size:11.5px;opacity:.55;line-height:1.5;">${s ? `Consolidation ${fmtDay(s.deferralEnd)}${s.N ? `, then ${s.N} payments of about ${fmtMoney(s.monthlyPayment)}` : ''}. ` : ''}When the bank changes the rate (it follows EURIBOR), update it here.</div>
     <div class="modal-actions">
-      <button class="btn danger ghost" onclick="closeModal();deleteLoan('${L.id}')">🗑 Delete loan</button>
+      <button class="btn danger ghost" onclick="closeModal();deleteLoan('${L.id}')">Delete loan</button>
       <button class="btn primary" onclick="closeModal()">Done</button>
     </div>`;
 };

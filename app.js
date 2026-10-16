@@ -74,13 +74,36 @@ function saveAssetColorFromPicker(i, type) {
   setAssetTypeColor(type, el.dataset.color);
 }
 
+/* Line icons (Tabler, MIT) — used instead of emoji for the app's own buttons and menu, so
+   the interface stays quiet; emoji remain only where they carry meaning (your categories). */
+const ICON_PATHS = {
+  home: '<path d="M5 12l-2 0l9 -9l9 9l-2 0"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7"/><path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6"/>',
+  bank: '<path d="M3 21l18 0"/><path d="M3 10l18 0"/><path d="M5 6l7 -3l7 3"/><path d="M4 10l0 11"/><path d="M20 10l0 11"/><path d="M8 14l0 3"/><path d="M12 14l0 3"/><path d="M16 14l0 3"/>',
+  receipt: '<path d="M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2"/><path d="M9 7l6 0"/><path d="M9 11l6 0"/><path d="M13 15l2 0"/>',
+  trend: '<path d="M3 17l6 -6l4 4l8 -8"/><path d="M14 7l7 0l0 7"/>',
+  bolt: '<path d="M13 3l0 7l6 0l-8 11l0 -7l-6 0l8 -11"/>',
+  settings: '<path d="M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065z"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>',
+  trash: '<path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>',
+  edit: '<path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/><path d="M13.5 6.5l4 4"/>',
+  eye: '<path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0"/><path d="M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/>',
+  eyeOff: '<path d="M10.585 10.587a2 2 0 0 0 2.829 2.828"/><path d="M16.681 16.673a8.717 8.717 0 0 1 -4.681 1.327c-3.6 0 -6.6 -2 -9 -6c1.272 -2.12 2.712 -3.678 4.32 -4.674m2.86 -1.146a9.055 9.055 0 0 1 1.82 -.18c3.6 0 6.6 2 9 6c-.666 1.11 -1.379 2.067 -2.138 2.87"/><path d="M3 3l18 18"/>',
+  search: '<path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/>',
+  photo: '<path d="M15 8h.01"/><path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12z"/><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5"/><path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3"/>',
+  copy: '<path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/>',
+  wallet: '<path d="M17 8v-3a1 1 0 0 0 -1 -1h-10a2 2 0 0 0 0 4h12a1 1 0 0 1 1 1v3m0 4v3a1 1 0 0 1 -1 1h-12a2 2 0 0 1 -2 -2v-12"/><path d="M20 12v4h-4a2 2 0 0 1 0 -4h4"/>',
+};
+function ic(name, size) {
+  size = size || 16;
+  return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ''}</svg>`;
+}
+
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
-  { id: 'accounts', label: 'Accounts', icon: '🏦' },
-  { id: 'budget', label: 'Budget', icon: '🧾' },
-  { id: 'investments', label: 'Investments', icon: '📈' },
-  { id: 'trading', label: 'Trading', icon: '⚡' },
-  { id: 'settings', label: 'Settings', icon: '⚙️' },
+  { id: 'dashboard', label: 'Dashboard', icon: 'home' },
+  { id: 'accounts', label: 'Accounts', icon: 'bank' },
+  { id: 'budget', label: 'Budget', icon: 'receipt' },
+  { id: 'investments', label: 'Investments', icon: 'trend' },
+  { id: 'trading', label: 'Trading', icon: 'bolt' },
+  { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
 // Common trade types + platforms, offered as datalist suggestions on top of a free-text field
 // (like crypto exchange names elsewhere) — never a closed list, since leveraged/derivative
@@ -405,6 +428,8 @@ function defaultData() {
     cryptoExchangeCash: [],
     // Bank loans invested in the markets — see loan.js (Investments → Loan).
     loans: [],
+    // Monthly budget per expense category: { categoryId: euros } — see Budget → Budgets.
+    budgetLimits: {},
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
     // (today's entry is updated in place every time something changes; past days are frozen).
     // Starts empty — no fabricated history — and grows for real as you use the app.
@@ -1140,8 +1165,10 @@ function recordHistorySnapshot() {
   }
 }
 
+/* One minimalist look for the whole app (the colour themes were removed) — kept as a function
+   because a few places still call it after loading data. */
 function applyTheme() {
-  document.documentElement.setAttribute('data-theme', data.settings.theme);
+  document.documentElement.setAttribute('data-theme', 'minimal');
 }
 
 /* ===================== Live EUR/USD rate ===================== */
@@ -1932,10 +1959,31 @@ function render() {
   const app = document.getElementById('app');
   try {
     renderApp(app);
+    dimBigCents(app);
   } catch (e) {
     console.error('Render failed', e);
     renderCrashScreen(app, e);
   }
+  hideSplash();
+}
+/* The loading screen (index.html) fades out after the first page is drawn — never earlier than
+   half a second after opening, so the logo's turn reads as an animation rather than a flash. */
+function hideSplash() {
+  const el = document.getElementById('splash');
+  if (!el || el.dataset.leaving) return;
+  el.dataset.leaving = '1';
+  const wait = Math.max(0, 500 - performance.now());
+  setTimeout(() => {
+    el.classList.add('done');
+    setTimeout(() => el.remove(), 500);
+  }, wait);
+}
+/* Big amounts show their cents a little lighter (€12,480.50), so the euros read first. */
+function dimBigCents(root) {
+  root.querySelectorAll('.big-number, .loan-stat-value').forEach(el => {
+    if (el.children.length) return;
+    el.innerHTML = el.innerHTML.replace(/([.,]\d{2})(?!\d)(?=[^\d]*$)/, '<span class="cents">$1</span>');
+  });
 }
 function renderApp(app) {
   const pageRenderers = {
@@ -1958,14 +2006,14 @@ function renderApp(app) {
           ${NAV_ITEMS.map(item => `
             <li>
               <button class="nav-item ${ui.page === item.id ? 'active' : ''}" onclick="${item.id === 'settings' ? settingsNavItemOnClick() : `goPage('${item.id}')`}">
-                <span class="nav-icon">${item.icon}${item.id === 'settings' ? navSyncBadgeHtml() : ''}</span><span class="label">${item.label}</span>
+                <span class="nav-icon">${ic(item.icon, 19)}${item.id === 'settings' ? navSyncBadgeHtml() : ''}</span><span class="label">${item.label}</span>
               </button>
             </li>`).join('')}
         </ul>
         <div class="sidebar-footer">
           ${syncStatusIndicatorHtml()}
           <button class="privacy-toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()" title="${privacyOn() ? 'Show the amounts' : 'Hide every amount (e.g. in public)'} — only on this device">
-            <span class="pv-icon">${privacyOn() ? '🙈' : '👁'}</span><span class="pv-long">${privacyOn() ? 'Amounts hidden' : 'Amounts visible'}</span><span class="pv-short">${privacyOn() ? 'Hidden' : 'Shown'}</span>
+            <span class="pv-icon">${ic(privacyOn() ? 'eyeOff' : 'eye', 18)}</span><span class="pv-long">${privacyOn() ? 'Amounts hidden' : 'Amounts visible'}</span><span class="pv-short">${privacyOn() ? 'Hidden' : 'Shown'}</span>
           </button>
         </div>
       </div>
@@ -1980,7 +2028,7 @@ function renderApp(app) {
 function renderCrashScreen(app, e) {
   app.innerHTML = `
     <div style="max-width:520px;margin:60px auto;padding:28px;text-align:center;font-family:inherit;">
-      <div style="font-size:38px;margin-bottom:10px;">⚠️</div>
+      
       <h2 style="margin:0 0 10px;">Something went wrong</h2>
       <p style="opacity:.7;font-size:14px;line-height:1.6;margin:0 0 20px;">
         Trackr hit an unexpected error while displaying this page. Nothing was lost — your data
@@ -2062,9 +2110,9 @@ function renderDashboard() {
         <h1 class="page-title">Overview</h1>
         <div class="page-subtitle">${monthLabel(now)}</div>
       </div>
-      <button class="icon-btn-round" title="Detailed statistics">📊</button>
     </div>
 
+    ${recapBannerHtml()}
     <div class="card stack-gap-16" style="margin-bottom:20px;">
       <div>
         <div class="eyebrow">Total net worth</div>
@@ -2085,9 +2133,9 @@ function renderDashboard() {
     ${typeof loanDashboardHtml === 'function' ? loanDashboardHtml(netWorth) : ''}
 
     <div class="grid-3" style="margin-bottom:20px;">
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(income)}</div></div><span style="font-size:20px;">📈</span></div></div>
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div><span style="font-size:20px;">📉</span></div></div>
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Balance</div><div style="font-size:20px;font-weight:700;color:var(--light-accent-2)">${fmtMoney(balance)}</div></div><span style="font-size:20px;">👛</span></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(income)}</div></div></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Balance</div><div style="font-size:20px;font-weight:700;color:var(--light-accent-2)">${fmtMoney(balance)}</div></div></div></div>
     </div>
 
     <div class="card" style="margin-bottom:20px;">
@@ -2230,7 +2278,7 @@ function allLogoItems() {
    DOM directly (no render()), so it never disturbs unsaved values in any other field on
    whatever form/modal it's attached to. */
 function logoPickerButtonHtml(inputId) {
-  return `<button type="button" class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;flex:none;" title="Choose from logos already used in Trackr" onclick="toggleLogoPicker('${inputId}')">🖼</button>`;
+  return `<button type="button" class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;flex:none;" title="Choose from logos already used in Trackr" onclick="toggleLogoPicker('${inputId}')">${ic('photo')}</button>`;
 }
 function logoPickerPopoverHtml(inputId) {
   const items = allLogoItems();
@@ -2285,11 +2333,11 @@ function renderAccounts() {
           <div class="eyebrow">Bank total</div>
           <div class="big-number">${fmtMoney(total)}</div>
         </div>
-        <button class="icon-btn-round" style="background:var(--dark-card-2);border-color:var(--dark-border);">👛</button>
+        
       </div>
       <div class="grid-2">
-        <div class="card-nested"><div class="eyebrow">💳 Available</div><div style="font-size:18px;font-weight:700;" class="${avail >= 0 ? 'positive' : 'negative'}">${fmtMoney(avail)}</div></div>
-        <div class="card-nested"><div class="eyebrow">🎯 In pockets</div><div style="font-size:18px;font-weight:700;color:var(--accent-1);">${fmtMoney(pockets)}</div></div>
+        <div class="card-nested"><div class="eyebrow">Available</div><div style="font-size:18px;font-weight:700;" class="${avail >= 0 ? 'positive' : 'negative'}">${fmtMoney(avail)}</div></div>
+        <div class="card-nested"><div class="eyebrow">In pockets</div><div style="font-size:18px;font-weight:700;color:var(--accent-1);">${fmtMoney(pockets)}</div></div>
       </div>
       <div class="chip-scroll">${chips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>
     </div>
@@ -2316,8 +2364,8 @@ function accountCardHtml(acc) {
       </div>
       <div style="display:flex;gap:2px;align-items:center;">
         <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="toggleAccountExpand('${acc.id}')">${expanded ? '⌃' : '⌄'}</button>
-        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="openAccountForm('${acc.id}')">✎</button>
-        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="deleteAccount('${acc.id}')">🗑</button>
+        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="openAccountForm('${acc.id}')">${ic('edit')}</button>
+        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="deleteAccount('${acc.id}')">${ic('trash')}</button>
       </div>
     </div>
     <div class="row-flex" style="margin-top:14px;">
@@ -2368,8 +2416,8 @@ function pocketRowHtml(acc, p) {
         </div>
       </div>
       <div style="display:flex;gap:2px;">
-        <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="openPocketForm('${acc.id}','${p.id}')">✎</button>
-        <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="deletePocket('${acc.id}','${p.id}')">🗑</button>
+        <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="openPocketForm('${acc.id}','${p.id}')">${ic('edit')}</button>
+        <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="deletePocket('${acc.id}','${p.id}')">${ic('trash')}</button>
       </div>
     </div>
     ${pct !== null ? `<div style="height:5px;border-radius:4px;background:var(--dark-border);overflow:hidden;margin-top:9px;"><div style="height:100%;width:${pct}%;background:${p.color};"></div></div>` : ''}
@@ -2401,7 +2449,7 @@ window.__modalRenderers.account = function (payload) {
         <label class="field"><span class="label-text">Current balance</span><input id="af-balance" type="number" step="0.01" value="${acc ? acc.balance : ''}"></label>
         <label class="field"><span class="label-text">Currency</span><select id="af-currency">${CURRENCIES.map(c => `<option ${acc && acc.currency === c ? 'selected' : (!acc && c === 'EUR' ? 'selected' : '')}>${c}</option>`).join('')}</select></label>
       </div>
-      ${acc && linkedBrokerForAccount(acc) ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">🔗 This balance is also the cash at your <strong>${escHtml(linkedBrokerForAccount(acc).name)}</strong> broker (Investments) — they always stay the same.</div>` : ''}
+      ${acc && linkedBrokerForAccount(acc) ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">This balance is also the cash at your <strong>${escHtml(linkedBrokerForAccount(acc).name)}</strong> broker (Investments) — they always stay the same.</div>` : ''}
       <label class="field"><span class="label-text">Description / note</span><input id="af-desc" value="${escHtml(acc ? acc.description || '' : '')}"></label>
       <label class="field"><span class="label-text">Logo / image URL</span>
         <div style="display:flex;gap:6px;align-items:center;"><input id="af-logo" style="flex:1;" value="${escHtml(acc ? (acc.logoKind === 'image' ? acc.logo : '') : '')}" placeholder="https://…">${logoPickerButtonHtml('af-logo')}</div>
@@ -2417,8 +2465,8 @@ window.__modalRenderers.account = function (payload) {
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn primary" onclick="saveAccountForm('${acc ? acc.id : ''}')">✓ Save</button>
-      <button class="btn ghost" onclick="closeModal()">✕</button>
+      <button class="btn primary" onclick="saveAccountForm('${acc ? acc.id : ''}')">Save</button>
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
 };
 /* Full palette selector: a curated color grid plus a "more colors" custom swatch backed by a
@@ -2494,8 +2542,8 @@ window.__modalRenderers.pocket = function (payload) {
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn primary" onclick="savePocketForm('${payload.accId}','${payload.pkId || ''}')">✓ Save</button>
-      <button class="btn ghost" onclick="closeModal()">✕</button>
+      <button class="btn primary" onclick="savePocketForm('${payload.accId}','${payload.pkId || ''}')">Save</button>
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
 };
 function savePocketForm(accId, pkId) {
@@ -2518,11 +2566,12 @@ function savePocketForm(accId, pkId) {
 /* ===================== Budget ===================== */
 function renderBudget() {
   const tabs = [
-    { id: 'transactions', label: '🧾 Transactions' },
-    { id: 'recurring', label: '🔄 Recurring' },
-    { id: 'totals', label: '📊 Totals' },
-    { id: 'categories', label: '🏷️ Categories' },
-    { id: 'import', label: '⬆ Import' },
+    { id: 'transactions', label: 'Transactions' },
+    { id: 'recurring', label: 'Recurring' },
+    { id: 'totals', label: 'Totals' },
+    { id: 'budgets', label: 'Budgets' },
+    { id: 'categories', label: 'Categories' },
+    { id: 'import', label: 'Import' },
   ];
   return `
   <div class="page surface-light">
@@ -2535,6 +2584,7 @@ function renderBudget() {
     ${ui.budgetTab === 'transactions' ? budgetTransactionsTab() : ''}
     ${ui.budgetTab === 'recurring' ? budgetRecurringTab() : ''}
     ${ui.budgetTab === 'totals' ? budgetTotalsTab() : ''}
+    ${ui.budgetTab === 'budgets' ? budgetLimitsTab() : ''}
     ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>` : ''}
     ${ui.budgetTab === 'import' ? (typeof budgetImportTab === 'function' ? budgetImportTab() : '') : ''}
   </div>`;
@@ -2567,11 +2617,12 @@ function budgetTransactionsTab() {
       ${categoryDonutCardHtml('Spending by category', expenseSegments, 'No expenses yet this month.', animateCharts)}
       ${categoryDonutCardHtml('Income by category', incomeSegments, 'No income yet this month.', animateCharts)}
     </div>
+    ${budgetsGlanceHtml(m)}
 
     <div class="grid-3" style="margin-bottom:20px;">
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(income)}</div></div><span style="font-size:20px;">📈</span></div></div>
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div><span style="font-size:20px;">📉</span></div></div>
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Balance</div><div style="font-size:20px;font-weight:700;" class="${balance >= 0 ? 'positive' : 'negative'}">${fmtMoney(balance)}</div></div><span style="font-size:20px;">👛</span></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(income)}</div></div></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Balance</div><div style="font-size:20px;font-weight:700;" class="${balance >= 0 ? 'positive' : 'negative'}">${fmtMoney(balance)}</div></div></div></div>
     </div>
 
     ${investedCardHtmlStr}
@@ -2586,8 +2637,8 @@ function budgetTransactionsTab() {
 
     <button class="btn primary full" style="margin-bottom:10px;" onclick="openTxForm()">+ Add transaction</button>
     <div class="grid-2" style="margin-bottom:22px;">
-      <button class="btn" onclick="setBudgetTab('import')" title="Add many income & expenses at once from an Excel or CSV file">⬆ Import from Excel</button>
-      <button class="btn" onclick="exportBudgetTransactionsExcel()" title="Every logged transaction — date, type, category, sub-category, amount, and more">⬇ Export to Excel</button>
+      <button class="btn" onclick="setBudgetTab('import')" title="Add many income & expenses at once from an Excel or CSV file">Import from Excel</button>
+      <button class="btn" onclick="exportBudgetTransactionsExcel()" title="Every logged transaction — date, type, category, sub-category, amount, and more">Export to Excel</button>
     </div>
 
     ${dayGroups.length ? dayGroups.map(dayGroupHtml).join('') : `
@@ -2598,6 +2649,217 @@ function budgetTransactionsTab() {
       <div class="eyebrow" style="margin-bottom:14px;">Income vs expenses</div>
       ${cashflowBarsHtml(m)}
     </div>`;
+}
+
+/* ===================== Learned categories =====================
+   The category you gave a name before is reused: an exact name match first ("albert heijn"),
+   otherwise a past name found inside a longer bank label ("ALBERT HEIJN 1234 AMSTERDAM"). The
+   newest matching transaction wins, so re-categorising once is enough to change the habit. */
+function learnedTxFor(name, type) {
+  const k = txNameKey(name);
+  if (!k) return null;
+  const pool = data.budgetTransactions
+    .filter(t => t.type === type && t.categoryId && !['inc_other', 'exp_other'].includes(t.categoryId) && t.comment)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const exact = pool.find(t => txNameKey(t.comment) === k);
+  if (exact) return exact;
+  let best = null, bestLen = 0;
+  pool.forEach(t => { const pk = txNameKey(t.comment); if (pk.length >= 4 && pk.length > bestLen && k.includes(pk)) { best = t; bestLen = pk.length; } });
+  return best;
+}
+
+/* ===================== Budgets per category =====================
+   A monthly limit per expense category (data.budgetLimits = { categoryId: euros }). The Budget
+   page shows how much of each is used, the pace for the rest of the month, and warns when a new
+   expense takes a category past 80 % or 100 %. */
+function budgetLimits() { if (!data.budgetLimits || typeof data.budgetLimits !== 'object') data.budgetLimits = {}; return data.budgetLimits; }
+function monthSpentByCategory(monthDate) {
+  const out = {};
+  monthTransactions(monthDate).filter(t => t.type === 'expense').forEach(t => { out[t.categoryId || '_none'] = (out[t.categoryId || '_none'] || 0) + toEUR(t.amount, t.currency); });
+  return out;
+}
+/* Average monthly spending of a category over the 3 full months before this one — the suggested limit. */
+function suggestedLimit(catId, monthDate) {
+  let total = 0, months = 0;
+  for (let i = 1; i <= 3; i++) {
+    const d = new Date(monthDate.getFullYear(), monthDate.getMonth() - i, 1);
+    if (d < budgetMinMonth()) break;
+    months++;
+    total += monthSpentByCategory(d)[catId] || 0;
+  }
+  if (!months || !total) return null;
+  return Math.max(5, Math.ceil(total / months / 5) * 5);
+}
+function budgetStatus(catId, monthDate) {
+  const limit = parseFloat(budgetLimits()[catId]);
+  if (!(limit > 0)) return null;
+  const spent = monthSpentByCategory(monthDate)[catId] || 0;
+  const today = appToday();
+  const isCurrent = monthDate.getFullYear() === today.getFullYear() && monthDate.getMonth() === today.getMonth();
+  const days = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate();
+  const pace = isCurrent && today.getDate() > 2 ? spent / today.getDate() * days : null;
+  const pct = spent / limit * 100;
+  return { limit, spent, left: limit - spent, pct, pace, level: pct >= 100 ? 'over' : pct >= 80 ? 'near' : 'ok', isCurrent };
+}
+function setBudgetLimit(catId, value) {
+  const v = parseFloat(String(value).replace(',', '.'));
+  if (v > 0) budgetLimits()[catId] = Math.round(v * 100) / 100; else delete budgetLimits()[catId];
+  save(); render();
+}
+function suggestAllBudgets() {
+  const m = ui.budgetMonth;
+  let n = 0;
+  (data.categories.expense || []).forEach(c => { if (budgetLimits()[c.id]) return; const s = suggestedLimit(c.id, m); if (s) { budgetLimits()[c.id] = s; n++; } });
+  if (!n) { alert('Not enough spending in the last 3 months to suggest limits yet — set them by hand.'); return; }
+  save(); render();
+}
+const budgetBarColor = level => (level === 'over' ? 'var(--negative)' : level === 'near' ? '#E8963C' : 'var(--positive)');
+function budgetRowHtml(c, st) {
+  const pctW = Math.min(100, st.pct);
+  const status = st.level === 'over' ? `<span class="negative">${fmtMoney(-st.left)} over</span>` : `${fmtMoney(st.left)} left`;
+  const pace = st.pace != null && st.level !== 'over' && st.pace > st.limit ? ` · <span style="color:#E8963C;">on pace for ${fmtMoney(st.pace)}</span>` : '';
+  return `
+    <div class="bl-row">
+      <span class="totals-icon">${c.icon || ''}</span>
+      <div style="flex:1;min-width:0;">
+        <div class="row-flex" style="gap:8px;"><span class="totals-name">${escHtml(c.name)}</span><span style="font-size:13px;"><strong>${fmtMoney(st.spent)}</strong> <span style="opacity:.55;">of</span> <input class="bl-input" inputmode="decimal" value="${st.limit}" onchange="setBudgetLimit('${c.id}',this.value)" aria-label="Monthly limit for ${escHtml(c.name)}"></span></div>
+        <div class="totals-bar" style="height:7px;"><span style="width:${pctW.toFixed(1)}%;background:${budgetBarColor(st.level)};"></span></div>
+        <div class="totals-sub">${Math.round(st.pct)}% used · ${status}${pace}</div>
+      </div>
+    </div>`;
+}
+function budgetLimitsTab() {
+  const m = ui.budgetMonth;
+  const cats = data.categories.expense || [];
+  const withLimit = cats.map(c => ({ c, st: budgetStatus(c.id, m) })).filter(x => x.st).sort((a, b) => b.st.pct - a.st.pct);
+  const without = cats.filter(c => !budgetLimits()[c.id]);
+  const planned = withLimit.reduce((s, x) => s + x.st.limit, 0), spent = withLimit.reduce((s, x) => s + x.st.spent, 0);
+  const over = withLimit.filter(x => x.st.level === 'over').length;
+  const minMonth = budgetMinMonth();
+  const atMin = m.getFullYear() === minMonth.getFullYear() && m.getMonth() === minMonth.getMonth();
+  return `
+    <div class="row-flex" style="margin-bottom:12px;">
+      <button class="icon-btn-round" onclick="shiftBudgetMonth(-1)" ${atMin ? 'style="opacity:.3;cursor:default;" disabled' : ''}>‹</button>
+      <div style="font-weight:700;font-size:16px;">${monthLabel(m)}</div>
+      <button class="icon-btn-round" onclick="shiftBudgetMonth(1)">›</button>
+    </div>
+    ${withLimit.length ? `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="row-flex" style="align-items:baseline;"><div class="eyebrow">Planned this month</div><div style="font-size:13px;opacity:.7;">${over ? `<span class="negative">${over} over</span>` : 'all on track'}</div></div>
+      <div style="font-size:24px;font-weight:800;margin-top:4px;">${fmtMoney(spent)} <span style="font-size:15px;font-weight:500;opacity:.55;">of ${fmtMoney(planned)}</span></div>
+      <div class="totals-bar" style="height:8px;margin-top:8px;"><span style="width:${Math.min(100, planned ? spent / planned * 100 : 0).toFixed(1)}%;background:${budgetBarColor(spent > planned ? 'over' : spent > planned * 0.8 ? 'near' : 'ok')};"></span></div>
+      <div class="totals-sub" style="margin-top:4px;">${planned - spent >= 0 ? `${fmtMoney(planned - spent)} left to spend in these categories` : `${fmtMoney(spent - planned)} over your plan`}</div>
+    </div>
+    <div class="card" style="margin-bottom:16px;"><div class="eyebrow" style="margin-bottom:8px;">Your budgets</div><div class="totals-list">${withLimit.map(x => budgetRowHtml(x.c, x.st)).join('')}</div>
+      <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Tap an amount to change it; empty it to remove the budget. Orange from 80%, red past 100%.</div></div>` : `
+    <div class="card" style="margin-bottom:16px;"><div class="empty-state"><div class="emoji">🎯</div><div class="title">Set your monthly budgets</div>
+      <div class="sub">Give a category a limit (e.g. €250 for groceries) and see how much is left as the month goes on.</div>
+      <button class="btn primary" style="margin-top:14px;" onclick="suggestAllBudgets()">Suggest budgets from my spending</button></div></div>`}
+    ${without.length ? `
+    <div class="card">
+      <div class="row-flex" style="margin-bottom:10px;"><div class="eyebrow">Add a budget</div>${withLimit.length ? `<button class="btn small" onclick="suggestAllBudgets()">Suggest the rest</button>` : ''}</div>
+      <div class="tx-chips">${without.map(c => { const sg = suggestedLimit(c.id, m); return `<button type="button" class="chip" style="cursor:pointer;" onclick="addBudgetFor('${c.id}', ${sg || 0})">${c.icon || ''} ${escHtml(c.name)}${sg ? ` <span style="opacity:.55;font-weight:500;">~${fmtMoney(sg)}</span>` : ''}</button>`; }).join('')}</div>
+      <div style="font-size:11.5px;opacity:.55;margin-top:8px;">The amount shown is your average over the last 3 months.</div>
+    </div>` : ''}`;
+}
+function addBudgetFor(catId, suggested) {
+  const c = (data.categories.expense || []).find(x => x.id === catId);
+  const v = prompt(`Monthly budget for ${c ? c.name : 'this category'} (€)`, suggested ? String(suggested) : '');
+  if (v == null) return;
+  setBudgetLimit(catId, v);
+}
+/* A small card on the Transactions tab: the budgets closest to their limit. */
+function budgetsGlanceHtml(m) {
+  const list = (data.categories.expense || []).map(c => ({ c, st: budgetStatus(c.id, m) })).filter(x => x.st).sort((a, b) => b.st.pct - a.st.pct).slice(0, 3);
+  if (!list.length) return '';
+  return `
+    <div class="card" style="margin-bottom:20px;cursor:pointer;" onclick="setBudgetTab('budgets')">
+      <div class="row-flex" style="margin-bottom:8px;"><div class="eyebrow">Budgets</div><span style="font-size:12px;opacity:.55;">all budgets ›</span></div>
+      ${list.map(x => `<div style="margin-top:8px;"><div class="row-flex" style="font-size:13px;"><span>${x.c.icon || ''} ${escHtml(x.c.name)}</span><span><strong>${fmtMoney(x.st.spent)}</strong> <span style="opacity:.55;">/ ${fmtMoney(x.st.limit)}</span></span></div>
+        <div class="totals-bar" style="height:6px;margin-bottom:0;"><span style="width:${Math.min(100, x.st.pct).toFixed(1)}%;background:${budgetBarColor(x.st.level)};"></span></div></div>`).join('')}
+    </div>`;
+}
+/* After saving an expense: a heads-up when it takes its category past 80 % or 100 %. */
+function budgetCheckAfterSave(record, before) {
+  if (!record || record.type !== 'expense' || typeof safetyToast !== 'function') return;
+  const d = ymdToDate(record.date);
+  const st = budgetStatus(record.categoryId, new Date(d.getFullYear(), d.getMonth(), 1));
+  if (!st) return;
+  const prevPct = st.limit ? (st.spent - (before || 0)) / st.limit * 100 : 0;
+  const c = categoryById('expense', record.categoryId);
+  if (st.pct >= 100 && prevPct < 100) safetyToast(`<span>${escHtml(c ? c.name : 'Budget')}: ${fmtMoney(st.spent)} of ${fmtMoney(st.limit)} — over budget this month.</span>`, { ms: 6000 });
+  else if (st.pct >= 80 && prevPct < 80) safetyToast(`<span>${escHtml(c ? c.name : 'Budget')}: ${Math.round(st.pct)}% of your ${fmtMoney(st.limit)} budget used — ${fmtMoney(st.left)} left.</span>`, { ms: 6000 });
+}
+
+/* ===================== Monthly recap =====================
+   One screen per month: what came in, what went out, what you kept, compared with the month
+   before; the top categories, the biggest expense, the budgets, the change in net worth, and
+   the recurring payments coming up. Offered on the Dashboard in the first days of a month. */
+const RECAP_SEEN_KEY = 'trackr-recap-seen';
+function monthRecapData(monthDate) {
+  const txs = monthTransactions(monthDate);
+  const sum = type => txs.filter(t => t.type === type).reduce((s, t) => s + toEUR(t.amount, t.currency), 0);
+  const income = sum('income'), expenses = sum('expense');
+  const prev = new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1);
+  const prevExp = prev >= budgetMinMonth() ? monthTransactions(prev).filter(t => t.type === 'expense').reduce((s, t) => s + toEUR(t.amount, t.currency), 0) : null;
+  const top = categorySpendingSegments(monthDate, 'expense').slice(0, 3);
+  const biggest = txs.filter(t => t.type === 'expense').sort((a, b) => toEUR(b.amount, b.currency) - toEUR(a.amount, a.currency))[0] || null;
+  const budgets = (data.categories.expense || []).map(c => ({ c, st: budgetStatus(c.id, monthDate) })).filter(x => x.st);
+  const ym = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
+  const hist = (data.history || []).filter(h => h.date.startsWith(ym));
+  const nwChange = hist.length >= 2 ? hist[hist.length - 1].netWorth - hist[0].netWorth : null;
+  const next = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1);
+  const nextYm = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+  const upcoming = typeof activeRecurringSeries === 'function'
+    ? activeRecurringSeries().map(x => ({ x, date: recurringDueDate(nextYm, x.st.day) })).filter(u => u.date >= todayYmd() || u.date.startsWith(nextYm)).filter(u => u.date.startsWith(nextYm))
+    : [];
+  return { monthDate, income, expenses, saved: income - expenses, rate: income ? (income - expenses) / income * 100 : null, prevExp, top, biggest, budgets, nwChange, upcoming, count: txs.length };
+}
+function openRecap(year, month) {
+  const d = year != null ? new Date(year, month, 1) : (() => { const t = appToday(); return new Date(t.getFullYear(), t.getMonth() - 1, 1); })();
+  try { localStorage.setItem(RECAP_SEEN_KEY, `${d.getFullYear()}-${d.getMonth()}`); } catch (e) {}
+  ui.modal = { type: 'recap', payload: { y: d.getFullYear(), m: d.getMonth() } };
+  render();
+}
+window.__modalRenderers.recap = function (p) {
+  const R = monthRecapData(new Date(p.y, p.m, 1));
+  const next = new Date(p.y, p.m + 1, 1);
+  const cmp = R.prevExp ? (R.expenses - R.prevExp) / R.prevExp * 100 : null;
+  const kept = R.budgets.filter(b => b.st.level !== 'over'), over = R.budgets.filter(b => b.st.level === 'over');
+  const upcomingTotal = R.upcoming.reduce((s, u) => s + (u.x.model.type === 'expense' ? toEUR(u.x.model.amount, u.x.model.currency) : 0), 0);
+  return `
+    <div class="modal-head"><div class="modal-title">${monthLabel(R.monthDate)}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    ${!R.count ? '<div style="opacity:.6;">Nothing logged that month.</div>' : `
+    <div class="recap-stats">
+      <div><div class="eyebrow">Received</div><div class="recap-num positive">${fmtMoney(R.income)}</div></div>
+      <div><div class="eyebrow">Spent</div><div class="recap-num negative">${fmtMoney(R.expenses)}</div></div>
+      <div><div class="eyebrow">Kept</div><div class="recap-num ${R.saved >= 0 ? 'positive' : 'negative'}">${fmtMoney(R.saved)}</div>${R.rate != null ? `<div class="recap-sub">${Math.round(R.rate)}% of what came in</div>` : ''}</div>
+    </div>
+    ${cmp != null ? `<div class="recap-line">You spent <strong class="${cmp <= 0 ? 'positive' : 'negative'}">${Math.abs(Math.round(cmp))}% ${cmp <= 0 ? 'less' : 'more'}</strong> than in ${new Date(p.y, p.m - 1, 1).toLocaleDateString('en-GB', { month: 'long' })}.</div>` : ''}
+    ${R.top.length ? `<div class="tx-label" style="margin-top:14px;">Where the money went</div>
+      ${R.top.map(s => `<div style="margin-top:8px;"><div class="row-flex" style="font-size:13.5px;"><span>${s.icon || ''} ${escHtml(s.label)}</span><strong>${fmtMoney(s.value)}</strong></div><div class="totals-bar" style="height:6px;margin-bottom:0;"><span style="width:${(R.expenses ? s.value / R.expenses * 100 : 0).toFixed(1)}%;background:${s.color};"></span></div></div>`).join('')}` : ''}
+    ${R.biggest ? `<div class="recap-line">Biggest expense: <strong>${escHtml(R.biggest.comment || 'an expense')}</strong> — ${fmtMoney(toEUR(R.biggest.amount, R.biggest.currency))} on ${ymdToDate(R.biggest.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}.</div>` : ''}
+    ${R.budgets.length ? `<div class="recap-line">Budgets: <strong>${kept.length} of ${R.budgets.length} kept</strong>${over.length ? ` · over in ${over.map(b => escHtml(b.c.name)).join(', ')}` : ''}.</div>` : ''}
+    ${R.nwChange != null ? `<div class="recap-line">Net worth ${R.nwChange >= 0 ? 'up' : 'down'} <strong class="${R.nwChange >= 0 ? 'positive' : 'negative'}">${fmtMoney(Math.abs(R.nwChange))}</strong> over the month.</div>` : ''}`}
+    ${R.upcoming.length ? `<div class="tx-label" style="margin-top:14px;">Coming up in ${next.toLocaleDateString('en-GB', { month: 'long' })}</div>
+      ${R.upcoming.sort((a, b) => (a.date < b.date ? -1 : 1)).map(u => `<div class="row-flex" style="font-size:13px;margin-top:6px;"><span>${ymdToDate(u.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · ${escHtml(u.x.model.comment || 'Recurring')}</span><span class="${u.x.model.type === 'income' ? 'positive' : ''}">${u.x.model.type === 'income' ? '+' : '−'}${fmtMoney(toEUR(u.x.model.amount, u.x.model.currency))}</span></div>`).join('')}
+      ${upcomingTotal ? `<div class="totals-sub" style="margin-top:6px;">${fmtMoney(upcomingTotal)} of fixed costs to plan for.</div>` : ''}` : ''}
+    <div class="modal-actions">
+      <button class="btn" onclick="openRecap(${new Date(p.y, p.m - 1, 1).getFullYear()},${new Date(p.y, p.m - 1, 1).getMonth()})">← ${new Date(p.y, p.m - 1, 1).toLocaleDateString('en-GB', { month: 'short' })}</button>
+      <button class="btn primary" onclick="closeModal()">Done</button>
+    </div>`;
+};
+/* On the Dashboard during the first 10 days of a month, until it's been opened. */
+function recapBannerHtml() {
+  const t = appToday();
+  if (t.getDate() > 10) return '';
+  const last = new Date(t.getFullYear(), t.getMonth() - 1, 1);
+  if (last < budgetMinMonth()) return '';
+  let seen = null;
+  try { seen = localStorage.getItem(RECAP_SEEN_KEY); } catch (e) {}
+  if (seen === `${last.getFullYear()}-${last.getMonth()}`) return '';
+  if (!monthTransactions(last).length) return '';
+  return `<div class="card recap-banner" onclick="openRecap()"><div style="flex:1;"><div style="font-weight:700;">Your ${last.toLocaleDateString('en-GB', { month: 'long' })} recap is ready</div><div style="font-size:12.5px;opacity:.65;">What came in, what went out, and what's coming up.</div></div><span style="opacity:.6;">›</span></div>`;
 }
 
 /* ---- Budget → Totals: how much went to / came from each category ----
@@ -2679,6 +2941,7 @@ function budgetTotalsTab() {
       <div class="card"><div class="eyebrow">Spent</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(exp)}</div></div>
       <div class="card"><div class="eyebrow">Left over</div><div style="font-size:20px;font-weight:700;" class="${inc - exp >= 0 ? 'positive' : 'negative'}">${fmtMoney(inc - exp)}</div></div>
     </div>
+    ${p === 'month' ? `<button class="btn full" style="margin-bottom:16px;" onclick="openRecap(${ui.budgetMonth.getFullYear()},${ui.budgetMonth.getMonth()})">${escHtml(monthLabel(ui.budgetMonth))} recap</button>` : ''}
     ${budgetTotalsSectionHtml('expense')}
     ${budgetTotalsSectionHtml('income')}
     <div style="font-size:12px;opacity:.55;">Tap a category to see its sub-categories. Transfers between your own accounts aren't counted.</div>`;
@@ -2871,7 +3134,7 @@ function hashColor(str) {
    Never fabricates a merchant logo — only ever shows one the user actually set. */
 function txAvatarHtml(t) {
   if (t.type === 'transfer') {
-    return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:17px;">🔁</span></div>`;
+    return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:17px;">⇄</span></div>`;
   }
   const cat = categoryById(t.type === 'income' ? 'income' : 'expense', t.categoryId);
   const subcat = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null;
@@ -2882,7 +3145,6 @@ function txAvatarHtml(t) {
   const img = t.logo ? `<img src="${escHtml(t.logo)}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">` : '';
   return `<div style="position:relative;width:38px;height:38px;flex:none;">
     ${img}${fallback}
-    <span style="position:absolute;bottom:-2px;right:-2px;width:16px;height:16px;border-radius:50%;background:var(--light-card);border:1px solid var(--light-border);display:flex;align-items:center;justify-content:center;font-size:9px;">${t.type === 'income' ? '💰' : '💸'}</span>
   </div>`;
 }
 function txRowDisplayHtml(t) {
@@ -2896,13 +3158,13 @@ function txRowDisplayHtml(t) {
       <div style="display:flex;align-items:center;gap:12px;">
         ${txAvatarHtml(t)}
         <div>
-          <div style="font-weight:600;font-size:14px;">${escHtml(t.comment || 'Transfer')}${t.nature === 'Fixed' ? ' <span style="font-size:11px;opacity:.5;">🔄</span>' : ''}</div>
+          <div style="font-weight:600;font-size:14px;">${escHtml(t.comment || 'Transfer')}${t.nature === 'Fixed' ? ' <span class="tx-rec" title="Repeats every month">↻</span>' : ''}</div>
           <div style="font-size:12px;opacity:.55;">${escHtml(fromLabel)} → ${escHtml(toLabel)}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
         <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);">${fmtMoney(Math.abs(t.amount), t.currency)}</div>
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">🗑</button>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>
       </div>
     </div>`;
   }
@@ -2918,13 +3180,13 @@ function txRowDisplayHtml(t) {
       <div style="display:flex;align-items:center;gap:12px;">
         ${txAvatarHtml(t)}
         <div>
-          <div style="font-weight:600;font-size:14px;">${escHtml(label)}${t.nature === 'Fixed' ? ' <span style="font-size:11px;opacity:.5;">🔄</span>' : ''}${t.impact === 'positive' ? ' <span style="font-size:11px;" title="Positive impact">🙂</span>' : t.impact === 'negative' ? ' <span style="font-size:11px;" title="Negative impact">🙁</span>' : ''}</div>
+          <div style="font-weight:600;font-size:14px;">${escHtml(label)}${t.nature === 'Fixed' ? ' <span class="tx-rec" title="Repeats every month">↻</span>' : ''}</div>
           <div style="font-size:12px;opacity:.55;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}${acc ? ' · ' + escHtml(acc.name) : ''}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
         <div class="${t.type === 'income' ? 'positive' : 'negative'}" style="font-weight:700;font-size:14.5px;">${t.type === 'income' ? '+' : '-'}${fmtMoney(Math.abs(t.amount), t.currency)}</div>
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">🗑</button>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>
       </div>
     </div>`;
 }
@@ -3066,8 +3328,8 @@ function budgetRecurringTab() {
   const perMonth = type => series.filter(x => x.model.type === type).reduce((s, x) => s + toEUR(x.model.amount, x.model.currency), 0);
   return `
     <div class="grid-2" style="margin-bottom:20px;">
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed income / month</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(perMonth('income'))}</div></div><span style="font-size:20px;">📈</span></div></div>
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed expenses / month</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(perMonth('expense'))}</div></div><span style="font-size:20px;">📉</span></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed income / month</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(perMonth('income'))}</div></div></div></div>
+      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed expenses / month</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(perMonth('expense'))}</div></div></div></div>
     </div>
     ${series.length ? `<div class="card stack-gap-16">${series.map(({ id, st, model, next }) => `
       <div>
@@ -3204,8 +3466,8 @@ function transferEndpointOptions() {
   const groups = [
     { label: 'Bank accounts', items: data.accounts.map(a => ({ ref: 'acc:' + a.id, label: `${a.icon || '🏦'} ${a.name}` })) },
     { label: 'Pockets', items: data.accounts.flatMap(a => (a.pockets || []).map(p => ({ ref: `pk:${a.id}:${p.id}`, label: `${p.icon || '🎯'} ${a.name} › ${p.name}` }))) },
-    { label: 'Stock brokers (cash)', items: data.brokers.map(b => ({ ref: 'brk:' + b.id, label: `📈 ${b.name}` })) },
-    { label: 'Crypto exchanges (cash)', items: cryptoBrokerNames().map(n => ({ ref: 'cx:' + n, label: `🪙 ${n}` })) },
+    { label: 'Stock brokers (cash)', items: data.brokers.map(b => ({ ref: 'brk:' + b.id, label: `${b.name}` })) },
+    { label: 'Crypto exchanges (cash)', items: cryptoBrokerNames().map(n => ({ ref: 'cx:' + n, label: `${n}` })) },
   ];
   return groups.filter(g => g.items.length);
 }
@@ -3315,8 +3577,8 @@ function categoryNodeRowHtml(kind, catId, subId) {
         <div style="display:flex;gap:2px;">
           ${editing
             ? `<button class="btn small primary" style="padding:4px 10px;" onclick="saveCategoryRename('${kind}','${catId}',${subId ? `'${subId}'` : 'null'})">Save</button>`
-            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="toggleCategoryRename('${key}')">✎</button>`}
-          <button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="${subId ? `removeSubcategory('${kind}','${catId}','${subId}')` : `removeCategory('${kind}','${catId}')`}">🗑</button>
+            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="toggleCategoryRename('${key}')">${ic('edit')}</button>`}
+          <button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="${subId ? `removeSubcategory('${kind}','${catId}','${subId}')` : `removeCategory('${kind}','${catId}')`}">${ic('trash')}</button>
         </div>
       </div>
       ${pickerOpen ? emojiPickerHtml(kind, catId, subId) : ''}
@@ -3415,8 +3677,8 @@ function paymentMethodRowHtml(pm) {
         <div style="display:flex;gap:2px;">
           ${editing
             ? `<button class="btn small primary" style="padding:4px 10px;" onclick="savePaymentMethodRename('${pm.id}')">Save</button>`
-            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="toggleCategoryRename('${key}')">✎</button>`}
-          <button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="removePaymentMethod('${pm.id}')">🗑</button>
+            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="toggleCategoryRename('${key}')">${ic('edit')}</button>`}
+          <button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="removePaymentMethod('${pm.id}')">${ic('trash')}</button>
         </div>
       </div>
       ${pickerOpen ? `
@@ -3488,7 +3750,7 @@ window.__modalRenderers.tx = function (p) {
   if (step === 1) {
     body = `
       <div class="tx-seg">
-        ${[['expense', '💸 Expense'], ['income', '💰 Income'], ['transfer', '🔁 Transfer']].map(([v, l]) => `<button type="button" class="${p.type === v ? 'on' : ''}" onclick="updateTxField('type','${v}')">${l}</button>`).join('')}
+        ${[['expense', 'Expense'], ['income', 'Income'], ['transfer', 'Transfer']].map(([v, l]) => `<button type="button" class="${p.type === v ? 'on' : ''}" onclick="updateTxField('type','${v}')">${l}</button>`).join('')}
       </div>
       <div class="tx-amount">
         <input id="tx-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" value="${escHtml(String(p.amount == null ? '' : p.amount))}" oninput="txAmountInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();txNext();}">
@@ -3527,11 +3789,12 @@ window.__modalRenderers.tx = function (p) {
     const more = !!p._more || !!(p.location || p.description || p.logo || p.impact);
     body = `
       ${summary()}
+      ${p._autoFrom ? `<div class="tx-auto">Category filled in from your past “${escHtml(p._autoFrom)}” — <a href="#" onclick="event.preventDefault();txGo(2);">change</a></div>` : ''}
       <div class="tx-label">When?</div>
       <div class="tx-chips">
         ${chip(p.date === today, `updateTxField('date','${today}')`, 'Today')}
         ${chip(p.date === yest, `updateTxField('date','${yest}')`, 'Yesterday')}
-        <label class="tx-chip ${other ? 'on' : ''} tx-date-chip">📅 ${other ? escHtml(ymdToDate(p.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) : 'Other day'}<input type="date" value="${escHtml(p.date || '')}" onchange="updateTxField('date',this.value)"></label>
+        <label class="tx-chip ${other ? 'on' : ''} tx-date-chip">${other ? escHtml(ymdToDate(p.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) : 'Other day'}<input type="date" value="${escHtml(p.date || '')}" onchange="updateTxField('date',this.value)"></label>
       </div>
       ${isTransfer ? '' : `
       ${data.accounts.length ? `<div class="tx-label">Account <span style="opacity:.5;font-weight:500;">(its balance follows)</span></div>
@@ -3544,7 +3807,7 @@ window.__modalRenderers.tx = function (p) {
         ${data.paymentMethods.map(pm => chip(p.paymentMethodId === pm.id, `updateTxField('paymentMethodId','${p.paymentMethodId === pm.id ? '' : pm.id}')`, `${pm.icon || ''} ${escHtml(pm.name)}`)).join('')}
       </div>`}
       <div class="tx-toggle-row" onclick="updateTxField('nature','${p.nature === 'Fixed' ? 'Variable' : 'Fixed'}')">
-        <div><div style="font-weight:600;">🔄 Repeats every month</div><div style="font-size:12px;opacity:.6;">Rent, subscriptions, salary… added by itself on the same day each month</div></div>
+        <div><div style="font-weight:600;">Repeats every month</div><div style="font-size:12px;opacity:.6;">Rent, subscriptions, salary… added by itself on the same day each month</div></div>
         <div class="toggle ${p.nature === 'Fixed' ? 'on' : ''}"></div>
       </div>
       <button type="button" class="tx-more-btn" onclick="ui.modal.payload._more=!${more};render();">${more ? '▴ Fewer options' : '▾ More options'} <span style="opacity:.55;">${isTransfer ? 'note' : 'note, place, logo, personal impact'}</span></button>
@@ -3555,8 +3818,8 @@ window.__modalRenderers.tx = function (p) {
         <div class="tx-label">Personal impact</div>
         <div class="tx-chips">
           ${chip(!p.impact, `updateTxField('impact','')`, 'Neutral')}
-          ${chip(p.impact === 'positive', `updateTxField('impact','positive')`, '🙂 Positive')}
-          ${chip(p.impact === 'negative', `updateTxField('impact','negative')`, '🙁 Negative')}
+          ${chip(p.impact === 'positive', `updateTxField('impact','positive')`, 'Positive')}
+          ${chip(p.impact === 'negative', `updateTxField('impact','negative')`, 'Negative')}
         </div>
         <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(reused next time you log this name)</span></span>
           <div style="display:flex;gap:6px;align-items:center;"><input id="tf-logo" style="flex:1;" value="${escHtml(p.logo || '')}" placeholder="https://…" onchange="updateTxField('logo',this.value)">${logoPickerButtonHtml('tf-logo')}</div>
@@ -3568,9 +3831,9 @@ window.__modalRenderers.tx = function (p) {
     <div class="tx-steps">${steps.map(([l, n]) => `<button type="button" class="tx-step ${step === n ? 'on' : ''} ${n < 3 && done[n] ? 'done' : ''}" onclick="txGo(${n})" ${n > 1 && !done[1] && !isEdit ? 'disabled' : ''}><span>${n < 3 && done[n] && step !== n ? '✓' : n}</span>${l}</button>`).join('')}</div>
     <div class="tx-body">${body}</div>
     <div class="tx-footer">
-      ${step > 1 ? `<button class="btn" onclick="txGo(${step - 1})">← Back</button>` : (isEdit ? `<button class="btn danger ghost" onclick="deleteBudgetTx('${p.id}');closeModal();">🗑 Delete</button>` : '<span></span>')}
+      ${step > 1 ? `<button class="btn" onclick="txGo(${step - 1})">← Back</button>` : (isEdit ? `<button class="btn danger ghost" onclick="deleteBudgetTx('${p.id}');closeModal();">Delete</button>` : '<span></span>')}
       ${step < 3 ? `<button class="btn ${complete && step === 1 ? '' : 'primary'}" id="tx-next" onclick="txNext()" ${done[step] ? '' : 'disabled'}>Next →</button>` : ''}
-      ${complete && (step === 3 || isEdit || p._fromSuggestion) ? `<button class="btn primary" onclick="saveTxForm()">✓ Save</button>` : ''}
+      ${complete && (step === 3 || isEdit || p._fromSuggestion) ? `<button class="btn primary" onclick="saveTxForm()">Save</button>` : ''}
     </div>`;
 };
 /* Which steps are filled in: 1 = an amount above 0; 2 = a category (or both ends of a transfer). */
@@ -3590,6 +3853,17 @@ function txNext() {
   if (!p) return;
   const step = p.step || 1;
   if (!txStepDone(p)[step]) return;
+  // A name you've used before: its category, account and payment method are filled in for you,
+  // and the category step is skipped (you can still go back to it).
+  if (step === 1 && p.type !== 'transfer' && !p.categoryId && p.comment) {
+    const past = learnedTxFor(p.comment, p.type);
+    if (past) {
+      Object.assign(p, { categoryId: past.categoryId, subCategoryId: past.subCategoryId || '', paymentMethodId: p.paymentMethodId || past.paymentMethodId || '', accountId: p.accountId || past.accountId || '', logo: p.logo || past.logo || '' });
+      p._autoFrom = past.comment;
+      txGo(3);
+      return;
+    }
+  }
   txGo(Math.min(3, step + 1));
 }
 function txPickCategory(id) {
@@ -3712,6 +3986,7 @@ function saveTxForm() {
   attachToRecurringSeries(record, { setDay: !!prior && prior.nature === 'Fixed' });
   runRecurring();
   save(); closeModal();
+  budgetCheckAfterSave(record, prior && prior.type === 'expense' && prior.categoryId === record.categoryId && ymOf(prior.date) === ymOf(record.date) ? toEUR(record.amount, record.currency) - toEUR(prior.amount, prior.currency) : toEUR(record.amount, record.currency));
 }
 /* ===================== Investments ===================== */
 function renderInvestments() {
@@ -3751,7 +4026,7 @@ function renderInvestments() {
               <div style="display:flex;align-items:center;gap:8px;font-size:13.5px;">
                 <span style="width:10px;height:10px;border-radius:3px;background:${s.color};display:inline-block;"></span>
                 ${escHtml(s.label)} · ${(s.value / breakdownTotal * 100).toFixed(0)}%
-                <button class="icon-btn-round" style="width:20px;height:20px;background:none;border:none;" title="Change color" onclick="toggleAssetColorPicker('${escHtml(s.label).replace(/'/g, "\\'")}')">🎨</button>
+                
               </div>
               ${ui.assetColorPickerOpen === s.label ? `
                 <div id="breakdown-color-picker-${i}" style="margin:6px 0 10px 18px;">
@@ -3767,9 +4042,9 @@ function renderInvestments() {
 
     <div class="tab-row" style="margin-bottom:20px;">
       <button class="tab-btn ${ui.investmentsTab === 'stocks' ? 'active' : ''}" onclick="setInvestmentsTab('stocks')">Stocks &amp; ETFs</button>
-      <button class="tab-btn ${ui.investmentsTab === 'crypto' ? 'active' : ''}" onclick="setInvestmentsTab('crypto')">🪙 Crypto</button>
+      <button class="tab-btn ${ui.investmentsTab === 'crypto' ? 'active' : ''}" onclick="setInvestmentsTab('crypto')">Crypto</button>
       <button class="tab-btn ${ui.investmentsTab === 'other' ? 'active' : ''}" onclick="setInvestmentsTab('other')">Other Assets</button>
-      <button class="tab-btn ${ui.investmentsTab === 'loan' ? 'active' : ''}" onclick="setInvestmentsTab('loan')">🏦 Loan</button>
+      <button class="tab-btn ${ui.investmentsTab === 'loan' ? 'active' : ''}" onclick="setInvestmentsTab('loan')">Loan</button>
     </div>
 
     ${ui.investmentsTab === 'loan' ? (typeof renderLoanTab === 'function' ? renderLoanTab() : '') : ui.investmentsTab === 'other' ? renderOtherAssetsTab() : ui.investmentsTab === 'crypto' ? renderCryptoTab() : renderStocksEtfTab()}
@@ -3799,7 +4074,7 @@ function investedByTypeCardHtml() {
   return `
     <div class="card-dark" style="margin-bottom:20px;">
       <div style="font-weight:700;margin-bottom:4px;">Invested by type</div>
-      <div style="font-size:12px;opacity:.55;margin-bottom:12px;">Set each investment's type and 5-year average return in its ✎ edit form.</div>
+      <div style="font-size:12px;opacity:.55;margin-bottom:12px;">Set each investment's type and 5-year average return in its edit form.</div>
       <div style="overflow-x:auto;">
         <table class="data-table">
           <thead><tr><th>Type</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value now</th><th class="num">Gain / loss</th>${anyRet ? '<th class="num">5-yr avg</th>' : ''}</tr></thead>
@@ -3829,8 +4104,8 @@ function positionQuickActionsHtml(opts) {
   return `
     <div class="grid-3" style="margin-bottom:22px;">
       <button class="btn primary" onclick="${addAction}">${addLabel}</button>
-      <button class="btn" onclick="goPositionsImport()" title="Update all positions, prices and cash of your brokers from one Excel/CSV file">📄 Import Excel</button>
-      <button class="btn" style="background:#F5E7C4;color:#12141C;border-color:#F5E7C4;" onclick="goManualPrices()">📝 Manual Prices</button>
+      <button class="btn" onclick="goPositionsImport()" title="Update all positions, prices and cash of your brokers from one Excel/CSV file">Import Excel</button>
+      <button class="btn" style="background:#F5E7C4;color:#12141C;border-color:#F5E7C4;" onclick="goManualPrices()">Manual Prices</button>
     </div>`;
 }
 /* Shared "Brokers" card, used the same way on both the Stocks & ETFs tab (full detail: cash
@@ -3863,20 +4138,20 @@ function brokersCardHtml(opts) {
               <div style="display:flex;align-items:center;gap:10px;">${logoImg(b.logo, 30)}<div>
                 <div style="font-weight:600;font-size:13.5px;">${escHtml(b.name)}</div>
                 <div style="font-size:11.5px;opacity:.55;">
-                  ${positions.length} asset${positions.length !== 1 ? 's' : ''}${hasCash ? ` · ${fmtMoney(brokerCash(b), brokerCashCurrency(b))} cash${linkedAccountForBroker(b) ? ' 🔗' : ''}` : ''}
+                  ${positions.length} asset${positions.length !== 1 ? 's' : ''}${hasCash ? ` · ${fmtMoney(brokerCash(b), brokerCashCurrency(b))} cash${linkedAccountForBroker(b) ? ' · linked' : ''}` : ''}
                   ${hasCash && b.cashInterestBearing ? `<span class="badge" style="background:rgba(34,181,115,0.18);color:var(--positive);margin-left:4px;">${b.cashInterestRate}% APY</span>` : ''}
                 </div>
               </div></div>
               <div style="display:flex;align-items:center;gap:8px;">
                 <div style="font-weight:700;font-size:13.5px;">${fmtMoney(val)}</div>
                 <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" title="${expanded ? 'Hide' : 'Show'} holdings" onclick="toggleBrokerExpand('${b.id}')">${expanded ? '⌃' : '⌄'}</button>
-                ${showAddBroker ? `<button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="openBrokerForm('${b.id}')">✎</button>
-                <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="deleteBroker('${b.id}')">🗑</button>` : ''}
+                ${showAddBroker ? `<button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>
+                <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="deleteBroker('${b.id}')">${ic('trash')}</button>` : ''}
               </div>
             </div>
             ${expanded ? `
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">
-                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div><div style="font-weight:600;font-size:13px;">💶 Cash</div>${linkedAccountForBroker(b) ? `<div style="font-size:11px;opacity:.55;">🔗 Same as your ${escHtml(linkedAccountForBroker(b).name)} bank account</div>` : ''}</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(brokerCash(b), brokerCashCurrency(b))}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" onclick="openBrokerForm('${b.id}')">✎</button>` : ''}</div></div></div>` : ''}
+                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div><div style="font-weight:600;font-size:13px;">Cash</div>${linkedAccountForBroker(b) ? `<div style="font-size:11px;opacity:.55;">Same as your ${escHtml(linkedAccountForBroker(b).name)} bank account</div>` : ''}</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(brokerCash(b), brokerCashCurrency(b))}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>` : ''}</div></div></div>` : ''}
                 <div class="stack-gap-8">
                   ${positions.map(p => positionRowHtml(p)).join('') || '<div style="opacity:.5;font-size:13px;">No positions here yet.</div>'}
                 </div>
@@ -3985,9 +4260,9 @@ function positionRowHtml(p) {
     <div class="row-flex" style="margin-top:8px;">
       <div></div>
       <div style="display:flex;gap:2px;">
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="${p.cryptoRef ? 'Edit crypto asset' : 'Edit asset'}" onclick="${editAction}">✎</button>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="${p.cryptoRef ? 'Edit crypto asset' : 'Edit asset'}" onclick="${editAction}">${ic('edit')}</button>
         <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Update current price" onclick="togglePositionRefresh('${refreshKey}')">↻</button>
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="${deleteTitle}" onclick="${deleteAction}">🗑</button>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="${deleteTitle}" onclick="${deleteAction}">${ic('trash')}</button>
       </div>
     </div>
     ${refreshOpen ? `
@@ -3998,8 +4273,8 @@ function positionRowHtml(p) {
   </div>`;
 }
 function assetTypeEmoji(type) {
-  const m = { Stocks: '📈', ETFs: '📊', Crypto: '🪙', 'Private Equity': '🏢', Gold: '🥇', 'Real Estate': '🏠', Other: '📦' };
-  return m[type] || '📦';
+  const m = { Stocks: 'S', ETFs: 'ETF', Crypto: '₿', 'Private Equity': 'PE', Gold: 'Au', 'Real Estate': 'RE', Other: '•' };
+  return m[type] || String(type || '•').slice(0, 2).toUpperCase();
 }
 
 /* ---- Position actions: edit / refresh price / delete ---- */
@@ -4099,8 +4374,8 @@ window.__modalRenderers.position = function (payload) {
     </div>
 
     <div class="modal-actions" style="margin-top:16px;">
-      <button class="btn primary" onclick="savePositionForm('${a.id}')">✓ Save</button>
-      <button class="btn ghost" onclick="closeModal()">✕</button>
+      <button class="btn primary" onclick="savePositionForm('${a.id}')">Save</button>
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
 };
 function assetEntryRowHtml(entry) {
@@ -4115,7 +4390,7 @@ function assetEntryRowHtml(entry) {
       <td class="num"><input id="entryrow-qty-${entry.id}" type="number" step="any" value="${entry.quantity}" style="width:90px;" oninput="onEntryInput('${entry.id}','quantity',this.value)" onblur="onEntryBlur()"></td>
       <td class="num"><input id="entryrow-price-${entry.id}" type="number" step="any" value="${entry.price}" style="width:90px;" oninput="onEntryInput('${entry.id}','price',this.value)" onblur="onEntryBlur()"></td>
       <td class="num mono" id="entryrow-invested-${entry.id}">${fmtMoney(entry.quantity * entry.price, entry.currency)}</td>
-      <td class="num"><button type="button" class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteAssetEntryRow('${entry.id}')">🗑</button></td>
+      <td class="num"><button type="button" class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteAssetEntryRow('${entry.id}')">${ic('trash')}</button></td>
     </tr>`;
 }
 /* Live path: patch only this asset's summary numbers on every keystroke (no full render() →
@@ -4232,7 +4507,7 @@ function renderCryptoTab() {
           <span>EUR/USD: ${(data.settings.eurUsdRate || 1.08).toFixed(4)}</span>
           <span class="badge" style="background:${data.settings.eurUsdRateAuto ? 'rgba(34,181,115,0.18)' : 'rgba(232,150,60,0.18)'};color:${data.settings.eurUsdRateAuto ? 'var(--positive)' : 'var(--manual-accent)'};">${data.settings.eurUsdRateAuto ? 'live' : 'manual'}</span>
           <button class="icon-btn-round" style="width:22px;height:22px;background:none;border:none;" title="Refresh live EUR/USD rate" onclick="fetchEurUsdRate()">${ui.eurUsdRateFetching ? '…' : '↻'}</button>
-          <span style="cursor:pointer;text-decoration:underline;" onclick="ui.eurUsdRateEditOpen=true;render();">✎ edit</span>
+          <span style="cursor:pointer;text-decoration:underline;" onclick="ui.eurUsdRateEditOpen=true;render();">edit</span>
         `}
       </div>
       ${ui.eurUsdRateFetchError ? `<div style="font-size:11px;color:var(--negative);">Couldn't reach the rate service — try again, or edit the rate above.</div>` : ''}
@@ -4265,12 +4540,12 @@ function renderCryptoTab() {
               <div style="display:flex;align-items:center;gap:8px;">
                 <div style="font-weight:700;font-size:13.5px;">${fmtMoney(x.value)}</div>
                 <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" title="${expanded ? 'Hide' : 'Show'} holdings" onclick="toggleCryptoExchangeExpand('${safeName}')">${expanded ? '⌃' : '⌄'}</button>
-                <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" title="Remove all holdings at this exchange" onclick="deleteCryptoExchange('${safeName}')">🗑</button>
+                <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" title="Remove all holdings at this exchange" onclick="deleteCryptoExchange('${safeName}')">${ic('trash')}</button>
               </div>
             </div>
             ${expanded ? `
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">
-                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">💶 Cash</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(cashEntry.amount, cashEntry.currency)}</div><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" onclick="openCryptoExchangeCashForm('${safeName}')">✎</button></div></div></div>` : ''}
+                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">Cash</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(cashEntry.amount, cashEntry.currency)}</div><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" onclick="openCryptoExchangeCashForm('${safeName}')">${ic('edit')}</button></div></div></div>` : ''}
                 <div class="stack-gap-8">
                   ${x.holdings.map(h => positionRowHtml(h)).join('') || '<div style="opacity:.5;font-size:13px;">No holdings here.</div>'}
                 </div>
@@ -4278,7 +4553,7 @@ function renderCryptoTab() {
             ` : ''}
             <div style="display:flex;gap:8px;margin-top:10px;">
               <button class="btn small" onclick="openCryptoAssetForm('${safeName}')">+ Add crypto</button>
-              <button class="btn small" onclick="openCryptoExchangeCashForm('${safeName}')">${hasCash ? '✎ Edit cash' : '+ Add cash'}</button>
+              <button class="btn small" onclick="openCryptoExchangeCashForm('${safeName}')">${hasCash ? 'Edit cash' : '+ Add cash'}</button>
             </div>
           </div>`;
         }).join('') || '<div style="opacity:.5;font-size:13px;">No exchanges yet — add a coin or some cash below.</div>'}
@@ -4344,8 +4619,8 @@ window.__modalRenderers.cryptoAssetEdit = function (payload) {
     `}
 
     <div class="modal-actions" style="margin-top:16px;">
-      <button class="btn primary" onclick="saveCryptoAssetEditForm('${sym}')">✓ Save</button>
-      <button class="btn ghost" onclick="closeModal()">✕</button>
+      <button class="btn primary" onclick="saveCryptoAssetEditForm('${sym}')">Save</button>
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
 };
 function saveCryptoAssetEditForm(symbol) {
@@ -4393,8 +4668,8 @@ window.__modalRenderers.cryptoExchangeCash = function (payload) {
     </div>
     <label class="field"><span class="label-text">Interest rate (% APY)</span><input id="cec-rate" type="number" step="0.01" placeholder="e.g. 4" value="${existing && existing.interestRate != null ? existing.interestRate : ''}" ${existing && existing.interestBearing ? '' : 'disabled'}></label>
     <div class="modal-actions" style="margin-top:16px;">
-      ${existing ? `<button class="btn danger ghost" onclick="deleteCryptoExchangeCash('${escHtml(payload.exchange).replace(/'/g, "\\'")}')">🗑 Remove</button>` : ''}
-      <button class="btn primary" onclick="saveCryptoExchangeCashForm('${existing ? escHtml(payload.exchange).replace(/'/g, "\\'") : ''}')">✓ Save</button>
+      ${existing ? `<button class="btn danger ghost" onclick="deleteCryptoExchangeCash('${escHtml(payload.exchange).replace(/'/g, "\\'")}')">Remove</button>` : ''}
+      <button class="btn primary" onclick="saveCryptoExchangeCashForm('${existing ? escHtml(payload.exchange).replace(/'/g, "\\'") : ''}')">Save</button>
     </div>`;
 };
 function saveCryptoExchangeCashForm(previousName) {
@@ -4447,7 +4722,7 @@ function snapshotRowHtml(symbol, row) {
       <td class="num"><input id="snaprow-qty-${row.id}" type="number" step="any" value="${row.quantity}" style="width:100px;" oninput="onSnapRowInput('${symbol}','${row.id}','quantity',this.value)" onblur="onSnapRowBlur()"></td>
       <td class="num"><input id="snaprow-price-${row.id}" type="number" step="any" value="${row.price}" style="width:100px;" oninput="onSnapRowInput('${symbol}','${row.id}','price',this.value)" onblur="onSnapRowBlur()"></td>
       <td class="num mono" id="snaprow-invested-${row.id}">${fmtMoney(row.quantity * row.price, row.currency)}</td>
-      <td class="num"><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteSnapshotRow('${symbol}','${row.id}')">🗑</button></td>
+      <td class="num"><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteSnapshotRow('${symbol}','${row.id}')">${ic('trash')}</button></td>
     </tr>`;
 }
 function onSnapRowInput(symbol, rowId, field, value) {
@@ -4514,7 +4789,7 @@ function cryptoPriceRowHtml(symbol) {
           <div style="display:flex;gap:2px;align-items:center;">
             ${asset.priceUpdatedAt ? `<span style="font-size:11px;opacity:.5;margin-right:4px;">${new Date(asset.priceUpdatedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}
             <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Refresh live price" onclick="fetchCryptoPrices(true)">${ui.cryptoPriceFetching ? '…' : '↻'}</button>
-            <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Enter price manually" onclick="toggleCryptoManualEntry('${symbol}')">✎</button>
+            <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Enter price manually" onclick="toggleCryptoManualEntry('${symbol}')">${ic('edit')}</button>
           </div>
         </div>
       ` : `<div style="opacity:.65;font-size:13px;">No live price yet — enter it manually below.</div>`}
@@ -4536,7 +4811,7 @@ function cryptoPriceRowHtml(symbol) {
             CoinGecko ID: <input id="coingecko-id-${symbol}" value="${escHtml(asset.coingeckoId || '')}" placeholder="e.g. bitcoin" style="width:120px;padding:4px 8px;font-size:11px;">
             <button class="btn small" style="padding:3px 8px;" onclick="saveCoingeckoId('${symbol}')">Save</button>
           </span>
-        ` : `CoinGecko ID: ${asset.coingeckoId ? escHtml(asset.coingeckoId) : 'not set'} <span style="cursor:pointer;text-decoration:underline;" onclick="ui.cryptoIdEditOpen='${symbol}';render();">✎ edit</span>`}
+        ` : `CoinGecko ID: ${asset.coingeckoId ? escHtml(asset.coingeckoId) : 'not set'} <span style="cursor:pointer;text-decoration:underline;" onclick="ui.cryptoIdEditOpen='${symbol}';render();">edit</span>`}
       </div>
       <div style="margin-top:4px;font-size:11px;opacity:.5;">
         ${ui.cryptoLogoEditOpen === symbol ? `
@@ -4546,7 +4821,7 @@ function cryptoPriceRowHtml(symbol) {
             <button class="btn small" style="padding:3px 8px;" onclick="saveCryptoLogo('${symbol}')">Save</button>
           </span>
           ${logoPickerPopoverHtml('crypto-logo-' + symbol)}
-        ` : `Logo: ${asset.logo ? 'set' : 'not set'} <span style="cursor:pointer;text-decoration:underline;" onclick="ui.cryptoLogoEditOpen='${symbol}';render();">✎ edit</span>`}
+        ` : `Logo: ${asset.logo ? 'set' : 'not set'} <span style="cursor:pointer;text-decoration:underline;" onclick="ui.cryptoLogoEditOpen='${symbol}';render();">edit</span>`}
       </div>
     </div>`;
 }
@@ -4592,7 +4867,7 @@ function lotRowHtml(lot) {
       <td class="num"><input id="lot-amount-${lot.id}" type="number" step="any" value="${lot.amountPaid}" style="width:100px;" oninput="onLotInput('${lot.id}','amountPaid',this.value)" onblur="onLotBlur()"></td>
       <td class="num"><input id="lot-qty-${lot.id}" type="number" step="any" value="${lot.quantity}" style="width:100px;" oninput="onLotInput('${lot.id}','quantity',this.value)" onblur="onLotBlur()"></td>
       <td class="num"><input id="lot-price-${lot.id}" type="number" step="any" value="${price ? +price.toFixed(8) : ''}" style="width:100px;" oninput="onLotInput('${lot.id}','price',this.value)" onblur="onLotBlur()"></td>
-      <td class="num"><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteCryptoLot('${lot.id}')">🗑</button></td>
+      <td class="num"><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteCryptoLot('${lot.id}')">${ic('trash')}</button></td>
     </tr>`;
 }
 
@@ -4670,7 +4945,7 @@ window.__modalRenderers.cryptoAsset = function (payload) {
     ...data.cryptoAssets.flatMap(c => (c.snapshots || []).map(r => r.broker)),
   ].filter(Boolean)));
   return `
-    <div class="modal-head"><div class="modal-title">🪙 Add crypto</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Add crypto</div><button class="close-x" onclick="closeModal()">✕</button></div>
     <div style="font-size:12px;opacity:.6;margin-bottom:14px;">Enter the coin's symbol, then how much you hold and at what price — same coin at the same exchange updates that holding directly, no buy/sell history.</div>
     <datalist id="crypto-exchange-list">${exchangeSuggestions.map(b => `<option value="${escHtml(b)}">`).join('')}</datalist>
     <div class="form-grid">
@@ -4687,8 +4962,8 @@ window.__modalRenderers.cryptoAsset = function (payload) {
       </label>
     </div>
     <div class="modal-actions">
-      <button class="btn primary" onclick="saveCryptoAssetForm()">✓ Save</button>
-      <button class="btn ghost" onclick="closeModal()">✕</button>
+      <button class="btn primary" onclick="saveCryptoAssetForm()">Save</button>
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
 };
 function autofillCoingeckoId() {
@@ -4760,7 +5035,7 @@ window.__modalRenderers.broker = function (payload) {
         <label class="field"><span class="label-text">Cash held here</span><input id="bf-cash" type="number" step="0.01" value="${b ? brokerCash(b) : ''}" placeholder="0"></label>
         <label class="field"><span class="label-text">Currency</span><select id="bf-cash-currency" ${linkedAcc ? 'disabled' : ''}>${CURRENCIES.map(c => `<option ${(b ? brokerCashCurrency(b) : 'EUR') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       </div>
-      ${linkedAcc ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">🔗 Same cash as your <strong>${escHtml(linkedAcc.name)}</strong> bank account — changing it here changes the account's balance too.</div>` : `<div style="font-size:12px;opacity:.55;margin-top:-4px;">Tip: give it the same name as one of your bank accounts and both will always share one cash balance.</div>`}
+      ${linkedAcc ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">Same cash as your <strong>${escHtml(linkedAcc.name)}</strong> bank account — changing it here changes the account's balance too.</div>` : `<div style="font-size:12px;opacity:.55;margin-top:-4px;">Tip: give it the same name as one of your bank accounts and both will always share one cash balance.</div>`}
       <div class="row-flex">
         <span class="label-text" style="font-size:13px;">This cash earns interest</span>
         <div class="toggle ${interestOn ? 'on' : ''}" id="bf-cash-interest-on" onclick="this.classList.toggle('on'); document.getElementById('bf-cash-rate').disabled = !this.classList.contains('on');"></div>
@@ -4768,8 +5043,8 @@ window.__modalRenderers.broker = function (payload) {
       <label class="field"><span class="label-text">Interest rate (% APY)</span><input id="bf-cash-rate" type="number" step="0.01" value="${b && b.cashInterestRate != null ? b.cashInterestRate : ''}" placeholder="e.g. 3.5" ${interestOn ? '' : 'disabled'}></label>
     </div>
     <div class="modal-actions">
-      <button class="btn primary" onclick="saveBrokerForm('${b ? b.id : ''}')">✓ Save</button>
-      <button class="btn ghost" onclick="closeModal()">✕</button>
+      <button class="btn primary" onclick="saveBrokerForm('${b ? b.id : ''}')">Save</button>
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
 };
 function saveBrokerForm(id) {
@@ -4803,7 +5078,7 @@ window.__modalRenderers.txn = function (payload) {
       <label class="field"><span class="label-text">Ticker</span>
         <div style="display:flex;gap:6px;">
           <input id="tn-ticker" placeholder="e.g. AAPL" style="flex:1;">
-          <button type="button" id="tn-lookup-btn" class="icon-btn-round" style="width:38px;height:38px;flex:none;" title="Look up ticker/ISIN" onclick="lookupTickerInfo()">🔍</button>
+          <button type="button" id="tn-lookup-btn" class="icon-btn-round" style="width:38px;height:38px;flex:none;" title="Look up ticker/ISIN" onclick="lookupTickerInfo()">${ic('search', 18)}</button>
         </div>
       </label>
       <label class="field"><span class="label-text">ISIN <span style="opacity:.6;">(optional, helps find it)</span></span><input id="tn-isin" placeholder="e.g. IE00B4L5Y983"></label>
@@ -4827,8 +5102,8 @@ window.__modalRenderers.txn = function (payload) {
       </label>
     </div>
     <div class="modal-actions">
-      <button class="btn primary" onclick="saveTxnForm()">✓ Save</button>
-      <button class="btn ghost" onclick="closeModal()">✕</button>
+      <button class="btn primary" onclick="saveTxnForm()">Save</button>
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
 };
 
@@ -4985,7 +5260,7 @@ function renderManualPrices() {
         </tbody>
       </table>
       <div style="margin-top:18px;text-align:right;">
-        <button class="btn primary" onclick="saveManualPrices()">✓ Save changes</button>
+        <button class="btn primary" onclick="saveManualPrices()">Save changes</button>
       </div>
     </div>
   </div>`;
@@ -4996,7 +5271,7 @@ function livePricesStatusCardHtml() {
   const withIsin = data.assets.filter(a => a.isin).length;
   const st = ui.isinQuoteStatus;
   const line = !loadSupabaseSyncConfig() ? 'Connect sync first (Settings → Supabase Sync): your Supabase database fetches the prices for the app.'
-    : st === 'ok' ? '✓ Working — prices by ISIN from the Lang & Schwarz Exchange (Trade Republic\'s exchange), in EUR, refreshed every hour.'
+    : st === 'ok' ? 'Working — prices by ISIN from the Lang & Schwarz Exchange (Trade Republic\'s exchange), in EUR, refreshed every hour.'
     : st === 'missing' ? 'One-time step: in Supabase → SQL Editor, paste the setup script below and press Run. It adds the price lookup; your data is not touched.'
     : st === 'error' ? "Couldn't get live prices right now — the last known or manual prices are used. Try ↻ later."
     : 'Prices by ISIN from the Lang & Schwarz Exchange, in EUR. Press ↻ to check.';
@@ -5089,7 +5364,7 @@ function renderTrading() {
 
     <div class="grid-2" style="margin-bottom:22px;">
       <button class="btn primary" onclick="openTradeForm()">+ Add trade</button>
-      <button class="btn" onclick="alert('Import Excel: choose a .xlsx file exported from your broker (format TBD).')">📄 Import Excel</button>
+      <button class="btn" onclick="alert('Import Excel: choose a .xlsx file exported from your broker (format TBD).')">Import Excel</button>
     </div>
 
     <div class="tab-row" style="margin-bottom:20px;">
@@ -5118,7 +5393,7 @@ function tradeRowHtml(t) {
   return `<div class="card-nested" data-trade="${t.id}">
     <div class="row-flex">
       <div style="display:flex;align-items:center;gap:10px;">
-        <span style="width:32px;height:32px;border-radius:9px;background:${dirColor}22;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;">${t.direction === 'Short' ? '📉' : '📈'}</span>
+        <span style="width:32px;height:32px;border-radius:9px;background:${dirColor}22;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;">${t.direction === 'Short' ? '▼' : '▲'}</span>
         <div>
           <div style="font-weight:600;font-size:13.5px;">${escHtml(t.instrument)} <span style="opacity:.55;font-weight:400;">${escHtml(t.tradeType)}</span></div>
           <div style="font-size:11.5px;opacity:.55;">
@@ -5141,9 +5416,9 @@ function tradeRowHtml(t) {
     <div class="row-flex" style="margin-top:8px;">
       <div>${statusBadge}</div>
       <div style="display:flex;gap:2px;">
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit trade" onclick="openTradeForm('${t.id}')">✎</button>
-        ${t.status !== 'closed' ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Close trade" onclick="quickCloseTrade('${t.id}')">✔</button>` : ''}
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Delete trade" onclick="deleteTrade('${t.id}')">🗑</button>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit trade" onclick="openTradeForm('${t.id}')">${ic('edit')}</button>
+        ${t.status !== 'closed' ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Close trade" onclick="quickCloseTrade('${t.id}')">✓</button>` : ''}
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Delete trade" onclick="deleteTrade('${t.id}')">${ic('trash')}</button>
       </div>
     </div>
   </div>`;
@@ -5205,8 +5480,8 @@ window.__modalRenderers.trade = function (payload) {
     <datalist id="trade-type-list">${TRADE_TYPES.map(t => `<option value="${t}">`).join('')}</datalist>
     <datalist id="trade-platform-list">${tradingPlatformSuggestions().map(p => `<option value="${escHtml(p)}">`).join('')}</datalist>
     <div class="modal-actions">
-      ${isEdit ? `<button class="btn danger ghost" onclick="deleteTrade('${payload.id}')">🗑 Delete</button>` : ''}
-      <button class="btn primary" onclick="saveTradeForm()">✓ Save</button>
+      ${isEdit ? `<button class="btn danger ghost" onclick="deleteTrade('${payload.id}')">Delete</button>` : ''}
+      <button class="btn primary" onclick="saveTradeForm()">Save</button>
     </div>`;
 };
 function toggleTradeCloseFields(status) {
@@ -5262,7 +5537,6 @@ function deleteTrade(id) {
 /* ===================== Settings ===================== */
 const SETTINGS_SECTIONS = [
   { id: 'supabasesync', icon: '🔄', title: 'Supabase Sync (iPhone access)' },
-  { id: 'appearance', icon: '🎨', title: 'Appearance & Colors' },
   { id: 'display', icon: '🖥️', title: 'Display Preferences' },
   { id: 'categories', icon: '🏷️', title: 'Categories' },
   { id: 'assetcategories', icon: '📦', title: 'Asset Categories' },
@@ -5275,7 +5549,6 @@ const SETTINGS_SECTIONS = [
 ];
 const SETTINGS_BODY = {
   supabasesync: settingsSupabaseSyncHtml,
-  appearance: settingsAppearanceHtml,
   display: settingsDisplayHtml,
   categories: () => categoryEditorHtml(),
   assetcategories: settingsAssetCategoriesHtml,
@@ -5294,8 +5567,7 @@ function renderSettings() {
     ${SETTINGS_SECTIONS.map(s => `
       <div class="accordion ${ui.settingsOpenSections[s.id] ? 'open' : ''}">
         <div class="accordion-head" onclick="toggleSettingsSection('${s.id}')">
-          <span class="acc-icon">${s.icon}</span>
-          <span class="acc-title">${s.title}</span>
+                    <span class="acc-title">${s.title}</span>
           <span class="chevron">⌄</span>
         </div>
         ${ui.settingsOpenSections[s.id] ? `<div class="accordion-body">${SETTINGS_BODY[s.id]()}</div>` : ''}
@@ -5391,11 +5663,11 @@ function settingsLogosHtml() {
         <div class="card-nested" style="display:flex;align-items:center;gap:10px;">
           ${logoImg(it.logo, 34)}
           <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;">${escHtml(it.name)}</div><div style="font-size:11px;opacity:.55;">${escHtml(it.type)}${isRemoteLogo(it.logo) ? ' · <span style="color:var(--manual-accent);opacity:1;">remote link</span>' : ''}</div></div>
-          <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Copy URL" onclick="copyLogoUrl(this,'${escHtml(it.logo).replace(/'/g, "\\'")}')">📋</button>
+          <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Copy URL" onclick="copyLogoUrl(this,'${escHtml(it.logo).replace(/'/g, "\\'")}')">${ic('copy')}</button>
           <a class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;text-decoration:none;" href="${escHtml(it.logo)}" download="${escHtml(it.name)}.png" title="Download">⬇</a>
         </div>`).join('') || '<div style="opacity:.5;font-size:13px;">No logos yet.</div>'}
     </div>
-    <button class="btn" onclick="downloadAllLogos()">⬇ Download all (${items.length} images)</button>`;
+    <button class="btn" onclick="downloadAllLogos()">Download all (${items.length} images)</button>`;
 }
 function copyLogoUrl(btn, url) {
   const done = () => { const prev = btn.textContent; btn.textContent = '✓'; setTimeout(() => { btn.textContent = prev; }, 1200); };
@@ -5435,8 +5707,8 @@ function settingsExportDataHtml() {
       ${allFields.map(f => `<span class="chip" style="cursor:pointer;${ui.exportFields.includes(f) ? '' : 'opacity:.4;'}" onclick="toggleExportField('${f}')">${f}</span>`).join('')}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-      <button class="btn primary" onclick="exportDataCsv()">⬇ Export CSV (${rowCount} rows)</button>
-      <button class="btn" onclick="exportDataExcel()">⬇ Export Excel (${rowCount} rows)</button>
+      <button class="btn primary" onclick="exportDataCsv()">Export CSV (${rowCount} rows)</button>
+      <button class="btn" onclick="exportDataExcel()">Export Excel (${rowCount} rows)</button>
     </div>`;
 }
 function setExportKind(k) { ui.exportKind = k; render(); }
@@ -5463,8 +5735,8 @@ function settingsBackupRestoreHtml() {
       brings it back.
     </div>
     <div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-      <button class="btn primary" onclick="exportFullBackup()">⬇ Download backup (JSON)</button>
-      <button class="btn" onclick="triggerImportBackup()">⬆ Restore from backup</button>
+      <button class="btn primary" onclick="exportFullBackup()">Download backup (JSON)</button>
+      <button class="btn" onclick="triggerImportBackup()">Restore from backup</button>
     </div>
     <input type="file" id="import-backup-file" accept="application/json,.json" style="display:none;" onchange="handleImportBackupFile(this.files[0])">
     <div style="font-size:11.5px;opacity:.55;">Restoring replaces everything currently in this browser. You'll see exactly what's in the file — and what it would overwrite — and have to confirm, before anything changes.</div>`;
@@ -5643,28 +5915,28 @@ function settingsAssetExportHtml() {
       <tbody>
         ${allPriceableHoldings().map(h => `<tr>
           <td class="mono"><div style="display:flex;align-items:center;gap:8px;">${assetLogoHtml(h.logo, h.assetType, 20)}${escHtml(h.ticker)}</div></td><td>${escHtml(h.name)}</td><td>${escHtml(h.assetType)}</td>
-          <td class="num" style="color:${h.manualPrice != null ? '#E8963C' : 'var(--positive)'};">${h.manualPrice != null ? h.manualPrice : h.livePrice}${h.manualPrice != null ? ' ✎' : ''}</td>
+          <td class="num" style="color:${h.manualPrice != null ? '#E8963C' : 'var(--positive)'};">${h.manualPrice != null ? h.manualPrice : h.livePrice}${h.manualPrice != null ? ' (manual)' : ''}</td>
           <td>${h.currency}</td>
         </tr>`).join('') || `<tr><td colspan="5" style="opacity:.5;padding:14px 10px;">No holdings yet.</td></tr>`}
       </tbody>
     </table>
     <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
-      <button class="btn primary" onclick="exportAssetListCsv()">⬇ Export CSV with prices (${allPriceableHoldings().length} assets)</button>
+      <button class="btn primary" onclick="exportAssetListCsv()">Export CSV with prices (${allPriceableHoldings().length} assets)</button>
       <label class="btn" style="cursor:pointer;">
-        📤 Choose corrected CSV to import
+        Choose corrected CSV to import
         <input type="file" accept=".csv" style="display:none;" onchange="importAssetListCsv(this.files[0])">
       </label>
     </div>
     <div style="opacity:.65;font-size:13px;margin:16px 0 10px;">Or the same round-trip as a genuine Excel file — every asset you own, with a blank <span style="color:#E8963C;font-weight:600;">orange "New Price"</span> column per row ready to fill in, then re-import to update everything at once. When saving in Excel, choose "Keep Current Format" rather than converting it, so it can be read back in.</div>
     <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
-      <button class="btn primary" style="background:#F5E7C4;color:#12141C;border-color:#F5E7C4;" onclick="exportAssetPricesExcel()">⬇ Export Excel with blank price column (${allPriceableHoldings().length} assets)</button>
+      <button class="btn primary" style="background:#F5E7C4;color:#12141C;border-color:#F5E7C4;" onclick="exportAssetPricesExcel()">Export Excel with blank price column (${allPriceableHoldings().length} assets)</button>
       <label class="btn" style="cursor:pointer;">
-        📤 Choose filled-in Excel to import
+        Choose filled-in Excel to import
         <input type="file" accept=".xls" style="display:none;" onchange="importAssetPricesExcel(this.files[0])">
       </label>
     </div>
     <div style="opacity:.65;font-size:13px;margin:16px 0 10px;">Or export the full database of everything you own — quantities, per-broker holdings, and P&amp;L, not just current prices.</div>
-    <button class="btn" onclick="exportAssetsJson()">⬇ Export full asset database (JSON)</button>`;
+    <button class="btn" onclick="exportAssetsJson()">Export full asset database (JSON)</button>`;
 }
 /* The complete "owned assets" database — quantities, per-broker/exchange breakdown, and
    P&L for every Stock/ETF/other asset and every tracked crypto coin. JSON (rather than CSV)
@@ -6026,7 +6298,7 @@ function syncConflictBannerHtml() {
   const unverified = syncState.conflict.reason === 'unverified';
   return `
     <div class="card-nested" style="margin-bottom:16px;border:1px solid var(--light-warn, #E5A94D);">
-      <div style="font-weight:700;margin-bottom:6px;">${unverified ? '🔄 Which data do you want to keep?' : '⚠️ Both devices were changed'}</div>
+      <div style="font-weight:700;margin-bottom:6px;">${unverified ? 'Which data do you want to keep?' : 'Both devices were changed'}</div>
       <div style="font-size:12.5px;opacity:.75;margin-bottom:10px;line-height:1.5;">${syncConflictExplanationHtml()}</div>
       <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
         <button class="btn primary" onclick="resolveSyncConflictUseRemote()">Use the cloud's version</button>
@@ -6082,7 +6354,7 @@ function settingsSupabaseSyncHtml() {
         <label class="field span-2"><span class="label-text">Anon public key</span><input id="sb-anon-key" type="password" placeholder="eyJhbGciOi…"></label>
         <label class="field span-2"><span class="label-text">Your secret code</span><input id="sb-secret" type="password" placeholder="A long, private code only you know"></label>
       </div>
-      <button class="btn primary" onclick="connectSupabaseSync('manual')">🔄 Connect</button>`;
+      <button class="btn primary" onclick="connectSupabaseSync('manual')">Connect</button>`;
   const state = syncStatusState();
   const statusLine = syncState.conflict ? 'Waiting for your choice above'
     : syncIsPending() ? (syncState.lastError ? "Changes saved on this device — they'll be sent as soon as the connection is back" : 'Sending changes…')
@@ -6100,7 +6372,7 @@ function settingsSupabaseSyncHtml() {
       <div class="card-nested" style="margin-bottom:16px;">
         <div class="row-flex">
           <div style="min-width:0;">
-            <div style="font-weight:700;">🔄 Sync is on</div>
+            <div style="font-weight:700;">Sync is on</div>
             <div style="font-size:12.5px;opacity:.6;margin-top:2px;">${escHtml(statusLine)}</div>
           </div>
           <button class="btn small primary" onclick="manualSyncNow()">Sync now</button>
@@ -6114,19 +6386,19 @@ function settingsSupabaseSyncHtml() {
         <div style="font-size:11.5px;opacity:.6;margin-top:8px;line-height:1.5;">The <strong>Sync ID</strong> must be the same on every device. If one shows a different ID, it's connected to a different place: on that device tap Disconnect, then paste the setup code from a device that has your real data.</div>
       </div>
       <div class="card-nested" style="margin-bottom:16px;">
-        <div style="font-weight:700;margin-bottom:6px;">📱 Add another device</div>
+        <div style="font-weight:700;margin-bottom:6px;">Add another device</div>
         <ol style="font-size:12.5px;opacity:.75;margin:0 0 12px;padding-left:18px;line-height:1.6;">
           <li>Tap <strong>Copy setup code</strong> here.</li>
           <li>Send it to your other device (AirDrop, Notes, a message to yourself).</li>
           <li>On that device open Trackr → <strong>Settings → Supabase Sync</strong>, paste it, tap <strong>Connect</strong>.</li>
         </ol>
-        <button class="btn small" onclick="copySupabaseSetupCode()">📋 Copy setup code</button>
+        <button class="btn small" onclick="copySupabaseSetupCode()">Copy setup code</button>
         ${ui.supabaseShowCode ? `<textarea readonly onclick="this.select()" style="width:100%;margin-top:10px;font-size:11px;min-height:70px;word-break:break-all;">${escHtml(supabaseSetupCode(cfg))}</textarea>` : ''}
         <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Keep this code private — like a password, it gives access to your data.</div>
       </div>
       ${syncState.legacy ? `
       <div class="card-nested" style="margin-bottom:16px;">
-        <div style="font-weight:700;margin-bottom:6px;">ℹ️ Optional: update your Supabase setup</div>
+        <div style="font-weight:700;margin-bottom:6px;">Optional: update your Supabase setup</div>
         <div style="font-size:12.5px;opacity:.75;line-height:1.5;margin-bottom:8px;">Sync works, but your Supabase project still has the first version of the setup script. Running the current one (Supabase → SQL Editor → paste → Run) adds an extra safety check on the server. Your data is not touched.</div>
         <button type="button" class="btn small" onclick="toggleSupabaseSetupSql()">${ui.supabaseSetupSqlOpen ? 'Hide' : 'Show'} setup SQL</button>
         ${ui.supabaseSetupSqlOpen ? `<pre style="font-size:10.5px;background:var(--dark-card-2);padding:10px;border-radius:var(--radius-sm);overflow:auto;margin-top:8px;white-space:pre-wrap;user-select:all;">${escHtml(SUPABASE_SETUP_SQL)}</pre>` : ''}
@@ -6134,7 +6406,7 @@ function settingsSupabaseSyncHtml() {
       <div class="card-nested" style="margin-bottom:16px;">
         <div style="font-size:12px;opacity:.6;">Connected to ${escHtml(cfg.url)}</div>
         <div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-top:10px;justify-content:flex-start;">
-          <button class="btn small" onclick="pushSupabaseSyncOverwrite()">⬆ Replace the cloud with this device's data</button>
+          <button class="btn small" onclick="pushSupabaseSyncOverwrite()">Replace the cloud with this device's data</button>
           <button class="btn small" onclick="disconnectSupabaseSync()">Disconnect</button>
         </div>
       </div>
@@ -6143,7 +6415,7 @@ function settingsSupabaseSyncHtml() {
         <div style="font-weight:700;margin-bottom:6px;">Already using sync on another device?</div>
         <div style="font-size:12.5px;opacity:.75;margin-bottom:10px;line-height:1.5;">On that device: <strong>Settings → Supabase Sync → Copy setup code</strong>. Paste it here.</div>
         <textarea id="sb-code" placeholder="trackr-sync:…" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%;font-size:12px;min-height:70px;word-break:break-all;margin-bottom:10px;"></textarea>
-        <button class="btn primary" onclick="connectSupabaseSync('code')">🔄 Connect</button>
+        <button class="btn primary" onclick="connectSupabaseSync('code')">Connect</button>
       </div>
       <div class="card-nested" style="margin-bottom:16px;">
         <div class="row-flex">
@@ -6208,7 +6480,7 @@ async function connectSupabaseSync(mode) {
     await syncNow({ throwErrors: true });
     startSyncPolling();
     render();
-    setSupabaseSyncStatusText(syncState.conflict ? 'Connected — one choice to make above.' : '✓ Connected. This device is now in sync.');
+    setSupabaseSyncStatusText(syncState.conflict ? 'Connected — one choice to make above.' : 'Connected. This device is now in sync.');
   } catch (e) {
     clearSupabaseSyncConfig();
     render();
@@ -6221,7 +6493,7 @@ async function manualSyncNow() {
   render();
   setSupabaseSyncStatusText(syncState.conflict ? 'One choice to make above.'
     : syncState.lastError ? supabaseSyncErrorMessage(syncState.lastError, 'sync')
-    : '✓ Up to date.');
+    : 'Up to date.');
 }
 async function copySupabaseSetupCode() {
   const cfg = loadSupabaseSyncConfig();
@@ -6230,7 +6502,7 @@ async function copySupabaseSetupCode() {
   let copied = false;
   try { await navigator.clipboard.writeText(supabaseSetupCode(cfg)); copied = true; } catch (e) {}
   render();
-  setSupabaseSyncStatusText(copied ? '✓ Setup code copied — paste it on your other device.' : 'Select the code above and copy it, then paste it on your other device.');
+  setSupabaseSyncStatusText(copied ? 'Setup code copied — paste it on your other device.' : 'Select the code above and copy it, then paste it on your other device.');
 }
 /* This device's data becomes the one true version: used by "Keep this device's version" when
    both devices changed, and by the explicit "Replace the cloud" button. */
@@ -6249,7 +6521,7 @@ async function pushSupabaseSyncOverwrite() {
   try {
     await syncForceLocal();
     render();
-    setSupabaseSyncStatusText("✓ Done — the cloud now has this device's data.");
+    setSupabaseSyncStatusText("Done — the cloud now has this device's data.");
   } catch (e) {
     setSupabaseSyncStatusText(supabaseSyncErrorMessage(e, 'push'));
   }
@@ -6347,7 +6619,7 @@ window.__modalRenderers.syncStatus = function () {
   if (state === 'conflict') {
     const unverified = syncState.conflict.reason === 'unverified';
     return `
-      <div class="modal-head"><div class="modal-title">${unverified ? '🔄 Which data do you want to keep?' : '⚠️ Both devices were changed'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+      <div class="modal-head"><div class="modal-title">${unverified ? 'Which data do you want to keep?' : 'Both devices were changed'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
       <div style="font-size:13px;opacity:.75;line-height:1.6;margin-bottom:16px;">${syncConflictExplanationHtml()}</div>
       <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
         <button class="btn primary" onclick="ui.modal=null;resolveSyncConflictUseRemote();">Use the cloud's version</button>
@@ -6360,7 +6632,7 @@ window.__modalRenderers.syncStatus = function () {
       <div style="opacity:.7;">${escHtml(syncState.lastError.message || 'Unknown error')}</div>
     </div>` : '';
   return `
-    <div class="modal-head"><div class="modal-title">${state === 'warning' ? '⚠️ Sync issue' : '🔄 Sync status'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${state === 'warning' ? 'Sync issue' : 'Sync status'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
     <div style="font-size:13px;opacity:.75;line-height:1.6;">
       Last successful sync: ${escHtml(syncState.lastSuccessAt ? timeAgo(syncState.lastSuccessAt) : 'never')}${syncState.consecutiveFailures ? ` · ${syncState.consecutiveFailures} failed attempt${syncState.consecutiveFailures === 1 ? '' : 's'} in a row` : ''}
     </div>
