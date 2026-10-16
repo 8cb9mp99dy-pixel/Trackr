@@ -7,7 +7,7 @@
    always go straight to the network. */
 const CACHE = 'trackr-app-v3';
 const SHELL = [
-  './', './index.html', './styles.css', './app.js', './excel-import.js', './budget-import.js', './loan.js', './topbar.js', './wealth.js', './safety.js',
+  './', './index.html', './styles.css', './app.js', './excel-import.js', './budget-import.js', './loan.js', './topbar.js', './overview.js', './wealth.js', './safety.js',
   './assets/logos/logos.js', './assets/vendor/xlsx.full.min.js', './manifest.webmanifest',
   './assets/icons/apple-touch-icon.png', './assets/icons/icon-32.png', './assets/icons/icon-48.png', './assets/icons/icon-192.png',
 ];

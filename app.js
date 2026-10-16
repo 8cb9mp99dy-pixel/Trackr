@@ -2338,7 +2338,6 @@ function renderDashboard() {
 
   const income = monthIncome(now), expenses = monthExpenses(now), balance = income - expenses;
 
-  const pfPoints = historyPoints(periodToDays(ui.dashboardPortfolioPeriod), 'portfolioValue');
 
   const byBroker = dashboardBrokerBreakdown();
   const byBrokerMax = Math.max(...byBroker.map(x => x.value), 1);
@@ -2384,19 +2383,8 @@ function renderDashboard() {
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Balance</div><div style="font-size:20px;font-weight:700;color:var(--light-accent-2)">${fmtMoney(balance)}</div></div></div></div>
     </div>
 
-    <div class="card" style="margin-bottom:20px;">
-      <div class="row-flex" style="margin-bottom:14px;">
-        <div style="font-weight:700;">Portfolio Performance</div>
-        <div class="tab-row" style="margin:0;width:auto;">
-          ${['1D', '1W', '1M', '3M', '1Y', 'All'].map(p => `<button class="tab-btn ${ui.dashboardPortfolioPeriod === p ? 'active' : ''}" style="padding:5px 10px;font-size:12px;" onclick="setPfPeriod('${p}')">${p}</button>`).join('')}
-        </div>
-      </div>
-      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-        <span class="${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${fmtMoney(pl)} (${fmtPct(plPct)})</span>
-        ${pfPoints.length >= 2 ? (() => { const a = pfPoints[0].value, b = pfPoints[pfPoints.length - 1].value; return `<span style="font-size:12px;opacity:.55;">value ${b - a >= 0 ? '+' : ''}${fmtMoney(b - a)}${a ? ` (${fmtPct((b - a) / a * 100)})` : ''} since ${escHtml(pfPoints[0].label)}</span>`; })() : ''}
-      </div>
-      ${trendChartOrPlaceholder(pfPoints, 120)}
-    </div>
+    ${typeof overviewHistoryCardHtml === 'function' ? overviewHistoryCardHtml() : ''}
+    ${typeof overviewPerformanceCardHtml === 'function' ? overviewPerformanceCardHtml() : ''}
 
     <div class="card" style="margin-bottom:20px;">
       <div style="font-weight:700;margin-bottom:14px;">BY BROKER</div>
@@ -2422,25 +2410,6 @@ function renderDashboard() {
       </div>
     </div>
 
-    <div class="card-dark">
-      <div class="row-flex" style="margin-bottom:14px;">
-        <div style="font-weight:700;">Holdings</div>
-        <div style="font-size:11px;opacity:.5;" class="mono">As of ${new Date(data.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</div>
-      </div>
-      <div class="stack-gap-12">
-        ${dashboardHoldingsList().map(w => `
-          <div class="row-flex">
-            <div style="display:flex;align-items:center;gap:10px;">
-              ${assetLogoHtml(w.logo, w.assetType, 26)}
-              <div><div style="font-weight:600;font-size:13.5px;">${escHtml(w.symbol)}</div><div style="font-size:11.5px;opacity:.55;">${escHtml(w.name)}</div></div>
-            </div>
-            <div style="text-align:right;">
-              <div class="${w.plPct >= 0 ? 'positive' : 'negative'}" style="font-weight:700;font-size:13.5px;">${w.plPct >= 0 ? '▲' : '▼'} ${fmtPct(Math.abs(w.plPct), false)}</div>
-              <div style="font-size:11px;opacity:.5;">vs. cost</div>
-            </div>
-          </div>`).join('') || '<div style="opacity:.5;font-size:13px;">No holdings yet — add a position or crypto purchase in Investments.</div>'}
-      </div>
-    </div>
   </div>`;
 }
 function setPfPeriod(p) { ui.dashboardPortfolioPeriod = p; render(); }
@@ -2458,18 +2427,6 @@ function trendChartOrPlaceholder(points, height, opts, emptyText) {
   return lineChartHtml(points, Object.assign({ h: height }, opts));
 }
 const shortDay = d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-/* Real holdings (crypto + stocks/ETFs/etc.) sorted by value, with real unrealized P&L vs cost. */
-function dashboardHoldingsList() {
-  const cryptoRows = data.cryptoAssets.map(c => cryptoAssetStats(c.symbol)).filter(s => s.quantity > 0)
-    .map(s => { const a = cryptoAssetBySymbol(s.symbol) || {}; return { symbol: s.symbol, name: a.name || s.symbol, value: s.marketValueEUR, plPct: s.plPct, logo: a.logo, assetType: 'Crypto' }; });
-  const assetRows = data.assets.map(a => {
-    const s = assetStats(a.id);
-    // value is a sort key only (never displayed raw, only plPct is shown) — EUR-converted so
-    // ranking against crypto's already-EUR value is meaningful across mixed currencies.
-    return { symbol: a.ticker, name: a.name, value: toEUR(s.value, a.priceCurrency), plPct: s.plPct, logo: a.logo, assetType: a.assetType };
-  }).filter(r => r.value > 0);
-  return cryptoRows.concat(assetRows).sort((a, b) => b.value - a.value).slice(0, 8);
-}
 
 function accountIconHtml(acc, size) {
   size = size || 20;

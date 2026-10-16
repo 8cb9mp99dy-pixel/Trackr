@@ -702,3 +702,17 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
 .cmp-input { border-width: 1px; }
 .alloc-row { grid-template-columns: minmax(0, 1.7fr) minmax(24px, .7fr) 48px; }
 .cmp-head, .cmp-row { grid-template-columns: minmax(0, 1.6fr) 54px 80px 84px; }
+
+/* ============ Overview: performance ============ */
+.info-box { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: var(--dark-card-2); font-size: 13px; line-height: 1.55; }
+.perf-strip { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.perf-card { all: unset; box-sizing: border-box; flex: 0 0 220px; scroll-snap-align: start; padding: 14px; border: 1px solid var(--light-border); border-radius: var(--radius-md); cursor: pointer; display: flex; flex-direction: column; gap: 6px; background: var(--light-card); }
+.perf-card:hover, .perf-card:focus-visible { border-color: var(--accent-1); }
+.perf-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.perf-top .nm { flex: 1; }
+.perf-rank { font-size: 11.5px; font-weight: 700; opacity: .5; }
+.perf-val { font-size: 18px; font-weight: 700; margin-top: 4px; }
+.perf-gain { font-size: 12.5px; display: flex; align-items: center; flex-wrap: wrap; }
+.spark { width: 100%; height: 34px; margin-top: 4px; }
+.spark-empty { height: 34px; margin-top: 4px; font-size: 11px; opacity: .45; display: flex; align-items: center; }
+@media (max-width: 640px) { .perf-card { flex-basis: 78%; } }
