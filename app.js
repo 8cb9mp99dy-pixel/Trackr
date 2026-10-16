@@ -660,7 +660,7 @@ async function supabasePushRow(jsonData, expectedUpdatedAt) {
    own (live prices, the EUR/USD rate, the daily history point, the save timestamp) — so a price
    refresh on one device is never mistaken for an edit that conflicts with the other. Keys are
    sorted because Postgres jsonb doesn't preserve key order. */
-const SYNC_VOLATILE_KEYS = { updatedAt: 1, history: 1, currentPrice: 1, currentPriceUSD: 1, currentPriceEUR: 1, priceUpdatedAt: 1, eurUsdRate: 1, eurUsdRateUpdatedAt: 1 };
+const SYNC_VOLATILE_KEYS = { updatedAt: 1, history: 1, currentPrice: 1, currentPriceUSD: 1, currentPriceEUR: 1, priceUpdatedAt: 1, eurUsdRate: 1, eurUsdRateUpdatedAt: 1, fxRates: 1, fxRatesUpdatedAt: 1 };
 function syncFingerprint(d) {
   const norm = v => {
     if (Array.isArray(v)) return v.map(norm);
@@ -846,7 +846,7 @@ async function load() {
   // After the first sync, so a device opened after days away first takes what the other device
   // already added instead of adding the same months again.
   startAppDayWatch();
-  if (data.settings.eurUsdRateAuto !== false && eurUsdRateIsStale()) fetchEurUsdRate(true);
+  if (eurUsdRateIsStale()) fetchEurUsdRate(true);
   fetchCryptoPrices();
   fetchAssetPrices();
 }
@@ -1172,33 +1172,64 @@ function applyTheme() {
 }
 
 /* ===================== Live EUR/USD rate ===================== */
+/* ===================== Live exchange rates (EUR → USD, GBP, CHF) =====================
+   Fetched once an hour from the European Central Bank's reference rates (via Frankfurter), with
+   a second free source as a backup, and used by every conversion in the app (toEUR /
+   convertCurrency / eurUsd). The USD rate can be overridden by hand (Investments → Crypto); GBP
+   and CHF always follow the live rate. Never invented: if both sources fail, the last known
+   rates stay. Frankfurter moved from api.frankfurter.app to api.frankfurter.dev — the old
+   address now redirects, and browsers refuse that redirect, which is why the rate had stopped
+   updating. */
+const FX_SOURCES = [
+  { url: 'https://api.frankfurter.dev/v1/latest?base=EUR&symbols=USD,GBP,CHF', read: j => j && j.rates },
+  { url: 'https://open.er-api.com/v6/latest/EUR', read: j => j && j.result === 'success' && j.rates },
+];
+function eurUsd() { const r = parseFloat(data.settings.eurUsdRate); return r > 0 ? r : 1.08; }
+function fxRate(ccy) {
+  if (ccy === 'USD') return eurUsd();
+  const r = data.settings.fxRates && data.settings.fxRates[ccy];
+  return r > 0 ? r : null;
+}
 function eurUsdRateIsStale() {
-  if (!data.settings.eurUsdRateUpdatedAt) return true;
-  return (Date.now() - new Date(data.settings.eurUsdRateUpdatedAt).getTime()) > 60 * 60 * 1000; // 1h
+  const at = data.settings.fxRatesUpdatedAt || data.settings.eurUsdRateUpdatedAt;
+  if (!at) return true;
+  return (Date.now() - new Date(at).getTime()) > 60 * 60 * 1000; // 1h
 }
 async function fetchEurUsdRate(auto) {
   ui.eurUsdRateFetching = true;
   ui.eurUsdRateFetchError = false;
-  if (ui.page === 'investments') render();
-  try {
-    const res = await fetch('https://api.frankfurter.app/latest?from=EUR&to=USD');
-    if (!res.ok) throw new Error('bad response');
-    const json = await res.json();
-    const rate = json.rates && json.rates.USD;
-    if (!rate) throw new Error('no rate in response');
-    data.settings.eurUsdRate = rate;
+  if (ui.page === 'investments' || ui.page === 'settings') render();
+  let rates = null;
+  for (const src of FX_SOURCES) {
+    try {
+      const res = await fetch(src.url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const r = src.read(await res.json());
+      if (r && r.USD > 0) { rates = r; break; }
+    } catch (e) { console.warn('Exchange-rate source unavailable, trying the next one', src.url, e); }
+  }
+  ui.eurUsdRateFetching = false;
+  if (!rates) {
+    console.error('Live exchange rates unavailable, keeping the last known rates');
+    ui.eurUsdRateFetchError = true;
+    if (ui.page === 'investments' || ui.page === 'settings') render();
+    return false;
+  }
+  const before = JSON.stringify([data.settings.eurUsdRate, data.settings.fxRates]);
+  // A manual USD rate stays until you go back to the live one (or press refresh, which is auto=false).
+  if (data.settings.eurUsdRateAuto !== false || !auto) {
+    data.settings.eurUsdRate = Math.round(rates.USD * 10000) / 10000;
     data.settings.eurUsdRateAuto = true;
     data.settings.eurUsdRateUpdatedAt = new Date().toISOString();
-    save({ auto: !!auto });
-    return true;
-  } catch (e) {
-    console.error('EUR/USD live rate fetch failed, keeping last known rate', e);
-    ui.eurUsdRateFetchError = true;
-    return false;
-  } finally {
-    ui.eurUsdRateFetching = false;
-    if (ui.page === 'investments') render();
   }
+  data.settings.fxRates = Object.assign({}, data.settings.fxRates || {}, rates.GBP > 0 ? { GBP: Math.round(rates.GBP * 10000) / 10000 } : {}, rates.CHF > 0 ? { CHF: Math.round(rates.CHF * 10000) / 10000 } : {});
+  data.settings.fxRatesUpdatedAt = new Date().toISOString();
+  save({ auto: !!auto });
+  // Every total in the app depends on these rates — redraw whatever page is open.
+  if (JSON.stringify([data.settings.eurUsdRate, data.settings.fxRates]) !== before || ui.page === 'investments' || ui.page === 'settings') {
+    if (typeof syncUserIsEditing !== 'function' || !syncUserIsEditing()) render();
+  }
+  return true;
 }
 function setEurUsdRateManual(v) {
   const rate = parseFloat(v);
@@ -1420,25 +1451,22 @@ function pocketsTotal() { return data.accounts.reduce((s, a) => s + toEUR(pocket
 function accountTotal(acc) { return acc.balance + pocketsTotalFor(acc); }
 
 /* Converts an amount from `currency` into EUR — the single currency every aggregate total in
-   the app (portfolio value, category/broker totals, sort order) is expressed in, same anchor
-   crypto's blendedCostEUR already uses. Uses the live/last-known EUR/USD rate for USD; GBP/CHF
-   have no live rate tracked, so (matching crypto's existing behavior for untracked pairs)
-   they pass through at face value rather than silently being treated as free money or throwing. */
+   the app (net worth, portfolio value, category/broker totals, budgets, the loan) is expressed
+   in. Uses the live (or last known) rates kept by fetchEurUsdRate — USD, GBP and CHF. */
 function toEUR(amount, currency) {
   if (!currency || currency === 'EUR') return amount;
-  if (currency === 'USD') return amount / (data.settings.eurUsdRate || 1.08);
-  return amount;
+  const r = fxRate(currency);
+  return r ? amount / r : amount; // no rate known yet for that currency: face value, never 0
 }
-/* Converts between any two of the app's currencies via EUR as the anchor (same convention as
-   toEUR — GBP/CHF have no live rate, so they pass through at face value rather than throwing).
+/* Converts between any two of the app's currencies via EUR as the anchor (same rates as toEUR).
    Needed because a budget transaction's own currency can differ from the bank account it's
    linked to (see applyTxToAccountBalance). */
 function convertCurrency(amount, fromCcy, toCcy) {
   if (fromCcy === toCcy) return amount;
   const eur = toEUR(amount, fromCcy);
   if (!toCcy || toCcy === 'EUR') return eur;
-  if (toCcy === 'USD') return eur * (data.settings.eurUsdRate || 1.08);
-  return eur;
+  const r = fxRate(toCcy);
+  return r ? eur * r : eur;
 }
 
 function positionPrice(p) { return p.manualPrice != null ? p.manualPrice : p.currentPrice; }
@@ -1466,16 +1494,9 @@ function assetHasPrice(asset) { return asset.manualPrice != null || asset.curren
 function assetStats(assetId) {
   const asset = assetById(assetId);
   const entries = entriesFor(assetId);
-  const rate = data.settings.eurUsdRate || 1.08;
   const quantity = entries.reduce((s, e) => s + e.quantity, 0);
   let cost = 0;
-  entries.forEach(e => {
-    const v = e.quantity * e.price;
-    if (e.currency === asset.priceCurrency) cost += v;
-    else if (e.currency === 'EUR' && asset.priceCurrency === 'USD') cost += v * rate;
-    else if (e.currency === 'USD' && asset.priceCurrency === 'EUR') cost += v / rate;
-    else cost += v;
-  });
+  entries.forEach(e => { cost += convertCurrency(e.quantity * e.price, e.currency, asset.priceCurrency); });
   const avgPrice = quantity ? cost / quantity : null;
   const price = assetPrice(asset) || 0;
   const value = quantity * price;
@@ -1606,7 +1627,7 @@ function cryptoValueForBrokerName(name) {
    coin's overall average across every exchange. */
 function cryptoHoldingsAtExchange(name) {
   const key = name.trim().toLowerCase();
-  const rate = data.settings.eurUsdRate || 1.08;
+  const rate = eurUsd();
   const rows = [];
   data.cryptoAssets.forEach(c => {
     const price = cryptoMarketPrice(c.symbol, 'EUR') || 0;
@@ -1695,7 +1716,7 @@ function cryptoAssetBySymbol(symbol) { return data.cryptoAssets.find(c => c.symb
 function cryptoMarketPrice(symbol, currency) {
   const a = cryptoAssetBySymbol(symbol);
   if (!a) return null;
-  const rate = data.settings.eurUsdRate || 1.08;
+  const rate = eurUsd();
   if (a.manualPrice != null) {
     if (a.manualPriceCurrency === currency) return a.manualPrice;
     return currency === 'USD' ? a.manualPrice * rate : a.manualPrice / rate;
@@ -1708,7 +1729,7 @@ function cryptoPriceIsManual(symbol) { const a = cryptoAssetBySymbol(symbol); re
 
 function cryptoAssetStats(symbol) {
   const asset = cryptoAssetBySymbol(symbol);
-  const rate = data.settings.eurUsdRate || 1.08;
+  const rate = eurUsd();
   let lots = [], snapshots = [], quantity, qtyEUR, qtyUSD, investedEUR, investedUSD, avgPriceEUR, avgPriceUSD;
 
   if (asset && asset.mode === 'snapshot') {
@@ -4013,7 +4034,7 @@ function renderInvestments() {
       <div class="eyebrow">Total value — whole portfolio (${data.settings.defaultCurrency})</div>
       <div class="big-number">${fmtMoney(value)}</div>
       <div class="${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
-      <div style="font-size:12.5px;opacity:.55;">Invested: ${fmtMoney(invested)} · EUR/USD: ${(data.settings.eurUsdRate || 1.08).toFixed(4)}</div>
+      <div style="font-size:12.5px;opacity:.55;">Invested: ${fmtMoney(invested)} · EUR/USD: ${eurUsd().toFixed(4)}</div>
     </div>
 
     <div class="card-dark" style="margin-bottom:20px;">
@@ -4500,11 +4521,11 @@ function renderCryptoTab() {
         <span>·</span>
         ${rateEditOpen ? `
           <span style="display:inline-flex;gap:6px;align-items:center;">
-            EUR/USD: <input id="eurusd-rate-input" type="number" step="0.0001" value="${data.settings.eurUsdRate || 1.08}" style="width:70px;padding:2px 6px;font-size:11px;">
+            EUR/USD: <input id="eurusd-rate-input" type="number" step="0.0001" value="${eurUsd()}" style="width:70px;padding:2px 6px;font-size:11px;">
             <button class="btn small" style="padding:2px 8px;" onclick="saveEurUsdRateInline()">Save</button>
           </span>
         ` : `
-          <span>EUR/USD: ${(data.settings.eurUsdRate || 1.08).toFixed(4)}</span>
+          <span>EUR/USD: ${eurUsd().toFixed(4)}</span>
           <span class="badge" style="background:${data.settings.eurUsdRateAuto ? 'rgba(34,181,115,0.18)' : 'rgba(232,150,60,0.18)'};color:${data.settings.eurUsdRateAuto ? 'var(--positive)' : 'var(--manual-accent)'};">${data.settings.eurUsdRateAuto ? 'live' : 'manual'}</span>
           <button class="icon-btn-round" style="width:22px;height:22px;background:none;border:none;" title="Refresh live EUR/USD rate" onclick="fetchEurUsdRate()">${ui.eurUsdRateFetching ? '…' : '↻'}</button>
           <span style="cursor:pointer;text-decoration:underline;" onclick="ui.eurUsdRateEditOpen=true;render();">edit</span>
@@ -5596,10 +5617,27 @@ function isLight(hex) {
 }
 function setTheme(id) { data.settings.theme = id; save(); applyTheme(); render(); }
 
+function fxRatesLineHtml() {
+  const s = data.settings, r = s.fxRates || {};
+  const at = s.fxRatesUpdatedAt || s.eurUsdRateUpdatedAt;
+  return `
+    <div class="card-nested">
+      <div class="row-flex" style="gap:10px;">
+        <div style="min-width:0;">
+          <div style="font-weight:600;font-size:13.5px;">Exchange rates</div>
+          <div style="font-size:13px;margin-top:3px;">1 € = <strong>$${eurUsd().toFixed(4)}</strong>${r.GBP ? ` · <strong>£${r.GBP.toFixed(4)}</strong>` : ''}${r.CHF ? ` · <strong>CHF ${r.CHF.toFixed(4)}</strong>` : ''}</div>
+          <div style="font-size:11.5px;opacity:.6;margin-top:2px;">${s.eurUsdRateAuto === false ? 'USD set by hand · ' : ''}${at ? 'updated ' + escHtml(timeAgo(at)) : 'not fetched yet'} · used for every conversion in the app</div>
+          ${ui.eurUsdRateFetchError ? '<div style="font-size:11.5px;color:var(--negative);margin-top:2px;">Couldn\'t reach the rate services — the last known rates are used.</div>' : ''}
+        </div>
+        <button class="btn small" onclick="fetchEurUsdRate()">${ui.eurUsdRateFetching ? '…' : '↻'} Refresh</button>
+      </div>
+    </div>`;
+}
 function settingsDisplayHtml() {
   const s = data.settings;
   return `
     <div class="stack-gap-16">
+      ${fxRatesLineHtml()}
       <label class="field"><span class="label-text">Default currency</span>
         <select onchange="updateSetting('defaultCurrency', this.value)">${CURRENCIES.map(c => `<option ${s.defaultCurrency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
       </label>

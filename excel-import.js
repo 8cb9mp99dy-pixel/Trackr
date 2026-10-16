@@ -547,7 +547,7 @@ async function applyExcelImport() {
   const st = ui.excelImportState;
   if (!st || st.step !== 'preview') return;
   const now = new Date().toISOString();
-  const rate = data.settings.eurUsdRate || 1.08;
+  const rate = typeof eurUsd === 'function' ? eurUsd() : (data.settings.eurUsdRate || 1.08);
   const summary = [];
   st.groups.forEach(g => {
     let b = piFindBroker(g.brokerName);
