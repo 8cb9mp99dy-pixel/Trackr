@@ -1,0 +1,165 @@
+/* ===================== Top bar (every page) =====================
+ * Its own file, loaded after app.js (shares its globals: data, ui, save, render, ic, escHtml,
+ * fmtMoney, timeAgo, privacyOn, togglePrivacy, syncStatusState, openSyncStatusModal…).
+ *
+ *   [Action required (n)]                      [share] [PDF] [eye] [+ Add]
+ *
+ * - Action required: Trackr isn't connected to your banks, so "action" means a number that needs
+ *   a manual look: a bank balance nobody checked for 30 days, a price older than 7 days (30 for a
+ *   price you typed), a loan position's typed value older than 30 days, or sync failing. The
+ *   second tab lists everything kept by hand, with when it was last checked.
+ * - Share / PDF: the report built in report.js (a PDF with page numbers).
+ * - Eye: hides every amount on this device (same as the sidebar button).
+ * - + Add: one menu for everything you can add.
+ * On a phone, the pages that don't fit in the bottom bar are under "More".
+ */
+
+const STALE_BALANCE_DAYS = 30, STALE_PRICE_DAYS = 7, STALE_MANUAL_DAYS = 30;
+const daysSince = iso => (iso ? (Date.now() - new Date(iso).getTime()) / 86400000 : Infinity);
+
+/* Latest date a bank account was confirmed: its form saved, "still correct", or a transaction
+   recorded on it (which moves the balance, so you were looking at it). */
+function accountLastChecked(a) {
+  let last = a.balanceCheckedAt || null;
+  const ref = 'acc:' + a.id;
+  (data.budgetTransactions || []).forEach(t => {
+    if (t.accountId === a.id || t.from === ref || t.to === ref || String(t.from || '').startsWith('pk:' + a.id + ':') || String(t.to || '').startsWith('pk:' + a.id + ':')) {
+      const d = t.createdAt || t.date;
+      if (d && (!last || d > last)) last = d;
+    }
+  });
+  return last;
+}
+
+/* Everything that needs a look: { attention: [...], manual: [...] }. Each item:
+   { key, icon (html), name, detail, actions: [{label, onclick, primary}] }. */
+function actionItems() {
+  const attention = [], manual = [];
+  const sync = typeof syncStatusState === 'function' ? syncStatusState() : null;
+  if (sync === 'warning' || sync === 'conflict') {
+    attention.push({ key: 'sync', icon: ic('refresh', 18), name: 'Sync', detail: sync === 'conflict' ? 'This device and the cloud both changed — choose which to keep.' : 'Your changes aren\'t reaching the cloud right now.', actions: [{ label: 'See', onclick: 'openSyncStatusModal()', primary: true }] });
+  }
+  (data.accounts || []).forEach(a => {
+    const last = accountLastChecked(a), days = daysSince(last);
+    const item = { key: 'acc:' + a.id, icon: accountIconHtml(a, 22), name: a.name, detail: `Balance ${fmtMoney(accountTotal(a), a.currency)} · checked ${last ? timeAgo(last) : 'never'}`, actions: [{ label: 'Update', onclick: `closeModal();openAccountForm('${a.id}')`, primary: days > STALE_BALANCE_DAYS }, { label: 'Still correct', onclick: `confirmAccountBalance('${a.id}')` }] };
+    manual.push(item);
+    if (days > STALE_BALANCE_DAYS) attention.push(Object.assign({}, item, { detail: `Balance not checked for ${Math.floor(days)} days — is ${fmtMoney(accountTotal(a), a.currency)} still right?` }));
+  });
+  (data.assets || []).forEach(a => {
+    if (!(assetStats(a.id).quantity > 0)) return;
+    const manualPrice = a.manualPrice != null;
+    const days = daysSince(a.priceUpdatedAt);
+    const limit = manualPrice ? STALE_MANUAL_DAYS : STALE_PRICE_DAYS;
+    const priceTxt = assetHasPrice(a) ? fmtMoney(assetPrice(a), a.priceCurrency) : 'no price';
+    const item = { key: 'a:' + a.id, icon: assetLogoHtml(a.logo, a.assetType, 22), name: a.name || a.ticker, detail: `${manualPrice ? 'Price typed by you' : 'Live price'}: ${priceTxt} · ${a.priceUpdatedAt ? timeAgo(a.priceUpdatedAt) : 'never updated'}`, actions: [
+      ...(a.isin ? [{ label: 'Refresh', onclick: `refreshAssetPriceNow('${a.id}')`, primary: true }] : []),
+      { label: 'Set price', onclick: `closeModal();openPositionForm('${a.id}')` },
+    ] };
+    if (manualPrice || !a.isin) manual.push(item);
+    if (days > limit) attention.push(Object.assign({}, item, { detail: `${manualPrice ? 'Price typed' : 'Price updated'} ${a.priceUpdatedAt ? Math.floor(days) + ' days ago' : 'never'} (${priceTxt})${!a.isin && !manualPrice ? ' — add its ISIN so it updates by itself' : ''}` }));
+  });
+  (data.cryptoAssets || []).forEach(c => {
+    const s = cryptoAssetStats(c.symbol);
+    if (!(s.quantity > 0)) return;
+    const days = daysSince(c.priceUpdatedAt);
+    const manualPrice = c.manualPrice != null;
+    if (days > (manualPrice ? STALE_MANUAL_DAYS : STALE_PRICE_DAYS)) attention.push({ key: 'c:' + c.symbol, icon: assetLogoHtml(c.logo, 'Crypto', 22), name: c.name || c.symbol, detail: `Price ${c.priceUpdatedAt ? 'updated ' + Math.floor(days) + ' days ago' : 'never updated'}`, actions: [{ label: 'Refresh', onclick: `refreshCryptoPriceNow('${escHtml(c.symbol)}')`, primary: true }, { label: 'Set price', onclick: `closeModal();openCryptoAssetEditor('${escHtml(c.symbol)}')` }] });
+  });
+  (data.brokers || []).forEach(b => {
+    if (brokerCashCountedInBank(b) || !(+b.cashBalance)) return;
+    manual.push({ key: 'bc:' + b.id, icon: logoImg(b.logo, 22), name: b.name + ' — cash', detail: fmtMoney(brokerCash(b), brokerCashCurrency(b)), actions: [{ label: 'Update', onclick: `closeModal();openBrokerForm('${b.id}')` }] });
+  });
+  (data.cryptoExchangeCash || []).forEach(c => {
+    if (!(+c.amount)) return;
+    manual.push({ key: 'cx:' + c.id, icon: logoImg(cryptoBrokerLogo(c.exchange), 22), name: c.exchange + ' — cash', detail: fmtMoney(c.amount, c.currency), actions: [{ label: 'Update', onclick: `closeModal();openCryptoExchangeCashForm('${escHtml(c.exchange).replace(/'/g, "\\'")}')` }] });
+  });
+  if (typeof loanList === 'function') loanList().forEach(L => (typeof loanPositions === 'function' ? loanPositions(L) : []).forEach(p => {
+    if (typeof loanPosLive === 'function' && loanPosLive(p)) return;
+    const days = daysSince(p.valueDate);
+    const item = { key: 'lp:' + p.id, icon: ic('bank', 18), name: p.name + ' (loan)', detail: `Value ${fmtMoney(+p.value || 0)} typed ${p.valueDate ? timeAgo(p.valueDate) : '—'}`, actions: [{ label: 'Update', onclick: `closeModal();openLoanValuesForm('${L.id}')` }] };
+    manual.push(item);
+    if (days > STALE_MANUAL_DAYS) attention.push(item);
+  }));
+  return { attention, manual };
+}
+function confirmAccountBalance(id) {
+  const a = accountById(id); if (!a) return;
+  a.balanceCheckedAt = new Date().toISOString();
+  save(); render();
+}
+
+function topbarHtml() {
+  const n = actionItems().attention.length;
+  const hidden = privacyOn();
+  return `
+    <div class="topbar">
+      <div class="topbar-left">
+        ${n ? `<button class="tb-action" onclick="openActionRequired()" title="Things that need a manual update">${ic('alert', 16)}<span>Action required</span><b>${n}</b></button>` : ''}
+      </div>
+      <div class="topbar-right">
+        <button class="tb-btn" onclick="shareReport()" title="Share a PDF report" aria-label="Share">${ic('share', 18)}</button>
+        <button class="tb-btn" onclick="downloadReportPdf()" title="Download a PDF report" aria-label="PDF report">${ic('file', 18)}</button>
+        <button class="tb-btn ${hidden ? 'on' : ''}" onclick="togglePrivacy()" title="${hidden ? 'Show the amounts' : 'Hide every amount'} (this device only)" aria-label="${hidden ? 'Show amounts' : 'Hide amounts'}">${ic(hidden ? 'eyeOff' : 'eye', 18)}</button>
+        <button class="btn primary tb-add" onclick="openAddMenu()">${ic('plus', 16)}<span>Add</span></button>
+      </div>
+    </div>`;
+}
+
+function openActionRequired(tab) { ui.actionTab = tab || ui.actionTab || 'attention'; ui.modal = { type: 'actionRequired' }; render(); }
+function actionRowHtml(it) {
+  return `<div class="ar-row">
+      <div class="ar-icon">${it.icon}</div>
+      <div class="ar-txt"><div class="ar-name">${escHtml(it.name)}</div><div class="ar-detail">${it.detail}</div></div>
+      <div class="ar-btns">${it.actions.map(a => `<button class="btn small ${a.primary ? 'primary' : ''}" onclick="${a.onclick}">${a.label}</button>`).join('')}</div>
+    </div>`;
+}
+window.__modalRenderers.actionRequired = function () {
+  const { attention, manual } = actionItems();
+  const tab = ui.actionTab === 'manual' ? 'manual' : 'attention';
+  const list = tab === 'manual' ? manual : attention;
+  return `
+    <div class="modal-head"><div class="modal-title">Action required</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="tab-row" style="margin-bottom:14px;">
+      <button class="tab-btn ${tab === 'attention' ? 'active' : ''}" onclick="openActionRequired('attention')">Needs a look (${attention.length})</button>
+      <button class="tab-btn ${tab === 'manual' ? 'active' : ''}" onclick="openActionRequired('manual')">Kept by hand (${manual.length})</button>
+    </div>
+    <div style="font-size:12.5px;opacity:.6;margin-bottom:10px;">${tab === 'manual'
+      ? 'Trackr isn\'t connected to your banks: these numbers only change when you update them.'
+      : `Shown when a balance wasn't checked for ${STALE_BALANCE_DAYS} days, a live price is older than ${STALE_PRICE_DAYS} days, a price you typed is older than ${STALE_MANUAL_DAYS} days, or sync fails.`}</div>
+    <div class="stack-gap-8">${list.map(actionRowHtml).join('') || `<div class="empty-state"><div class="title">${tab === 'manual' ? 'Nothing kept by hand yet' : 'Nothing needs a look'}</div><div class="sub">${tab === 'manual' ? 'Add a bank account to see it here.' : 'Everything is up to date.'}</div></div>`}</div>`;
+};
+
+/* + Add: one menu for every kind of thing you can add. */
+const ADD_MENU = [
+  { label: 'Transaction', sub: 'Income, expense or transfer', icon: 'receipt', go: "openTxForm()" },
+  { label: 'Bank account', sub: 'Current or savings account', icon: 'bank', go: "openAccountForm()" },
+  { label: 'Stock / ETF position', sub: 'Or gold, real estate, other', icon: 'trend', go: "openTxnForm()" },
+  { label: 'Crypto', sub: 'A coin on an exchange', icon: 'bolt', go: "openCryptoAssetForm()" },
+  { label: 'Broker', sub: 'Where you hold positions', icon: 'wallet', go: "openBrokerForm()" },
+  { label: 'Debt', sub: 'Credit card, another loan…', icon: 'alert', go: "openLiabilityForm()", needs: 'openLiabilityForm' },
+  { label: 'Goal', sub: 'A target amount to reach', icon: 'target', go: "openGoalForm()", needs: 'openGoalForm' },
+];
+function openAddMenu() { ui.modal = { type: 'addMenu' }; render(); }
+window.__modalRenderers.addMenu = function () {
+  return `
+    <div class="modal-head"><div class="modal-title">Add</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="add-grid">
+      ${ADD_MENU.filter(m => !m.needs || typeof window[m.needs] === 'function').map(m => `
+        <button class="add-tile" onclick="ui.modal=null;${m.go}">
+          <span class="add-ic">${ic(m.icon, 20)}</span><span><span class="add-l">${m.label}</span><span class="add-s">${m.sub}</span></span>
+        </button>`).join('')}
+    </div>`;
+};
+
+/* Phone: the pages that don't fit in the bottom bar, plus sync and the JSON backup. */
+function openMoreNav() { ui.modal = { type: 'moreNav' }; render(); }
+window.__modalRenderers.moreNav = function () {
+  return `
+    <div class="modal-head"><div class="modal-title">More</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="stack-gap-8">
+      ${NAV_ITEMS.filter(i => !i.phone).map(i => `
+        <button class="more-row ${ui.page === i.id ? 'active' : ''}" onclick="${i.id === 'settings' ? "ui.modal=null;goPage('settings')" : `goPage('${i.id}')`}">${ic(i.icon, 20)}<span>${i.label}</span>${i.id === 'settings' ? navSyncBadgeHtml() : ''}<span class="more-chev">${ic('chevronRight', 16)}</span></button>`).join('')}
+    </div>
+    <div style="margin-top:14px;">${syncStatusIndicatorHtml()}</div>
+    <button class="btn full" style="margin-top:10px;" onclick="exportFullBackup()">${ic('download', 16)} Download a backup (JSON)</button>`;
+};

@@ -91,6 +91,27 @@ const ICON_PATHS = {
   photo: '<path d="M15 8h.01"/><path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12z"/><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5"/><path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3"/>',
   copy: '<path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/>',
   chevronDown: '<path d="M6 9l6 6l6 -6"/>',
+  chevronRight: '<path d="M9 6l6 6l-6 6"/>',
+  chevronLeft: '<path d="M15 6l-6 6l6 6"/>',
+  pie: '<path d="M10 3.2a9 9 0 1 0 10.8 10.8a1 1 0 0 0 -1 -1h-6.8a2 2 0 0 1 -2 -2v-7a.9 .9 0 0 0 -1 -.8"/><path d="M15 3.5a9 9 0 0 1 5.5 5.5h-4.5a1 1 0 0 1 -1 -1v-4.5"/>',
+  target: '<path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12m-5 0a5 5 0 1 0 10 0a5 5 0 1 0 -10 0"/><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/>',
+  compass: '<path d="M8 16l2 -6l6 -2l-2 6l-6 2"/><path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/>',
+  dots: '<path d="M5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M19 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>',
+  share: '<path d="M6 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M18 6m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M18 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M8.7 10.7l6.6 -3.4"/><path d="M8.7 13.3l6.6 3.4"/>',
+  file: '<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/>',
+  plus: '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>',
+  alert: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+  info: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/>',
+  download: '<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 11l5 5l5 -5"/><path d="M12 4l0 12"/>',
+  calendar: '<path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M4 11h16"/>',
+  list: '<path d="M9 6l11 0"/><path d="M9 12l11 0"/><path d="M9 18l11 0"/><path d="M5 6l0 .01"/><path d="M5 12l0 .01"/><path d="M5 18l0 .01"/>',
+  table: '<path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14z"/><path d="M3 10h18"/><path d="M10 3v18"/>',
+  sort: '<path d="M3 9l4 -4l4 4m-4 -4v14"/><path d="M21 15l-4 4l-4 -4m4 4v-14"/>',
+  maximize: '<path d="M4 8v-2a2 2 0 0 1 2 -2h2"/><path d="M4 16v2a2 2 0 0 0 2 2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M16 20h2a2 2 0 0 0 2 -2v-2"/>',
+  swap: '<path d="M7 10h14l-4 -4"/><path d="M17 14h-14l4 4"/>',
+  x: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
+  check: '<path d="M5 12l5 5l10 -10"/>',
+  refresh: '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>',
   wallet: '<path d="M17 8v-3a1 1 0 0 0 -1 -1h-10a2 2 0 0 0 0 4h12a1 1 0 0 1 1 1v3m0 4v3a1 1 0 0 1 -1 1h-12a2 2 0 0 1 -2 -2v-12"/><path d="M20 12v4h-4a2 2 0 0 1 0 -4h4"/>',
 };
 function ic(name, size) {
@@ -98,11 +119,15 @@ function ic(name, size) {
   return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ''}</svg>`;
 }
 
+// `phone: true` = shown in the iPhone bottom bar; the others are under "More" there.
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'home' },
+  { id: 'dashboard', label: 'Overview', icon: 'home', phone: true },
+  { id: 'wealth', label: 'Wealth', icon: 'pie', phone: true },
+  { id: 'goals', label: 'Goals', icon: 'target' },
+  { id: 'analysis', label: 'Analysis', icon: 'compass' },
+  { id: 'budget', label: 'Budget', icon: 'receipt', phone: true },
+  { id: 'investments', label: 'Investments', icon: 'trend', phone: true },
   { id: 'accounts', label: 'Accounts', icon: 'bank' },
-  { id: 'budget', label: 'Budget', icon: 'receipt' },
-  { id: 'investments', label: 'Investments', icon: 'trend' },
   { id: 'trading', label: 'Trading', icon: 'bolt' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
@@ -431,6 +456,20 @@ function defaultData() {
     loans: [],
     // Monthly budget per expense category: { categoryId: euros } — see Budget → Budgets.
     budgetLimits: {},
+    // Debts you add by hand (credit card, another loan…) — Wealth → Liabilities. The bank loans
+    // above are listed there too, from their own terms. [{ id, name, institution, kind, amount,
+    // currency, rate, note }]
+    liabilities: [],
+    // Wealth → Compare: the allocation you aim for, in % per asset type: { 'ETFs': 65, ... }.
+    targetAllocation: {},
+    // Goals page — [{ id, name, icon, target, targetDate, links: ['acc:<id>', 'a:<assetId>', …],
+    // monthly (optional typed monthly saving), createdAt }]. Progress is the real current value
+    // of the linked money; see goals.js.
+    goals: [],
+    // Goals → Emergency savings: a cushion in months of your real spending.
+    emergencyFund: { enabled: false, months: 6, links: null },
+    // Recurring buys (Investments → an account → Plans) — never real orders, see invest.js.
+    investPlans: [],
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
     // (today's entry is updated in place every time something changes; past days are frozen).
     // Starts empty — no fabricated history — and grows for real as you use the app.
@@ -953,6 +992,9 @@ function migrateCryptoModel() {
   migrateTradingModel();
 }
 function migrateTradingModel() {
+  // "Action required" counts 30 days from when a balance was last checked; accounts from before
+  // that existed start counting today rather than all showing up as overdue at once.
+  (data.accounts || []).forEach(a => { if (!a.balanceCheckedAt) a.balanceCheckedAt = new Date().toISOString(); });
   if (!Array.isArray(data.trades)) data.trades = [];
   if (!data.settings.assetTypeColors) data.settings.assetTypeColors = {};
   if (!Array.isArray(data.cryptoExchangeCash)) data.cryptoExchangeCash = [];
@@ -1158,13 +1200,48 @@ function recordHistorySnapshot() {
   if (typeof recordLoanSnapshots === 'function') recordLoanSnapshots(today);
   const netWorth = netWorthTotal();
   const pv = portfolioValue();
+  const pos = holdingValueMap(), byType = valueByAssetType();
   const last = data.history[data.history.length - 1];
   if (last && last.date === today) {
-    last.netWorth = netWorth;
-    last.portfolioValue = pv;
+    Object.assign(last, { netWorth, portfolioValue: pv, pos, byType });
   } else {
-    data.history.push({ date: today, netWorth, portfolioValue: pv });
+    data.history.push({ date: today, netWorth, portfolioValue: pv, pos, byType });
   }
+}
+/* Each holding's value in EUR today, one key per place the money sits — saved with the daily
+   snapshot above (from 16 Oct 2026; days before only have the totals), so Wealth can show each
+   line's change over a period and Goals can measure how fast the money they follow grows.
+   Keys: acc:<account> (balance without pockets), pk:<account>:<pocket>, e:<holding entry>,
+   c:<SYMBOL>@<exchange>, bc:<broker> (cash), cx:<exchange cash>. */
+function holdingValueMap() {
+  const m = {};
+  const put = (k, v) => { if (v && isFinite(v)) m[k] = Math.round(v * 100) / 100; };
+  (data.accounts || []).forEach(a => {
+    put('acc:' + a.id, toEUR(+a.balance || 0, a.currency));
+    (a.pockets || []).forEach(p => put('pk:' + a.id + ':' + p.id, toEUR(+p.amountSaved || 0, a.currency)));
+  });
+  (data.assetEntries || []).forEach(e => { const a = assetById(e.assetId); if (a) put('e:' + e.id, toEUR(e.quantity * (assetPrice(a) || 0), a.priceCurrency)); });
+  (data.cryptoAssets || []).forEach(c => cryptoByExchange(c.symbol).forEach(x => put('c:' + c.symbol + '@' + x.exchange, x.valueEUR)));
+  (data.brokers || []).forEach(b => { if (!brokerCashCountedInBank(b)) put('bc:' + b.id, toEUR(brokerCash(b), brokerCashCurrency(b))); });
+  (data.cryptoExchangeCash || []).forEach(c => put('cx:' + c.id, toEUR(+c.amount || 0, c.currency)));
+  return m;
+}
+function valueByAssetType() {
+  const m = {};
+  allInvestmentPositions().forEach(p => { m[p.assetType] = Math.round(((m[p.assetType] || 0) + positionValue(p)) * 100) / 100; });
+  return m;
+}
+/* One crypto coin split by exchange: [{ exchange, quantity, costEUR, valueEUR }] — from its
+   snapshot rows or purchase lots, whichever mode it's tracked in. */
+function cryptoByExchange(symbol) {
+  const asset = cryptoAssetBySymbol(symbol);
+  if (!asset) return [];
+  const price = cryptoMarketPrice(symbol, 'EUR') || 0;
+  const by = {};
+  const add = (ex, q, costEUR) => { const k = ex || 'Unknown'; by[k] = by[k] || { exchange: k, quantity: 0, costEUR: 0 }; by[k].quantity += q; by[k].costEUR += costEUR; };
+  if (asset.mode === 'snapshot') (asset.snapshots || []).forEach(r => add(r.broker, +r.quantity || 0, toEUR((+r.quantity || 0) * (+r.price || 0), r.currency)));
+  else lotsFor(symbol).forEach(l => add(l.broker, +l.quantity || 0, toEUR(+l.amountPaid || 0, l.currency)));
+  return Object.values(by).filter(x => x.quantity > 0).map(x => Object.assign(x, { valueEUR: x.quantity * price }));
 }
 
 /* One minimalist look for the whole app (the colour themes were removed) — kept as a function
@@ -1696,7 +1773,10 @@ function investedTotal() { return allInvestmentPositions().reduce((s, p) => s + 
 function portfolioValue() { return allInvestmentPositions().reduce((s, p) => s + positionValue(p), 0) + totalBrokerCash() + totalCryptoExchangeCash(); }
 function portfolioPL() { return (portfolioValue() - totalBrokerCash() - totalCryptoExchangeCash()) - investedTotal(); }
 function portfolioPLPct() { const inv = investedTotal(); return inv ? (portfolioPL() / inv * 100) : 0; }
-function netWorthTotal() { return bankTotal() + portfolioValue(); }
+// Debts you added by hand (Wealth → Liabilities) are taken off. The bank loan isn't: the money
+// borrowed is invested apart and isn't yours, so neither the loan nor what it bought counts here.
+function manualLiabilitiesTotal() { return (data.liabilities || []).reduce((s, l) => s + toEUR(+l.amount || 0, l.currency || 'EUR'), 0); }
+function netWorthTotal() { return bankTotal() + portfolioValue() - manualLiabilitiesTotal(); }
 
 /* Per-broker rows are entry-level (not asset-level): each row shows just that broker's own
    quantity/price for a ticker, so the broker sub-portfolio view reflects what's actually held
@@ -2150,6 +2230,9 @@ function renderApp(app) {
     investments: renderInvestments,
     trading: renderTrading,
     settings: renderSettings,
+    wealth: () => (typeof renderWealth === 'function' ? renderWealth() : ''),
+    goals: () => (typeof renderGoals === 'function' ? renderGoals() : ''),
+    analysis: () => (typeof renderAnalysis === 'function' ? renderAnalysis() : ''),
     'manual-prices': renderManualPrices,
     'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
   };
@@ -2161,11 +2244,16 @@ function renderApp(app) {
         <div class="sidebar-logo">Trackr</div>
         <ul class="nav-list">
           ${NAV_ITEMS.map(item => `
-            <li>
+            <li class="${item.phone ? 'nav-phone' : 'nav-desk'}">
               <button class="nav-item ${ui.page === item.id ? 'active' : ''}" onclick="${item.id === 'settings' ? settingsNavItemOnClick() : `goPage('${item.id}')`}">
                 <span class="nav-icon">${ic(item.icon, 19)}${item.id === 'settings' ? navSyncBadgeHtml() : ''}</span><span class="label">${item.label}</span>
               </button>
             </li>`).join('')}
+          <li class="nav-more">
+            <button class="nav-item ${NAV_ITEMS.some(i => !i.phone && i.id === ui.page) ? 'active' : ''}" onclick="openMoreNav()">
+              <span class="nav-icon">${ic('dots', 19)}${navSyncBadgeHtml()}</span><span class="label">More</span>
+            </button>
+          </li>
         </ul>
         <div class="sidebar-footer">
           ${syncStatusIndicatorHtml()}
@@ -2175,6 +2263,7 @@ function renderApp(app) {
         </div>
       </div>
       <div class="main">
+        ${typeof topbarHtml === 'function' ? topbarHtml() : ''}
         ${syncGlobalBannerHtml()}
         ${pageHtml}
       </div>
@@ -2670,11 +2759,12 @@ function saveAccountForm(id) {
 
   if (id) {
     const acc = accountById(id);
+    acc.balanceCheckedAt = new Date().toISOString(); // saving the form = you just looked at this balance
     Object.assign(acc, { name, balance, icon, currency, description, color, visibleInTotals });
     if (logo) { acc.logo = logo; acc.logoKind = 'image'; } else { acc.logoKind = 'emoji'; }
   } else {
     const newLogo = logo || builtinLogoFor(name); // a brand-new account picks up its bundled logo automatically
-    data.accounts.push({ id: uid('acc'), icon, name, currency, balance, description, logo: newLogo || '', logoKind: newLogo ? 'image' : 'emoji', color, visibleInTotals, pockets: [] });
+    data.accounts.push({ id: uid('acc'), icon, name, currency, balance, description, logo: newLogo || '', logoKind: newLogo ? 'image' : 'emoji', color, visibleInTotals, pockets: [], balanceCheckedAt: new Date().toISOString() });
   }
   save(); closeModal();
 }
