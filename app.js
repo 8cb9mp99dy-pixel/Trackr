@@ -3120,6 +3120,7 @@ function budgetTotalsSectionHtml(kind) {
                 <div class="row-flex" style="gap:8px;"><span class="totals-name">${escHtml(c.name)}</span><strong>${fmtMoney(c.total)}</strong></div>
                 <div class="totals-bar"><span style="width:${pct.toFixed(1)}%;background:${hashColor(c.name)};"></span></div>
                 <div class="totals-sub">${pct.toFixed(0)}% · ${c.count} transaction${c.count === 1 ? '' : 's'}${d.range.months > 1 ? ` · ${fmtMoney(c.total / d.range.months)}/month` : ''} <span style="opacity:.7;">${open[key] ? '▴' : '▾'}</span></div>
+                ${!isInc && typeof categoryTargetNote === 'function' ? categoryTargetNote(c.id, c.total, d.range.months) : ''}
               </div>
             </div>
             ${open[key] ? `<div class="totals-subs">${subs.map(sc => `<div class="row-flex"><span>${sc.icon || ''} ${escHtml(sc.name)} <span style="opacity:.5;">· ${sc.count}</span></span><span>${fmtMoney(sc.total)} <span style="opacity:.5;">${c.total ? (sc.total / c.total * 100).toFixed(0) : 0}%</span></span></div>`).join('')}</div>` : ''}
@@ -3143,8 +3144,8 @@ function budgetTotalsTab() {
       <div class="card"><div class="eyebrow">Left over</div><div style="font-size:20px;font-weight:700;" class="${inc - exp >= 0 ? 'positive' : 'negative'}">${fmtMoney(inc - exp)}</div></div>
     </div>
     ${p === 'month' ? `<button class="btn full" style="margin-bottom:16px;" onclick="openRecap(${ui.budgetMonth.getFullYear()},${ui.budgetMonth.getMonth()})">${escHtml(monthLabel(ui.budgetMonth))} recap</button>` : ''}
-    ${budgetTotalsSectionHtml('expense')}
-    ${budgetTotalsSectionHtml('income')}
+    ${typeof cashflowCardHtml === 'function' ? cashflowCardHtml() : ''}
+    ${typeof budgetTotalsTabsHtml === 'function' ? budgetTotalsTabsHtml() : budgetTotalsSectionHtml('expense') + budgetTotalsSectionHtml('income')}
     <div style="font-size:12px;opacity:.55;">Tap a category to see its sub-categories. Transfers between your own accounts aren't counted.</div>`;
 }
 /* "By category" on the Budget page: closed by default to a single line (the biggest spending
@@ -3565,7 +3566,14 @@ function activeRecurringSeries() {
 function budgetRecurringTab() {
   const series = activeRecurringSeries();
   const perMonth = type => series.filter(x => x.model.type === type).reduce((s, x) => s + toEUR(x.model.amount, x.model.currency), 0);
+  const view = ui.recurringView || 'calendar';
+  const hasCal = typeof recurringCalendarHtml === 'function';
   return `
+    ${hasCal ? `<div class="row-flex" style="margin-bottom:14px;gap:10px;flex-wrap:wrap;">
+      <div class="seg-row" style="margin:0;"><button class="seg ${view === 'calendar' ? 'on' : ''}" onclick="ui.recurringView='calendar';render()">${ic('calendar', 14)} Calendar</button><button class="seg ${view === 'list' ? 'on' : ''}" onclick="ui.recurringView='list';render()">${ic('list', 14)} List</button></div>
+      ${view === 'calendar' ? `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" onclick="shiftBudgetMonth(-1)">‹</button><div style="font-weight:700;min-width:120px;text-align:center;">${escHtml(monthLabel(ui.budgetMonth))}</div><button class="icon-btn-round" onclick="shiftBudgetMonth(1)">›</button></div>` : ''}
+    </div>` : ''}
+    ${hasCal && view === 'calendar' ? `<div class="card" style="margin-bottom:20px;">${recurringCalendarHtml()}</div>` : ''}
     <div class="grid-2" style="margin-bottom:20px;">
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed income / month</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(perMonth('income'))}</div></div></div></div>
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed expenses / month</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(perMonth('expense'))}</div></div></div></div>
@@ -3579,7 +3587,8 @@ function budgetRecurringTab() {
         </div>
       </div>`).join('')}</div>
       <div style="font-size:12px;opacity:.55;margin-top:10px;line-height:1.5;">Each one is added by itself on its day every month (not before). To change the amount or day from now on, tap it and edit. Logging or importing the real one for a month replaces the automatic one.</div>` : `
-      <div class="card"><div class="empty-state"><div class="emoji">🔄</div><div class="title">No recurring items yet</div><div class="sub">Mark a transaction "Fixed / Recurring" and it will be added by itself every month on the same day.</div></div></div>`}`;
+      <div class="card"><div class="empty-state"><div class="emoji">🔄</div><div class="title">No recurring items yet</div><div class="sub">Mark a transaction "Fixed / Recurring" and it will be added by itself every month on the same day.</div></div></div>`}
+    ${typeof expenseScannerHtml === 'function' ? expenseScannerHtml() : ''}`;
 }
 
 /* Item 2: the calendar grid was removed entirely (no real purpose) in favor of the month-pill
