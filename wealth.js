@@ -423,7 +423,3 @@ function deleteLiability(id) {
   data.liabilities = data.liabilities.filter(x => x.id !== id);
   save(); render();
 }
-
-// app.js draws the first screen before this file (and the other section files) is loaded, so
-// draw once more now that the top bar and the new pages exist.
-if (data) render();

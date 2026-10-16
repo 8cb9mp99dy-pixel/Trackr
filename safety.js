@@ -211,3 +211,7 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 }
 window.addEventListener('offline', () => safetyToast("<span>You're offline — everything still works; your changes sync when you're back.</span>", { ms: 6000 }));
 window.addEventListener('online', () => safetyToast('<span>Back online — syncing…</span>', { ms: 2500 }));
+
+// app.js draws the first screen as soon as it's loaded, before the section files after it (top
+// bar, Wealth, Goals, Analysis…) exist — this file is the last one, so draw once more now.
+if (data) render();
