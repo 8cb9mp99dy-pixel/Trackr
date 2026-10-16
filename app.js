@@ -2197,6 +2197,7 @@ function render() {
   try {
     renderApp(app);
     dimBigCents(app);
+    if (typeof afterRenderMotion === 'function') afterRenderMotion(app);
   } catch (e) {
     console.error('Render failed', e);
     renderCrashScreen(app, e);
