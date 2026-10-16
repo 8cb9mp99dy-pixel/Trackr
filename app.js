@@ -90,6 +90,7 @@ const ICON_PATHS = {
   search: '<path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/><path d="M21 21l-6 -6"/>',
   photo: '<path d="M15 8h.01"/><path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12z"/><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5"/><path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3"/>',
   copy: '<path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/>',
+  chevronDown: '<path d="M6 9l6 6l6 -6"/>',
   wallet: '<path d="M17 8v-3a1 1 0 0 0 -1 -1h-10a2 2 0 0 0 0 4h12a1 1 0 0 1 1 1v3m0 4v3a1 1 0 0 1 -1 1h-12a2 2 0 0 1 -2 -2v-12"/><path d="M20 12v4h-4a2 2 0 0 1 0 -4h4"/>',
 };
 function ic(name, size) {
@@ -2769,10 +2770,7 @@ function budgetTransactionsTab() {
     </div>
     ${budgetMonthPillsHtml(m)}
 
-    <div class="donut-pair" style="margin-bottom:20px;">
-      ${categoryDonutCardHtml('Spending by category', expenseSegments, 'No expenses yet this month.', animateCharts)}
-      ${categoryDonutCardHtml('Income by category', incomeSegments, 'No income yet this month.', animateCharts)}
-    </div>
+    ${categoryFoldHtml(m, expenseSegments, incomeSegments, animateCharts)}
     ${budgetsGlanceHtml(m)}
 
     <div class="grid-3" style="margin-bottom:20px;">
@@ -3101,6 +3099,44 @@ function budgetTotalsTab() {
     ${budgetTotalsSectionHtml('expense')}
     ${budgetTotalsSectionHtml('income')}
     <div style="font-size:12px;opacity:.55;">Tap a category to see its sub-categories. Transfers between your own accounts aren't counted.</div>`;
+}
+/* "By category" on the Budget page: closed by default to a single line (the biggest spending
+   category), and rolls down to the two donuts when you tap it. Open/closed is remembered on this
+   device. Toggling only touches this card (no full re-render), so the roll-down animates and the
+   donuts sweep in each time it opens. */
+const CAT_FOLD_KEY = 'trackr-cat-fold';
+function catFoldOpen() { try { return localStorage.getItem(CAT_FOLD_KEY) === '1'; } catch (e) { return false; } }
+function categoryFoldBodyHtml(expenseSegments, incomeSegments, animate) {
+  return `<div class="donut-pair">
+      ${categoryDonutCardHtml('Spending', expenseSegments, 'No expenses yet this month.', animate)}
+      ${categoryDonutCardHtml('Income', incomeSegments, 'No income yet this month.', animate)}
+    </div>`;
+}
+function categoryFoldHtml(m, expenseSegments, incomeSegments, animate) {
+  const open = catFoldOpen();
+  const top = expenseSegments.slice().sort((a, b) => b.value - a.value)[0];
+  const summary = top ? `Most spent: ${escHtml(top.label)} · ${fmtMoney(top.value)}` : 'No spending yet this month';
+  return `
+    <div class="card cat-fold ${open ? 'open' : ''}" id="cat-fold" style="margin-bottom:20px;">
+      <button class="cat-fold-head" onclick="toggleCategoryFold()" aria-expanded="${open}">
+        <span style="min-width:0;"><span class="eyebrow" style="display:block;">By category</span><span class="cat-fold-sum">${summary}</span></span>
+        <span class="cat-fold-chev">${ic('chevronDown', 18)}</span>
+      </button>
+      <div class="cat-fold-body"><div class="cat-fold-inner" id="cat-fold-inner">${open ? categoryFoldBodyHtml(expenseSegments, incomeSegments, animate) : ''}</div></div>
+    </div>`;
+}
+function toggleCategoryFold() {
+  const open = !catFoldOpen();
+  try { localStorage.setItem(CAT_FOLD_KEY, open ? '1' : '0'); } catch (e) { /* private mode: stays for this view only */ }
+  const card = document.getElementById('cat-fold'), inner = document.getElementById('cat-fold-inner');
+  if (!card || !inner) { render(); return; }
+  if (open) {
+    const m = ui.budgetMonth;
+    inner.innerHTML = categoryFoldBodyHtml(categorySpendingSegments(m, 'expense'), categorySpendingSegments(m, 'income'), true);
+    if (typeof dimBigCents === 'function') dimBigCents(inner);
+  }
+  card.classList.toggle('open', open);
+  card.querySelector('.cat-fold-head').setAttribute('aria-expanded', String(open));
 }
 function categoryDonutCardHtml(title, segments, emptyText, animate) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
