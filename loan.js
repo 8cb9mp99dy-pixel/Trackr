@@ -285,7 +285,7 @@ async function loanRefreshPrices(L, opts) {
   const quotes = await fetchIsinQuotes(Array.from(new Set(list.map(p => p.isin.toUpperCase()))));
   ui.loanPricesFetching = false;
   ui.loanPricesCheckedAt = Date.now();
-  if (!quotes) { render(); return false; }
+  if (!quotes) { renderWhenIdle(); return false; }
   let any = false;
   list.forEach(p => {
     const q = quotes[p.isin.toUpperCase()], price = q && parseFloat(q.price);
@@ -296,7 +296,7 @@ async function loanRefreshPrices(L, opts) {
     any = true;
   });
   if (any) save({ auto: true });
-  render();
+  renderWhenIdle();
   return any;
 }
 /* ↻ Live prices: fetches again and says what happened — never claims an update that didn't. */

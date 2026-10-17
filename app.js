@@ -1277,7 +1277,7 @@ function eurUsdRateIsStale() {
 async function fetchEurUsdRate(auto) {
   ui.eurUsdRateFetching = true;
   ui.eurUsdRateFetchError = false;
-  if (ui.page === 'investments' || ui.page === 'settings') render();
+  if (ui.page === 'investments' || ui.page === 'settings') renderWhenIdle();
   let rates = null;
   for (const src of FX_SOURCES) {
     try {
@@ -1291,7 +1291,7 @@ async function fetchEurUsdRate(auto) {
   if (!rates) {
     console.error('Live exchange rates unavailable, keeping the last known rates');
     ui.eurUsdRateFetchError = true;
-    if (ui.page === 'investments' || ui.page === 'settings') render();
+    if (ui.page === 'investments' || ui.page === 'settings') renderWhenIdle();
     return false;
   }
   const before = JSON.stringify([data.settings.eurUsdRate, data.settings.fxRates]);
@@ -1306,7 +1306,7 @@ async function fetchEurUsdRate(auto) {
   save({ auto: !!auto });
   // Every total in the app depends on these rates — redraw whatever page is open.
   if (JSON.stringify([data.settings.eurUsdRate, data.settings.fxRates]) !== before || ui.page === 'investments' || ui.page === 'settings') {
-    if (typeof syncUserIsEditing !== 'function' || !syncUserIsEditing()) render();
+    renderWhenIdle();
   }
   return true;
 }
@@ -1363,7 +1363,7 @@ async function fetchCryptoPrices(force, onlySymbols) {
   if (ui.cryptoPriceFetching) { await new Promise(r => setTimeout(r, 1500)); if (ui.cryptoPriceFetching) return { ok: false, updated: [], failed: toFetch, total: toFetch.length, busy: true }; }
   ui.cryptoPriceFetching = true;
   ui.cryptoPriceFetchError = false;
-  if (ui.page === 'investments') render();
+  if (ui.page === 'investments') renderWhenIdle();
   const now = new Date().toISOString(), done = new Set();
   const setPrice = (c, eur, usd, source) => {
     if (!(eur > 0) && !(usd > 0)) return;
@@ -1424,7 +1424,7 @@ async function fetchCryptoPrices(force, onlySymbols) {
     return { ok: false, updated: [], failed: toFetch, total: toFetch.length };
   } finally {
     ui.cryptoPriceFetching = false;
-    if (ui.page === 'investments' || ui.page === 'dashboard') { if (typeof syncUserIsEditing !== 'function' || !syncUserIsEditing()) render(); }
+    if (ui.page === 'investments' || ui.page === 'dashboard') renderWhenIdle();
   }
 }
 /* Keeps prices moving while the app is open: crypto every 10 minutes, stocks/ETFs and exchange
@@ -1560,7 +1560,7 @@ async function fetchAssetPrices(force, onlyIds) {
   if (!withIsin.length && !apiKey) return { ok: false, updated: [], failed: toFetch, total: toFetch.length, reason: 'noisin' };
   ui.assetPriceFetching = true;
   ui.assetPriceFetchError = false;
-  if (ui.page === 'investments' || ui.page === 'manual-prices') render();
+  if (ui.page === 'investments' || ui.page === 'manual-prices') renderWhenIdle();
   const done = new Set();
   const setPrice = (a, price, source) => {
     a.currentPrice = price;
@@ -1602,7 +1602,7 @@ async function fetchAssetPrices(force, onlyIds) {
     return { ok: false, updated: [], failed: toFetch, total: toFetch.length };
   } finally {
     ui.assetPriceFetching = false;
-    if (ui.page === 'investments' || ui.page === 'manual-prices') render();
+    if (ui.page === 'investments' || ui.page === 'manual-prices') renderWhenIdle();
   }
 }
 function clearAssetPriceManual(assetId) {
@@ -2192,7 +2192,18 @@ function lineChartHover(ev, id) {
    future one) shows a recoverable screen instead of a blank/stuck page — your data in
    localStorage (and Supabase, if connected) is untouched either way, since rendering never
    writes anything back; this only guards against a display crash, not a data-loss one. */
+/* For updates that arrive by themselves (prices, exchange rates…): never redraw while you're typing
+   or a window is open — a redraw rebuilds the form and loses what you typed. The update is shown
+   as soon as you close the window or leave the field. */
+function renderWhenIdle() {
+  if (typeof syncUserIsEditing === 'function' && syncUserIsEditing()) { ui.renderDeferred = true; return; }
+  render();
+}
+document.addEventListener('focusout', () => setTimeout(() => {
+  if (ui.renderDeferred && !syncUserIsEditing()) render();
+}, 0));
 function render() {
+  ui.renderDeferred = false;
   const app = document.getElementById('app');
   // The live price bar keeps scrolling through redraws: the same bar (same holdings) is put back.
   const keepTicker = app && app.querySelector('.ticker');
