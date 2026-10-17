@@ -2202,6 +2202,15 @@ function renderWhenIdle() {
 document.addEventListener('focusout', () => setTimeout(() => {
   if (ui.renderDeferred && !syncUserIsEditing()) render();
 }, 0));
+/* Phone keyboard: the window (a sheet at the bottom) follows the part of the screen the keyboard
+   leaves visible, instead of being pushed around by it, and the page behind stays still. */
+function syncVisualViewport() {
+  const vv = window.visualViewport, root = document.documentElement;
+  if (!vv) return;
+  root.style.setProperty('--vv-h', vv.height + 'px');
+  root.style.setProperty('--vv-top', vv.offsetTop + 'px');
+}
+if (window.visualViewport) { visualViewport.addEventListener('resize', syncVisualViewport); visualViewport.addEventListener('scroll', syncVisualViewport); syncVisualViewport(); }
 function render() {
   ui.renderDeferred = false;
   const app = document.getElementById('app');
@@ -2212,6 +2221,7 @@ function render() {
     const newTicker = keepTicker && app.querySelector('.ticker');
     if (newTicker && newTicker.dataset.sig === keepTicker.dataset.sig) newTicker.replaceWith(keepTicker);
     dimBigCents(app);
+    document.documentElement.classList.toggle('modal-open', !!ui.modal);
     if (typeof afterRenderMotion === 'function') afterRenderMotion(app);
   } catch (e) {
     console.error('Render failed', e);
