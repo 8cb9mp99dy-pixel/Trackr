@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* Trackr backup tool — writes an Excel backup of all your Trackr data into Trackr/Backups/.
+/* Trackr backup tool — writes an Excel backup of all your Trackr data into Trackr/Backups.nosync/.
  *
  *   node tools/backup.js                    fetch from your Supabase sync (read-only) and back up
  *   node tools/backup.js --from FILE        back up a file instead (.json from the app, or .xlsx)
@@ -8,12 +8,13 @@
  *   node tools/backup.js --decrypt FILE     turn a .xlsx.enc back into a readable .xlsx
  *   node tools/backup.js --verify FILE      check a backup against its fingerprint
  *   node tools/backup.js --keep 60          how many backups to keep (default 60; oldest removed)
- *   node tools/backup.js --out DIR          write somewhere else than Backups/
+ *   node tools/backup.js --out DIR          write somewhere else than Backups.nosync/
  *
  * Security:
- *   - Backups/ is in .gitignore: nothing in it is ever sent to GitHub.
- *   - Backups/ is readable by your Mac user only (folder 700, files 600).
- *   - The connection is read from Backups/.connection (your setup code, which you paste there
+ *   - Backups.nosync/ is in .gitignore: nothing in it is ever sent to GitHub.
+ *   - The ".nosync" names keep the folder and the setup code out of iCloud Drive.
+ *   - Backups.nosync/ is readable by your Mac user only (folder 700, files 600).
+ *   - The connection is read from Backups.nosync/.connection.nosync (your setup code, which you paste there
  *     yourself) — never stored in the code. The tool only READS your data (get_trackr_data); it
  *     can't change anything in the cloud.
  *   - Every backup is re-opened after writing and checked against its SHA-256 fingerprint.
@@ -28,8 +29,11 @@ const { spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
 const argOut = (() => { const i = process.argv.indexOf('--out'); return i > 0 ? process.argv[i + 1] : null; })();
-const DIR = argOut ? path.resolve(argOut) : path.join(ROOT, 'Backups');
-const CONNECTION = path.join(ROOT, 'Backups', '.connection');
+// ".nosync": iCloud Drive leaves these alone, so your data and setup code stay on this Mac even
+// though the Desktop is synced to iCloud.
+const HOME_DIR = path.join(ROOT, 'Backups.nosync');
+const DIR = argOut ? path.resolve(argOut) : HOME_DIR;
+const CONNECTION = path.join(HOME_DIR, '.connection.nosync');
 const KEYCHAIN_SERVICE = 'Trackr backup';
 const MAGIC = Buffer.from('TRKENC1');
 const XLSX = require(path.join(ROOT, 'assets/vendor/xlsx.full.min.js'));
@@ -46,14 +50,14 @@ function ensureDir() {
   const readme = path.join(DIR, 'README.txt');
   if (!fs.existsSync(readme)) {
     fs.writeFileSync(readme, [
-      'Trackr backups — private, never sent to GitHub (this folder is in .gitignore).',
+      'Trackr backups — private: never sent to GitHub (.gitignore), never synced to iCloud (.nosync).',
       '',
       'Make a backup:      node tools/backup.js            (from the Trackr folder)',
       'Encrypted backup:   node tools/backup.js --encrypt  (password from your Keychain: --set-password)',
-      'Open an encrypted:  node tools/backup.js --decrypt Backups/<file>.xlsx.enc',
+      'Open an encrypted:  node tools/backup.js --decrypt Backups.nosync/<file>.xlsx.enc',
       'Restore in the app: Settings → Backup & Restore → Restore from Excel.',
       '',
-      '.connection holds your setup code (Settings → Supabase Sync → Copy setup code). Anyone with',
+      '.connection.nosync holds your setup code (Settings → Supabase Sync → Copy setup code). Anyone with',
       'it can read and change your Trackr data: keep it here only.',
       '',
     ].join('\n'), { mode: 0o600 });

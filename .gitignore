@@ -9,5 +9,7 @@ backup.json
 trackr-backup*.json
 # Backups of your data — never on GitHub
 /Backups/
+/Backups.nosync/
+*.nosync
 Trackr-backup-*.xlsx
 *.xlsx.enc

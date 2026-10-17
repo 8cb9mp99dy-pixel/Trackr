@@ -6053,7 +6053,7 @@ async function exportExcelBackup() {
     const name = `Trackr-backup-${ts}.xlsx`;
     const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     // Where the browser allows it (Chrome/Edge on a computer), you choose where to save it —
-    // e.g. the Backups folder inside Trackr. Elsewhere it goes to Downloads.
+    // e.g. the Backups.nosync folder inside Trackr. Elsewhere it goes to Downloads.
     if (window.showSaveFilePicker) {
       try {
         const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'Excel workbook', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }] });
@@ -6065,7 +6065,7 @@ async function exportExcelBackup() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
-    safetyToast(`<span>Excel backup downloaded: ${escHtml(name)}. Move it to your Trackr/Backups folder.</span>`, { ms: 7000 });
+    safetyToast(`<span>Excel backup downloaded: ${escHtml(name)}. Move it to your Trackr/Backups.nosync folder, then delete it from Downloads.</span>`, { ms: 7000 });
   } catch (e) {
     console.error('Excel backup failed', e);
     alert("The Excel backup couldn't be made: " + (e.message || e));
