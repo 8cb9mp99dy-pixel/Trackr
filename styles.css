@@ -1056,3 +1056,29 @@ html.modal-open, html.modal-open body { overflow: hidden; overscroll-behavior: n
 }
 @media (prefers-reduced-motion: reduce) { .gs-emoji, .gv-hero span { animation: none; } .gs-media img, .gv-slide { transition: opacity .3s ease; transform: none !important; } }
 .gv-where { display: flex; gap: 8px; align-items: flex-start; } .gv-where > span { flex: 1; }
+
+/* ============ Settings → Display: performance indicators off ============ */
+html.no-perf .perf { display: none !important; }
+html.no-perf .wt-row .c-pl, html.no-perf .wt-head .c-pl { display: none; }
+@media (min-width: 761px) {
+  html.no-perf .wt-head, html.no-perf .wt-row { grid-template-columns: minmax(0, 2.3fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 1.15fr) 36px; }
+}
+
+/* ============ Settings → Display: compact mode ============ */
+@media (min-width: 641px) { html.compact .page { padding: 22px 28px 40px; } }
+@media (max-width: 640px) { html.compact .page { padding-top: 12px; } }
+html.compact .page-head { margin-bottom: 14px; }
+html.compact .card, html.compact .card-dark { padding: 15px 16px; }
+html.compact .card-nested { padding: 10px 12px; }
+html.compact .big-number { font-size: 31px; }
+html.compact .eyebrow { margin-bottom: 3px; }
+html.compact .stack-gap-16 > * + * { margin-top: 10px; }
+html.compact .grid-2, html.compact .grid-3 { gap: 10px; }
+html.compact .page [style*="margin-bottom:20px"], html.compact .page [style*="margin-bottom:22px"] { margin-bottom: 12px !important; }
+html.compact .wt-row { padding-top: 8px; padding-bottom: 8px; }
+html.compact .tab-row { margin-bottom: 12px; }
+
+/* Alerts (notify.js) in the bottom bar */
+.safety-toast.warn { box-shadow: inset 4px 0 0 var(--negative), 0 10px 30px rgba(0,0,0,.25); }
+.safety-toast.good { box-shadow: inset 4px 0 0 var(--positive), 0 10px 30px rgba(0,0,0,.25); }
+.recap-banner .close-x { flex: none; }

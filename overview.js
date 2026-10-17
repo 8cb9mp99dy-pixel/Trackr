@@ -97,7 +97,7 @@ function overviewPerformanceCardHtml() {
   const sorted = items.slice().sort((a, b) => sort === 'value' ? b.value - a.value : sort === 'eur' ? b.gain - a.gain : b.pct - a.pct);
   const cats = Array.from(new Set(all.map(it => it.type))).sort();
   return `
-    <div class="card" style="margin-bottom:20px;">
+    <div class="card perf" style="margin-bottom:20px;">
       <div class="row-flex" style="gap:8px;flex-wrap:wrap;">
         <div class="eyebrow">Performance${cat ? ' · ' + escHtml(cat) : ''}</div>
         <button class="link-btn" onclick="ui.perfInfo=!ui.perfInfo;render()">${ic('info', 14)} ${ui.perfInfo ? 'Hide' : 'Learn more'}</button>
@@ -158,7 +158,7 @@ function overviewBrokersCardHtml() {
           <button class="brk-row" onclick="openInvestAccount('${escHtml(r.key).replace(/'/g, "\\'")}')">
             <span class="brk-logo" style="--c:${r.color};">${logoImg(r.logo, 30)}</span>
             <span class="nm"><span class="nm-1">${escHtml(r.name)}</span><span class="nm-2">${r.count} position${r.count === 1 ? '' : 's'}${r.cash > 0.005 ? ` · ${fmtMoney(r.cash)} cash` : ''}</span></span>
-            <span class="brk-val"><b>${fmtMoney(r.value)}</b><span>${r.cost ? `<span class="${r.gain >= 0 ? 'positive' : 'negative'}">${r.gain >= 0 ? '+' : '−'}${fmtPct(Math.abs(r.gain / r.cost * 100), false)}</span> · ` : ''}${(r.value / total * 100).toFixed(0)}%</span></span>
+            <span class="brk-val"><b>${fmtMoney(r.value)}</b><span>${r.cost ? `<span class="perf"><span class="${r.gain >= 0 ? 'positive' : 'negative'}">${r.gain >= 0 ? '+' : '−'}${fmtPct(Math.abs(r.gain / r.cost * 100), false)}</span> · </span>` : ''}${(r.value / total * 100).toFixed(0)}%</span></span>
             <span class="brk-chev">${ic('chevronRight', 16)}</span>
           </button>`).join('')}</div>`
         : `<div class="empty-state" style="padding:20px 10px;"><div class="title">No data yet</div><div class="sub">Add a broker or a crypto exchange.</div><button class="btn primary" style="margin-top:12px;" onclick="openAddMenu()">${ic('plus', 15)} Add</button></div>`}

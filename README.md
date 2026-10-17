@@ -39,6 +39,11 @@ just open a file in your browser.
   Restore, and the offline mode. `sw.js` is the service worker that keeps a copy of the app so
   it opens instantly and works without a connection; when a new version is online the app
   offers to reload. (Add any new app file to its SHELL list.)
+- `notify.js` — Settings → Notifications: negative-balance warning, weekly summary (a card on
+  the Overview from Monday), goal reached; shown in the app's bottom bar and, if allowed on the
+  device, as system notifications. Checked whenever the app is open (there's no server).
+- `trade-import.js` — Trading → Import Excel: leveraged trades from an Excel/CSV file (a broker
+  export or the template it can download), with a preview before anything is added.
 - `loan.js` — Investments → Loan: a bank loan you invested, what you owe and the interest
   over time, the real and projected value of the positions bought with it, and when they
   pass what you owe.

@@ -5,9 +5,9 @@
    in the background, store it for next time, and tell the open app when something changed so
    it can offer to reload. Only this site's own files are handled; Supabase, prices and fonts
    always go straight to the network. */
-const CACHE = 'trackr-app-v8';
+const CACHE = 'trackr-app-v9';
 const SHELL = [
-  './', './index.html', './styles.css', './app.js', './excel-import.js', './budget-import.js', './loan.js', './topbar.js', './overview.js', './wealth.js', './photos.js', './goals.js', './cashflow.js', './analysis.js', './invest.js', './staking.js', './report.js', './motion.js', './backup-excel.js', './ticker.js', './safety.js',
+  './', './index.html', './styles.css', './app.js', './excel-import.js', './budget-import.js', './trade-import.js', './notify.js', './loan.js', './topbar.js', './overview.js', './wealth.js', './photos.js', './goals.js', './cashflow.js', './analysis.js', './invest.js', './staking.js', './report.js', './motion.js', './backup-excel.js', './ticker.js', './safety.js',
   './assets/logos/logos.js', './assets/vendor/xlsx.full.min.js', './assets/vendor/jspdf.umd.min.js', './assets/vendor/html2canvas.min.js', './manifest.webmanifest',
   './assets/icons/apple-touch-icon.png', './assets/icons/icon-32.png', './assets/icons/icon-48.png', './assets/icons/icon-192.png',
 ];
@@ -48,5 +48,15 @@ self.addEventListener('fetch', event => {
     if (cached) { event.waitUntil(network); return cached; }
     const res = await network;
     return res || (req.mode === 'navigate' ? (await cache.match('./index.html')) : null) || new Response('', { status: 504 });
+  })());
+});
+
+// A Trackr notification tapped: bring the open app forward, or open it.
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (all.length) return all[0].focus();
+    return self.clients.openWindow('./');
   })());
 });

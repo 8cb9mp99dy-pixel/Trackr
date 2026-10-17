@@ -2222,7 +2222,10 @@ function render() {
     if (newTicker && newTicker.dataset.sig === keepTicker.dataset.sig) newTicker.replaceWith(keepTicker);
     dimBigCents(app);
     document.documentElement.classList.toggle('modal-open', !!ui.modal);
+    document.documentElement.classList.toggle('compact', !!data.settings.compactMode);
+    document.documentElement.classList.toggle('no-perf', data.settings.showPerformanceIndicators === false);
     if (typeof afterRenderMotion === 'function') afterRenderMotion(app);
+    if (typeof notifyAfterRender === 'function') notifyAfterRender();
   } catch (e) {
     console.error('Render failed', e);
     renderCrashScreen(app, e);
@@ -2379,6 +2382,7 @@ function renderDashboard() {
 
     ${typeof liveTickerHtml === 'function' ? liveTickerHtml() : ''}
     ${recapBannerHtml()}
+    ${typeof weekSummaryBannerHtml === 'function' ? weekSummaryBannerHtml() : ''}
     <div class="card stack-gap-16" style="margin-bottom:20px;">
       <div>
         <div class="eyebrow">Total net worth</div>
@@ -2389,7 +2393,7 @@ function renderDashboard() {
         <div class="card-nested"><div class="eyebrow">Pockets</div><div style="font-size:19px;font-weight:700;color:var(--light-accent-1)">${fmtMoney(pockets)}</div></div>
         <div class="card-nested"><div class="eyebrow">Invested</div><div style="font-size:19px;font-weight:700;color:var(--light-accent-2)">${fmtMoney(invested)}</div></div>
       </div>
-      <div class="card-nested" style="background:${pl >= 0 ? 'rgba(34,181,115,0.10)' : 'rgba(229,72,77,0.08)'};">
+      <div class="card-nested perf" style="background:${pl >= 0 ? 'rgba(34,181,115,0.10)' : 'rgba(229,72,77,0.08)'};">
         <div class="eyebrow">P&amp;L</div>
         <div style="font-size:19px;font-weight:700;" class="${pl >= 0 ? 'positive' : 'negative'}">${fmtMoney(pl)} <span style="font-weight:500;font-size:14px;">(${fmtPct(plPct)})</span></div>
       </div>
@@ -2989,6 +2993,7 @@ function budgetsGlanceHtml(m) {
 /* After saving an expense: a heads-up when it takes its category past 80 % or 100 %. */
 function budgetCheckAfterSave(record, before) {
   if (!record || record.type !== 'expense' || typeof safetyToast !== 'function') return;
+  if (!(data.settings.notifications || {}).budgetLimitAlerts) return;
   const d = ymdToDate(record.date);
   const st = budgetStatus(record.categoryId, new Date(d.getFullYear(), d.getMonth(), 1));
   if (!st) return;
@@ -4266,7 +4271,7 @@ function renderInvestments() {
     <div class="card-dark stack-gap-8" style="margin-bottom:20px;">
       <div class="eyebrow">Total value — whole portfolio (${data.settings.defaultCurrency})</div>
       <div class="big-number">${fmtMoney(value)}</div>
-      <div class="${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
+      <div class="perf ${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
       <div style="font-size:12.5px;opacity:.55;">Invested: ${fmtMoney(invested)} · EUR/USD: ${eurUsd().toFixed(4)}</div>
     </div>
 
@@ -4431,7 +4436,7 @@ function positionsSummaryCardHtml(label, positions) {
     <div class="card-dark stack-gap-8" style="margin-bottom:20px;">
       <div class="eyebrow">Total value — ${escHtml(label)}</div>
       <div class="big-number">${fmtMoney(value)}</div>
-      <div class="${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
+      <div class="perf ${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
       <div style="font-size:12.5px;opacity:.55;">Invested: ${fmtMoney(cost)}</div>
     </div>`;
 }
@@ -4474,7 +4479,7 @@ function categoryPositionsCard(x) {
       </div>
       <div style="text-align:right;">
         <div style="font-weight:700;">${fmtMoney(total)}</div>
-        <div class="${pl >= 0 ? 'positive' : 'negative'}" style="font-size:12px;">${fmtPct(plPct)}</div>
+        <div class="perf ${pl >= 0 ? 'positive' : 'negative'}" style="font-size:12px;">${fmtPct(plPct)}</div>
       </div>
     </div>
     <div class="stack-gap-8">
@@ -4509,7 +4514,7 @@ function positionRowHtml(p) {
       </div>
       <div style="text-align:right;">
         <div style="font-weight:700;font-size:13.5px;">${fmtMoney(val)}</div>
-        <div class="${ppl >= 0 ? 'positive' : 'negative'}" style="font-size:11.5px;">${ppl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(ppl))} (${fmtPct(Math.abs(pplPct), false)})</div>
+        <div class="perf ${ppl >= 0 ? 'positive' : 'negative'}" style="font-size:11.5px;">${ppl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(ppl))} (${fmtPct(Math.abs(pplPct), false)})</div>
       </div>
     </div>
     <div class="row-flex" style="margin-top:8px;">
@@ -4625,7 +4630,7 @@ window.__modalRenderers.position = function (payload) {
       <div class="card-nested"><div class="eyebrow">Total quantity</div><div id="pf-summary-qty" style="font-weight:700;">${fmtQty(s.quantity)}</div></div>
       <div class="card-nested"><div class="eyebrow">Value</div><div id="pf-summary-value" style="font-weight:700;">${s.hasPrice ? fmtMoney(s.value, a.priceCurrency) : '—'}</div></div>
       <div class="card-nested"><div class="eyebrow">Avg price</div><div id="pf-summary-avg" style="font-weight:700;">${s.avgPrice != null ? fmtMoney(s.avgPrice, a.priceCurrency) : '—'}</div></div>
-      <div class="card-nested"><div class="eyebrow">Performance</div><div id="pf-summary-pl" class="${s.pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${s.hasPrice ? `${s.pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(s.pl), a.priceCurrency)} (${fmtPct(Math.abs(s.plPct), false)})` : '—'}</div></div>
+      <div class="card-nested perf"><div class="eyebrow">Performance</div><div id="pf-summary-pl" class="${s.pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${s.hasPrice ? `${s.pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(s.pl), a.priceCurrency)} (${fmtPct(Math.abs(s.plPct), false)})` : '—'}</div></div>
     </div>
 
     <div class="modal-actions" style="margin-top:16px;">
@@ -4792,7 +4797,7 @@ function renderCryptoTab() {
     <div class="card-dark stack-gap-8" style="margin-bottom:20px;">
       <div class="eyebrow">Total value — crypto</div>
       <div class="big-number" id="crypto-total-value">${fmtMoney(t.value)}</div>
-      <div id="crypto-total-pl" class="${t.pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${t.pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(t.pl))} (${fmtPct(Math.abs(t.plPct), false)})</div>
+      <div id="crypto-total-pl" class="perf ${t.pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${t.pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(t.pl))} (${fmtPct(Math.abs(t.plPct), false)})</div>
       <div style="font-size:12.5px;opacity:.55;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         <span>Invested: <span id="crypto-total-invested">${fmtMoney(t.invested)}</span></span>
         ${t.cash > 0 ? `<span>·</span><span>Cash: <span id="crypto-total-cash">${fmtMoney(t.cash)}</span></span>` : ''}
@@ -4891,7 +4896,7 @@ window.__modalRenderers.cryptoAssetEdit = function (payload) {
     <div class="grid-3" style="margin-bottom:10px;">
       <div class="card-nested"><div class="eyebrow">Market value</div><div id="cs-value-${sym}" style="font-weight:700;">${s.hasPrice ? fmtMoney(s.marketValueEUR) : '—'}</div></div>
       <div class="card-nested"><div class="eyebrow">Total quantity</div><div id="cs-qty-${sym}" style="font-weight:700;">${fmtQty(s.quantity)}</div></div>
-      <div class="card-nested"><div class="eyebrow">Performance</div><div id="cs-pl-${sym}" class="${s.plEUR >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${s.hasPrice ? `${s.plEUR >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(s.plEUR))} (${fmtPct(Math.abs(s.plPct), false)})` : '—'}</div></div>
+      <div class="card-nested perf"><div class="eyebrow">Performance</div><div id="cs-pl-${sym}" class="${s.plEUR >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${s.hasPrice ? `${s.plEUR >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(s.plEUR))} (${fmtPct(Math.abs(s.plPct), false)})` : '—'}</div></div>
     </div>
     <div class="grid-2" style="margin-bottom:16px;">
       <div class="card-nested">
@@ -5218,7 +5223,7 @@ function patchCryptoSummary(symbol) {
   set('crypto-total-value', fmtMoney(t.value));
   set('crypto-total-pl', `${t.pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(t.pl))} (${fmtPct(Math.abs(t.plPct), false)})`);
   const totalPlEl = document.getElementById('crypto-total-pl');
-  if (totalPlEl) totalPlEl.className = t.pl >= 0 ? 'positive' : 'negative';
+  if (totalPlEl) totalPlEl.className = 'perf ' + (t.pl >= 0 ? 'positive' : 'negative');
   set('crypto-total-invested', fmtMoney(t.invested));
 }
 
@@ -5661,7 +5666,7 @@ function renderTrading() {
 
     <div class="grid-2" style="margin-bottom:22px;">
       <button class="btn primary" onclick="openTradeForm()">+ Add trade</button>
-      <button class="btn" onclick="alert('Import Excel: choose a .xlsx file exported from your broker (format TBD).')">Import Excel</button>
+      <button class="btn" onclick="openTradeImport()" title="Add many trades at once from an Excel or CSV file (a broker export or the template)">Import Excel</button>
     </div>
 
     <div class="tab-row" style="margin-bottom:20px;">
@@ -5849,7 +5854,7 @@ const SETTINGS_BODY = {
   display: settingsDisplayHtml,
   categories: () => categoryEditorHtml(),
   assetcategories: settingsAssetCategoriesHtml,
-  notifications: settingsNotificationsHtml,
+  notifications: () => (typeof settingsNotificationsHtml === 'function' ? settingsNotificationsHtml() : ''),
   logos: settingsLogosHtml,
   exportdata: settingsExportDataHtml,
   backuprestore: settingsBackupRestoreHtml,
@@ -5918,16 +5923,16 @@ function settingsDisplayHtml() {
         <select onchange="updateSetting('defaultCurrency', this.value)">${CURRENCIES.map(c => `<option ${s.defaultCurrency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
       </label>
       ${boolSettingRow('Show cents (decimals)', 'showCents')}
-      ${boolSettingRow('Show performance indicators', 'showPerformanceIndicators')}
-      ${boolSettingRow('Compact mode', 'compactMode')}
+      ${boolSettingRow('Show performance indicators', 'showPerformanceIndicators', 'Gains and losses on your investments (P&amp;L, ▲ ▼ %, the Performance card). Off: only what things are worth.')}
+      ${boolSettingRow('Compact mode', 'compactMode', 'Tighter spacing and smaller headline numbers, so more fits on the screen.')}
       <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.55;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
       <label class="field"><span class="label-text">Twelve Data API key <span style="opacity:.6;">(ticker search &amp; live prices)</span></span>
         <input id="settings-twelvedata-key" value="${escHtml(s.twelveDataApiKey || '')}" placeholder="Paste your free API key from twelvedata.com" onchange="updateSetting('twelveDataApiKey', this.value.trim())">
       </label>
     </div>`;
 }
-function boolSettingRow(label, key) {
-  return `<div class="row-flex"><span style="font-size:13.5px;">${label}</span><div class="toggle ${data.settings[key] ? 'on' : ''}" onclick="toggleSetting('${key}')"></div></div>`;
+function boolSettingRow(label, key, desc) {
+  return `<div class="row-flex"><div><div style="font-size:13.5px;">${label}</div>${desc ? `<div style="font-size:12px;opacity:.55;margin-top:2px;">${desc}</div>` : ''}</div><div class="toggle ${data.settings[key] ? 'on' : ''}" onclick="toggleSetting('${key}')" style="flex:none;"></div></div>`;
 }
 function toggleSetting(key) { data.settings[key] = !data.settings[key]; save(); render(); }
 function updateSetting(key, value) { data.settings[key] = value; save(); render(); }
@@ -5944,19 +5949,7 @@ function settingsAssetCategoriesHtml() {
     </div>`;
 }
 
-function settingsNotificationsHtml() {
-  const items = [
-    ...(BUDGET_LIMITS_ENABLED ? [{ key: 'budgetLimitAlerts', title: 'Budget limit alerts', desc: 'Notify when spending exceeds a category limit' }] : []),
-    { key: 'negativeBalanceWarning', title: 'Negative balance warning', desc: 'Notify when monthly balance goes negative' },
-    { key: 'weeklySummary', title: 'Weekly summary', desc: 'Receive a weekly financial summary' },
-    { key: 'goalAchieved', title: 'Goal achieved', desc: 'Notify when a financial goal is completed' },
-  ];
-  return `<div class="stack-gap-16">${items.map(it => `
-    <div class="row-flex">
-      <div><div style="font-weight:600;font-size:13.5px;">${it.title}</div><div style="font-size:12px;opacity:.55;">${it.desc}</div></div>
-      <div class="toggle ${data.settings.notifications[it.key] ? 'on' : ''}" onclick="toggleNotification('${it.key}')"></div>
-    </div>`).join('')}</div>`;
-}
+/* settingsNotificationsHtml(): in notify.js, with what each alert does. */
 function toggleNotification(key) { data.settings.notifications[key] = !data.settings.notifications[key]; save(); render(); }
 
 /* Every logo used anywhere in the app (banks, brokers, stocks/ETFs/other assets, crypto,
