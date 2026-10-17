@@ -1122,3 +1122,5 @@ html.compact .tab-row { margin-bottom: 12px; }
 .bi-transfer .bi-place { width: 100%; max-width: 240px; padding-top: 5px; padding-bottom: 5px; }
 .bi-table tr.bi-need td { background: rgba(59,91,219,.05); }
 .bi-table tr.bi-need td:first-child { box-shadow: inset 3px 0 0 var(--light-accent-1); }
+.tx-list-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 -4px; }
+.tx-list-tools .switch-row { font-size: 13px; }

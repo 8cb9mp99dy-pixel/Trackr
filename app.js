@@ -2797,11 +2797,17 @@ function renderBudget() {
     ${ui.budgetTab === 'import' ? (typeof budgetImportTab === 'function' ? budgetImportTab() : '') : ''}
   </div>`;
 }
+function toggleHideTransfers() { data.settings.hideTransfers = !data.settings.hideTransfers; save(); render(); }
 function setBudgetTab(t) { ui.budgetTab = t === 'budgets' && !BUDGET_LIMITS_ENABLED ? 'transactions' : t; render(); }
 
 function budgetTransactionsTab() {
   const m = ui.budgetMonth;
-  const txs = monthTransactions(m).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+  const allTxs = monthTransactions(m).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+  // "Hide transfers": money moved between your own places drops out of the list (totals never
+  // counted it anyway). Saved with your settings, so every device shows the list the same way.
+  const hideTransfers = !!data.settings.hideTransfers;
+  const transferCount = allTxs.filter(t => t.type === 'transfer').length;
+  const txs = hideTransfers ? allTxs.filter(t => t.type !== 'transfer') : allTxs;
   const income = monthIncome(m), expenses = monthExpenses(m), balance = income - expenses;
   const dayGroups = groupTransactionsByDay(txs);
   const trend = monthSpendTrend(m);
@@ -2841,7 +2847,12 @@ function budgetTransactionsTab() {
       <button class="btn" onclick="exportBudgetTransactionsExcel()" title="Every logged transaction — date, type, category, sub-category, amount, and more">Export to Excel</button>
     </div>
 
-    ${dayGroups.length ? dayGroups.map(dayGroupHtml).join('') : `
+    <div class="tx-list-tools">
+      <div class="eyebrow" style="margin:0;">${txs.length} transaction${txs.length === 1 ? '' : 's'}${hideTransfers && transferCount ? ` · ${transferCount} transfer${transferCount === 1 ? '' : 's'} hidden` : ''}</div>
+      <label class="switch-row"><span>Show transfers</span><button class="toggle ${hideTransfers ? '' : 'on'}" onclick="toggleHideTransfers()" aria-label="Show transfers"></button></label>
+    </div>
+    ${dayGroups.length ? dayGroups.map(dayGroupHtml).join('') : hideTransfers && transferCount ? `
+      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Only transfers this month</div><div class="sub">${transferCount} transfer${transferCount === 1 ? ' is' : 's are'} hidden. <button class="link-btn" onclick="toggleHideTransfers()">Show them</button></div></div></div>` : `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}
 
 
@@ -3197,7 +3208,7 @@ function categoryDonutCardHtml(title, segments, emptyText, animate) {
         <div class="donut-body">
           ${svgDonut(segments, { size: 140, stroke: 22, animate })}
           <div class="stack-gap-8 donut-legend">
-            ${segments.map((s, i) => `<div class="donut-legend-row" style="animation-delay:${150 + i * 55}ms;" title="${escHtml(s.label)} · ${fmtMoney(s.value)}"><span class="donut-swatch" style="background:${s.color};"></span><span>${s.icon || ''} ${escHtml(s.label)} · <strong>${fmtMoney(s.value)}</strong> · ${(s.value / total * 100).toFixed(0)}%</span></div>`).join('')}
+            ${segments.map((s, i) => `<div class="donut-legend-row" style="animation-delay:${150 + i * 55}ms;" title="${escHtml(s.label)} · ${fmtMoney(s.value)}"><span class="donut-swatch" style="background:${s.color};"></span><span>${escHtml(s.label)} · <strong>${fmtMoney(s.value)}</strong> · ${(s.value / total * 100).toFixed(0)}%</span></div>`).join('')}
           </div>
         </div>` : `<div style="opacity:.5;font-size:13px;">${emptyText}</div>`}
     </div>`;
