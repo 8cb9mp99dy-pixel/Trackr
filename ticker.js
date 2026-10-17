@@ -1,25 +1,27 @@
 /* ===================== Live ticker (Overview) =====================
- * Its own file, loaded after app.js (shares its globals, and TV_ORDER/tvPickListing).
+ * Its own file, loaded after app.js (shares its globals, and TV_ORDER/tvPickListing/fetchWithTimeout).
  *
- * A bar across the top of the Overview with your biggest holdings scrolling past: live price,
- * today's change and a small chart of the day.
- *   - Crypto: CoinGecko — price, 24-hour change and the real 24-hour chart (5-minute points).
- *   - Stocks / ETFs (by ISIN): TradingView — last price and today's change. The chart starts
- *     at yesterday's close and adds a point at every refresh while Trackr is open, so it fills
- *     in through the day (kept on this device for the day).
- * Refreshes every minute while the Overview is on screen; only the bar's numbers change (the
- * page isn't redrawn). Hover or touch pauses the scroll. These are market prices, not your
- * amounts, so they stay visible with the eye off. If a source can't be reached, the last price
- * Trackr has is shown, without a change.
+ * A bar across the top of the Overview with your biggest holdings scrolling past: live price and
+ * how much it moved over the period you pick — 1 day, 1 week, 1 month or 1 year — in % and per
+ * unit. No mini charts: every number comes straight from the market data, nothing is drawn or
+ * filled in by the app.
+ *   - Stocks / ETFs (by ISIN): TradingView — last price, day change and its performance over
+ *     a week, a month and a year (the same listing the app uses for your prices).
+ *   - Crypto: CoinGecko — price and its change over 24 h, 7 days, 30 days and 1 year.
+ * Refreshes every minute while the Overview is on screen; only the bar's numbers change (the page
+ * isn't redrawn). Hover or touch pauses the scroll. These are market prices, not your amounts,
+ * so they stay visible with the eye off. If a source can't be reached, the last price Trackr
+ * has is shown, without a change.
  */
-const TICKER_MAX = 8, TICKER_STORE = 'trackr-ticker';
+const TICKER_MAX = 8, TICKER_STORE = 'trackr-ticker2', TICKER_PERIOD_KEY = 'trackr-ticker-period';
+const TICKER_PERIODS = [['1D', '1 day'], ['1W', '1 week'], ['1M', '1 month'], ['1Y', '1 year']];
 let tickerState = null, tickerTimer = null, tickerBusy = false;
 
+function tickerPeriod() { try { const p = localStorage.getItem(TICKER_PERIOD_KEY); if (TICKER_PERIODS.some(x => x[0] === p)) return p; } catch (e) {} return '1D'; }
 function tickerLoad() {
-  if (tickerState && tickerState.day === todayYmd()) return tickerState;
-  let s = null;
-  try { s = JSON.parse(localStorage.getItem(TICKER_STORE)); } catch (e) {}
-  tickerState = s && s.day === todayYmd() ? s : { day: todayYmd(), items: {} };
+  if (tickerState) return tickerState;
+  try { tickerState = JSON.parse(localStorage.getItem(TICKER_STORE)); } catch (e) {}
+  if (!tickerState || typeof tickerState.items !== 'object') tickerState = { items: {} };
   return tickerState;
 }
 function tickerSave() { try { localStorage.setItem(TICKER_STORE, JSON.stringify(tickerState)); } catch (e) {} }
@@ -36,31 +38,26 @@ function tickerHoldings() {
     return Object.assign({}, it, { crypto: false, isin: String(a.isin || '').toUpperCase(), fallback: { price: assetPrice(a), ccy: a.priceCurrency || 'EUR' } });
   });
 }
-function tickerItemHtml(h) {
-  const st = tickerLoad().items[h.key] || {};
-  const price = st.price != null ? st.price : h.fallback.price, ccy = st.ccy || h.fallback.ccy;
-  const ch = st.changePct;
-  const up = ch == null ? null : ch >= 0;
-  return `<button class="tk-item" data-k="${escHtml(h.key)}" onclick="${h.open}" title="${escHtml(h.name)}">
-    ${assetLogoHtml(h.logo, h.type, 24)}
-    <span class="tk-txt"><span class="tk-sym">${escHtml(h.ticker || h.name)}</span><span class="tk-price">${price != null ? fmtTickerPrice(price, ccy) : '—'}</span></span>
-    <span class="tk-ch ${up == null ? '' : up ? 'up' : 'down'}">${ch == null ? '—' : `${up ? '▲' : '▼'} ${Math.abs(ch).toFixed(2)}%`}</span>
-    <span class="tk-spark">${tickerSpark(st.series, up)}</span>
-  </button>`;
-}
 // Prices aren't your amounts: shown even with the eye off, in the listing's currency.
 function fmtTickerPrice(v, ccy) {
   const sym = { EUR: '€', USD: '$', GBP: '£', CHF: 'CHF ' }[ccy] || '';
   return sym + (+v).toLocaleString('en-US', { minimumFractionDigits: v >= 1000 ? 0 : 2, maximumFractionDigits: v >= 1000 ? 0 : v < 1 ? 4 : 2 });
 }
-function tickerSpark(series, up) {
-  if (!series || series.length < 2) return '';
-  const W = 64, H = 24, vs = series.map(p => p[1]);
-  let lo = Math.min(...vs), hi = Math.max(...vs);
-  if (hi === lo) { hi += 1; lo -= 1; }
-  const t0 = series[0][0], t1 = series[series.length - 1][0] || t0 + 1;
-  const pts = series.map(p => [((p[0] - t0) / ((t1 - t0) || 1)) * W, H - 2 - (p[1] - lo) / (hi - lo) * (H - 4)]);
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" preserveAspectRatio="none" aria-hidden="true"><path d="${pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join('')}" fill="none" stroke="${up === false ? '#E5484D' : '#16A34A'}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+function tickerChangeHtml(st) {
+  const pct = st && st.ch ? st.ch[tickerPeriod()] : null;
+  if (pct == null || !isFinite(pct)) return { cls: '', html: '—', title: 'No change available for this period' };
+  const up = pct >= 0, abs = st.price - st.price / (1 + pct / 100);
+  return { cls: up ? 'up' : 'down', html: `${up ? '▲' : '▼'} ${Math.abs(pct).toFixed(2)}%<span class="tk-abs">${up ? '+' : '−'}${fmtTickerPrice(Math.abs(abs), st.ccy)}</span>` };
+}
+function tickerItemHtml(h) {
+  const st = tickerLoad().items[h.key] || {};
+  const price = st.price != null ? st.price : h.fallback.price, ccy = st.ccy || h.fallback.ccy;
+  const ch = tickerChangeHtml(st.price != null ? st : null);
+  return `<button class="tk-item" data-k="${escHtml(h.key)}" onclick="${h.open}" title="${escHtml(h.name)}">
+    ${assetLogoHtml(h.logo, h.type, 24)}
+    <span class="tk-txt"><span class="tk-sym">${escHtml(h.ticker || h.name)}</span><span class="tk-price">${price != null ? fmtTickerPrice(price, ccy) : '—'}</span></span>
+    <span class="tk-ch ${ch.cls}">${ch.html}</span>
+  </button>`;
 }
 function liveTickerHtml() {
   const list = tickerHoldings();
@@ -68,11 +65,18 @@ function liveTickerHtml() {
   setTimeout(startTicker, 0);
   const items = list.map(tickerItemHtml).join('');
   const reduced = typeof motionReduced === 'function' && motionReduced();
+  const per = tickerPeriod();
   return `
     <div class="ticker ${reduced ? 'still' : ''}" data-sig="${escHtml(list.map(h => h.key).join(','))}" aria-label="Live prices of your biggest holdings">
       <span class="tk-live"><i></i>Live</span>
+      <span class="tk-periods" role="group" aria-label="Change over">${TICKER_PERIODS.map(([k, l]) => `<button class="${per === k ? 'on' : ''}" data-p="${k}" title="Change over ${l}" onclick="setTickerPeriod('${k}')">${k}</button>`).join('')}</span>
       <div class="tk-viewport"><div class="tk-track" style="--tk-dur:${Math.max(20, list.length * 7)}s;">${items}${reduced ? '' : `<span class="tk-copy" aria-hidden="true">${items}</span>`}</div></div>
     </div>`;
+}
+function setTickerPeriod(p) {
+  try { localStorage.setItem(TICKER_PERIOD_KEY, p); } catch (e) {}
+  document.querySelectorAll('.tk-periods button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+  tickerPaint();
 }
 /* Updates the bar's numbers in place (both copies of each item), without redrawing the page. */
 function tickerPaint() {
@@ -82,7 +86,7 @@ function tickerPaint() {
     const h = byKey[el.dataset.k]; if (!h) return;
     const tmp = document.createElement('div'); tmp.innerHTML = tickerItemHtml(h);
     const fresh = tmp.firstElementChild;
-    ['.tk-price', '.tk-ch', '.tk-spark'].forEach(sel => { const a = el.querySelector(sel), b = fresh.querySelector(sel); if (a && b) { a.className = b.className; a.innerHTML = b.innerHTML; } });
+    ['.tk-price', '.tk-ch'].forEach(sel => { const a = el.querySelector(sel), b = fresh.querySelector(sel); if (a && b) { a.className = b.className; a.innerHTML = b.innerHTML; } });
   });
 }
 async function tickerRefresh() {
@@ -90,52 +94,38 @@ async function tickerRefresh() {
   tickerBusy = true;
   const st = tickerLoad(), now = Date.now();
   const list = tickerHoldings();
-  const push = (key, price) => {
-    const it = st.items[key]; if (!it) return;
-    it.series = it.series || [];
-    const last = it.series[it.series.length - 1];
-    if (!last || now - last[0] > 50000) it.series.push([now, price]); else last[1] = price;
-    if (it.series.length > 400) it.series = it.series.slice(-400);
-  };
   try {
-    // Stocks / ETFs: one TradingView request for every ISIN.
+    // Stocks / ETFs: one TradingView request for every ISIN, with the period performances.
     const isins = list.filter(h => !h.crypto && /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(h.isin)).map(h => h.isin);
     if (isins.length) {
       try {
         const res = await fetchWithTimeout('https://scanner.tradingview.com/global/scan', {
           method: 'POST', headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({ filter: [{ left: 'isin', operation: 'in_range', right: isins }], columns: ['close', 'currency', 'isin', 'change', 'change_abs'], range: [0, 2000] }),
+          body: JSON.stringify({ filter: [{ left: 'isin', operation: 'in_range', right: isins }], columns: ['close', 'currency', 'isin', 'change', 'Perf.W', 'Perf.1M', 'Perf.Y'], range: [0, 2000] }),
         }, 12000);
         const j = await res.json();
         const by = {};
-        (j.data || []).forEach(d => { const [close, currency, isin, change, changeAbs] = d.d || []; (by[isin] = by[isin] || []).push({ ex: String(d.s).split(':')[0], close: parseFloat(close), currency, change: parseFloat(change), changeAbs: parseFloat(changeAbs) / (currency === 'GBX' ? 100 : 1) }); });
+        (j.data || []).forEach(d => { const [close, currency, isin, d1, w1, m1, y1] = d.d || []; (by[isin] = by[isin] || []).push({ ex: String(d.s).split(':')[0], close: parseFloat(close), currency, ch: { '1D': d1, '1W': w1, '1M': m1, '1Y': y1 } }); });
         list.filter(h => !h.crypto).forEach(h => {
           const l = by[h.isin] && tvPickListing(by[h.isin]);
           if (!l) return;
-          const it = st.items[h.key] = Object.assign(st.items[h.key] || {}, { price: l.close, ccy: l.currency, changePct: isFinite(l.change) ? l.change : null, at: now });
-          // The day's chart starts at yesterday's close.
-          if (!it.series || !it.series.length) { const prev = l.close - (isFinite(l.changeAbs) ? l.changeAbs : 0); it.series = [[new Date(new Date().setHours(0, 0, 0, 0)).getTime(), prev]]; }
-          push(h.key, l.close);
+          const ch = {}; Object.keys(l.ch).forEach(k => { const v = parseFloat(l.ch[k]); ch[k] = isFinite(v) ? v : null; });
+          st.items[h.key] = { price: l.close, ccy: l.currency, ch, at: now };
         });
       } catch (e) { /* offline or blocked: keep the last prices */ }
     }
-    // Crypto: price + 24 h change in one CoinGecko request, the 24 h chart every 10 minutes.
+    // Crypto: one CoinGecko request with the 24 h / 7 d / 30 d / 1 y changes.
     const coins = list.filter(h => h.crypto && h.cgId);
     if (coins.length) {
       try {
-        const r = await fetchWithTimeout(`https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coins.map(h => h.cgId).join(','))}&vs_currencies=eur&include_24hr_change=true`, {}, 12000);
-        const j = await r.json();
-        for (const h of coins) {
-          const q = j[h.cgId]; if (!q || !(q.eur > 0)) continue;
-          const it = st.items[h.key] = Object.assign(st.items[h.key] || {}, { price: q.eur, ccy: 'EUR', changePct: q.eur_24h_change != null ? q.eur_24h_change : null, at: now });
-          if (!it.chartAt || now - it.chartAt > 10 * 60000) {
-            try {
-              const c = await (await fetchWithTimeout(`https://api.coingecko.com/api/v3/coins/${encodeURIComponent(h.cgId)}/market_chart?vs_currency=eur&days=1`, {}, 12000)).json();
-              if (Array.isArray(c.prices) && c.prices.length > 1) { it.series = c.prices.filter((_, i) => i % 3 === 0 || i === c.prices.length - 1).map(p => [p[0], p[1]]); it.chartAt = now; }
-            } catch (e) { /* chart is optional */ }
-          }
-          push(h.key, q.eur);
-        }
+        const r = await fetchWithTimeout(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=eur&ids=${encodeURIComponent(coins.map(h => h.cgId).join(','))}&price_change_percentage=24h,7d,30d,1y`, {}, 12000);
+        const arr = await r.json();
+        (Array.isArray(arr) ? arr : []).forEach(q => {
+          const h = coins.find(x => x.cgId === q.id);
+          if (!h || !(q.current_price > 0)) return;
+          const n = v => (v == null || !isFinite(v) ? null : +v);
+          st.items[h.key] = { price: q.current_price, ccy: 'EUR', ch: { '1D': n(q.price_change_percentage_24h_in_currency), '1W': n(q.price_change_percentage_7d_in_currency), '1M': n(q.price_change_percentage_30d_in_currency), '1Y': n(q.price_change_percentage_1y_in_currency) }, at: now };
+        });
       } catch (e) { /* offline or rate-limited: keep the last prices */ }
     }
     tickerSave();

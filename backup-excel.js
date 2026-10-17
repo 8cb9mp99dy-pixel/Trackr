@@ -42,8 +42,11 @@
       (d.brokers || []).map(b => [b.name, num(b.cashBalance), str(b.cashCurrency || 'EUR'), b.cashInterestBearing ? 'yes' : 'no', num(b.cashInterestRate), num(b.yearlyFee)])]);
     S.push(['Positions', ['Ticker', 'Name', 'Type', 'ISIN', 'Broker', 'Quantity', 'Price paid', 'Paid in', 'Current price', 'Price currency', 'Manual price', 'Price updated', 'Yearly fee %', '5-year return %'],
       (d.assetEntries || []).map(e => { const a = asset(e.assetId); return [str(a.ticker), str(a.name), str(a.assetType), str(a.isin), brk(e.broker), num(e.quantity), num(e.price), str(e.currency), num(a.currentPrice), str(a.priceCurrency), num(a.manualPrice), str(a.priceUpdatedAt).slice(0, 10), num(a.feePct), str(a.return5y)]; })]);
-    S.push(['Crypto', ['Symbol', 'Name', 'Tracked as', 'Price EUR', 'Price USD', 'Manual price', 'Lent/staked', 'APY %', 'Locked', 'Price updated'],
-      (d.cryptoAssets || []).map(c => [c.symbol, str(c.name), c.mode === 'snapshot' ? 'holdings per exchange' : 'purchases', num(c.currentPriceEUR), num(c.currentPriceUSD), num(c.manualPrice), num(c.lent), num(c.lentApy), num(c.locked), str(c.priceUpdatedAt).slice(0, 10)])]);
+    const stakes = c => (Array.isArray(c.stakes) ? c.stakes : (+c.lent > 0 ? [{ exchange: '', amount: +c.lent, apy: +c.lentApy || 0, since: c.lentSince || '' }] : []));
+    S.push(['Crypto', ['Symbol', 'Name', 'Tracked as', 'Price EUR', 'Price USD', 'Manual price', 'Staked', 'Price updated'],
+      (d.cryptoAssets || []).map(c => [c.symbol, str(c.name), c.mode === 'snapshot' ? 'holdings per exchange' : 'purchases', num(c.currentPriceEUR), num(c.currentPriceUSD), num(c.manualPrice), num(stakes(c).reduce((t, s) => t + (+s.amount || 0), 0)), str(c.priceUpdatedAt).slice(0, 10)])]);
+    S.push(['Staking', ['Coin', 'Where', 'Amount', 'APY %', 'Compounding', 'Since', 'Locked until', 'Days to unstake', 'Rewards received', 'Note'],
+      (d.cryptoAssets || []).flatMap(c => stakes(c).map(s => [c.symbol, str(s.exchange), num(s.amount), num(s.apy), s.compounding ? 'yes' : 'no', str(s.since), str(s.lockedUntil), num(s.unbondingDays), num(s.rewardsReceived), str(s.note)]))]);
     S.push(['Crypto holdings', ['Symbol', 'Exchange', 'Quantity', 'Price paid', 'Currency', 'Date', 'Amount paid'],
       (d.cryptoAssets || []).flatMap(c => (c.snapshots || []).map(r => [c.symbol, str(r.broker), num(r.quantity), num(r.price), str(r.currency), '', '']))
         .concat((d.cryptoLots || []).map(l => [l.symbol, str(l.broker), num(l.quantity), num(l.price), str(l.currency), str(l.date), num(l.amountPaid)]))]);

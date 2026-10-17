@@ -2771,7 +2771,7 @@ function renderBudget() {
     { id: 'transactions', label: 'Transactions' },
     { id: 'recurring', label: 'Recurring' },
     { id: 'totals', label: 'Totals' },
-    { id: 'budgets', label: 'Budgets' },
+    ...(BUDGET_LIMITS_ENABLED ? [{ id: 'budgets', label: 'Budgets' }] : []),
     { id: 'categories', label: 'Categories' },
     { id: 'import', label: 'Import' },
   ];
@@ -2786,12 +2786,12 @@ function renderBudget() {
     ${ui.budgetTab === 'transactions' ? budgetTransactionsTab() : ''}
     ${ui.budgetTab === 'recurring' ? budgetRecurringTab() : ''}
     ${ui.budgetTab === 'totals' ? budgetTotalsTab() : ''}
-    ${ui.budgetTab === 'budgets' ? budgetLimitsTab() : ''}
+    ${ui.budgetTab === 'budgets' && BUDGET_LIMITS_ENABLED ? budgetLimitsTab() : ''}
     ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>` : ''}
     ${ui.budgetTab === 'import' ? (typeof budgetImportTab === 'function' ? budgetImportTab() : '') : ''}
   </div>`;
 }
-function setBudgetTab(t) { ui.budgetTab = t; render(); }
+function setBudgetTab(t) { ui.budgetTab = t === 'budgets' && !BUDGET_LIMITS_ENABLED ? 'transactions' : t; render(); }
 
 function budgetTransactionsTab() {
   const m = ui.budgetMonth;
@@ -2871,6 +2871,11 @@ function learnedTxFor(name, type) {
    A monthly limit per expense category (data.budgetLimits = { categoryId: euros }). The Budget
    page shows how much of each is used, the pace for the rest of the month, and warns when a new
    expense takes a category past 80 % or 100 %. */
+/* Budget → Budgets (monthly limits per category) is switched off for now, to be worked on
+   later: true brings back the tab and everything that uses the limits (the summary on the
+   Transactions tab, "left under the target" in Totals, the over-budget alerts, the recap's
+   budget lines). The limits you set stay saved either way. */
+const BUDGET_LIMITS_ENABLED = false;
 function budgetLimits() { if (!data.budgetLimits || typeof data.budgetLimits !== 'object') data.budgetLimits = {}; return data.budgetLimits; }
 function monthSpentByCategory(monthDate) {
   const out = {};
@@ -2890,6 +2895,7 @@ function suggestedLimit(catId, monthDate) {
   return Math.max(5, Math.ceil(total / months / 5) * 5);
 }
 function budgetStatus(catId, monthDate) {
+  if (!BUDGET_LIMITS_ENABLED) return null;
   const limit = parseFloat(budgetLimits()[catId]);
   if (!(limit > 0)) return null;
   const spent = monthSpentByCategory(monthDate)[catId] || 0;
@@ -4805,6 +4811,7 @@ function renderCryptoTab() {
     </div>
 
     ${positionQuickActionsHtml({ addLabel: '+ Add crypto', addAction: 'openCryptoAssetForm()' })}
+    ${typeof stakingCardHtml === 'function' ? stakingCardHtml() : ''}
 
     <datalist id="crypto-broker-list">${brokerSuggestions.map(b => `<option value="${escHtml(b)}">`).join('')}</datalist>
 
@@ -5937,7 +5944,7 @@ function settingsAssetCategoriesHtml() {
 
 function settingsNotificationsHtml() {
   const items = [
-    { key: 'budgetLimitAlerts', title: 'Budget limit alerts', desc: 'Notify when spending exceeds a category limit' },
+    ...(BUDGET_LIMITS_ENABLED ? [{ key: 'budgetLimitAlerts', title: 'Budget limit alerts', desc: 'Notify when spending exceeds a category limit' }] : []),
     { key: 'negativeBalanceWarning', title: 'Negative balance warning', desc: 'Notify when monthly balance goes negative' },
     { key: 'weeklySummary', title: 'Weekly summary', desc: 'Receive a weekly financial summary' },
     { key: 'goalAchieved', title: 'Goal achieved', desc: 'Notify when a financial goal is completed' },

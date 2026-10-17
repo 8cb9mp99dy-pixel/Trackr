@@ -64,10 +64,10 @@ function passiveModel() {
     const v = toEUR(+c.amount, c.currency);
     items.push({ name: `${c.exchange} — cash`, base: v, rate: +c.interestRate, yearly: v * c.interestRate / 100, kind: 'Interest' });
   });
-  (data.cryptoAssets || []).forEach(c => {
-    if (!(+c.lent > 0) || !(+c.lentApy > 0)) return;
-    const v = +c.lent * (cryptoMarketPrice(c.symbol, 'EUR') || 0);
-    items.push({ name: `${c.name || c.symbol} — lent`, base: v, rate: +c.lentApy, yearly: v * c.lentApy / 100, kind: 'Crypto yield' });
+  (typeof allStakes === 'function' ? allStakes() : []).forEach(({ c, s, price }) => {
+    if (!(+s.amount > 0) || !(+s.apy > 0)) return;
+    const v = s.amount * price;
+    items.push({ name: `${c.name || c.symbol} — staked${s.exchange ? ' at ' + s.exchange : ''}`, base: v, rate: +s.apy, yearly: v * s.apy / 100, kind: 'Staking' });
   });
   const from = dateToYmd(new Date(Date.now() - 365 * 86400000));
   const logged = { dividends: 0, interest: 0 };
@@ -163,7 +163,7 @@ function passiveCardHtml() {
   return `
     <div class="card scan-card">
       ${scanHead('trend', 'Passive income, next 12 months', any ? fmtMoney(P.projected) : 'No data', any ? 'positive' : 'dim-val')}
-      <div class="scan-sub">${any ? `${P.yieldPct != null ? `About ${P.yieldPct.toFixed(2)}% of your money. ` : ''}Interest at today's rates + the dividends you received over the last 12 months.` : 'Nothing earning interest yet. Turn on interest for a broker\'s or exchange\'s cash, or log dividends in Budget (Income → Dividends).'}</div>
+      <div class="scan-sub">${any ? `${P.yieldPct != null ? `About ${P.yieldPct.toFixed(2)}% of your money. ` : ''}Interest at today's rates + the dividends you received over the last 12 months.` : 'Nothing earning interest yet. Stake coins (Investments → Crypto), turn on interest for a broker\'s or exchange\'s cash, or log dividends in Budget (Income → Dividends).'}</div>
       ${any ? `<button class="link-btn" onclick="ui.anOpen=${open ? 'null' : "'passive'"};render()">${open ? 'Hide' : 'Details'} ${ic(open ? 'chevronDown' : 'chevronRight', 14)}</button>` : ''}
       ${open ? `<div class="scan-list">
         ${P.items.map(x => `<div class="scan-row"><span class="nm-1">${escHtml(x.name)}</span><span class="dim">${fmtMoney(x.base)} at ${x.rate}%</span><span class="scan-amt positive">${fmtMoney(x.yearly)}</span></div>`).join('')}

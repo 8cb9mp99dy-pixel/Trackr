@@ -175,7 +175,7 @@ function budgetTotalsTabsHtml() {
       ${tab('income', 'Inflows', '+' + fmtMoney(inc), 'positive')}
       ${tab('recurring', 'Recurring / month', '−' + fmtMoney(rec), '')}
       <div class="tot-actions">
-        <button class="tb-btn" style="width:36px;height:36px;" title="Budget targets per category" onclick="setBudgetTab('budgets')">${ic('target', 17)}</button>
+        ${typeof BUDGET_LIMITS_ENABLED === 'undefined' || BUDGET_LIMITS_ENABLED ? `<button class="tb-btn" style="width:36px;height:36px;" title="Budget targets per category" onclick="setBudgetTab('budgets')">${ic('target', 17)}</button>` : ''}
         <button class="tb-btn" style="width:36px;height:36px;" title="Add a transaction" onclick="openTxForm()">${ic('plus', 17)}</button>
       </div>
     </div>
@@ -194,6 +194,7 @@ function recurringTotalsHtml() {
 }
 /* "€x left under target" on a spending category, for the period (monthly target × months). */
 function categoryTargetNote(catId, spent, months) {
+  if (typeof BUDGET_LIMITS_ENABLED !== 'undefined' && !BUDGET_LIMITS_ENABLED) return '';
   const limit = parseFloat(budgetLimits()[catId]);
   if (!(limit > 0)) return '';
   const target = limit * (months || 1), left = target - spent;

@@ -64,7 +64,7 @@ const UNDO_ACTIONS = {
   resolveSyncConflictUseRemote: "Switched to the cloud's data", resolveSyncConflictKeepLocal: "Kept this device's data",
   pushSupabaseSyncOverwrite: 'Cloud replaced with this device', saveTxForm: null,
   deleteLiability: 'Debt removed', deleteCryptoAtExchange: 'Holding removed', deleteGoal: 'Goal deleted', confirmTrade: 'Trade recorded',
-  deleteInvestPlan: 'Plan deleted', recordPlanNow: 'Plan recorded', confirmDeposit: 'Deposit recorded', makeRecurringFromDetected: 'Recurring item added',
+  deleteInvestPlan: 'Plan deleted', deleteStake: 'Stake removed', saveStake: 'Stake saved', recordPlanNow: 'Plan recorded', confirmDeposit: 'Deposit recorded', makeRecurringFromDetected: 'Recurring item added',
 };
 Object.keys(UNDO_ACTIONS).forEach(name => {
   const label = UNDO_ACTIONS[name];

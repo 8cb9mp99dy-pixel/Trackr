@@ -10,8 +10,7 @@
  * after you confirm. Deposit records a transfer from one of your bank accounts to the account's
  * cash, exactly like a transfer logged in Budget (both balances move).
  *
- * Crypto details: per coin, how much is lent/staked (with its APY) and locked; "available" is
- * the rest. Interest earned is estimated from the APY since the date you started lending.
+ * Crypto staking lives in staking.js (the "…" menu of a coin here opens it).
  */
 
 /* ---- Which accounts exist ---- */
@@ -109,22 +108,21 @@ function portfolioTabHtml(acc, holdings, cash) {
       ${holdings.map(h => `<div class="inv-row">
         ${assetLogoHtml(h.logo, h.type, 32)}
         <div class="nm"><div class="nm-1">${escHtml(h.name)}</div><div class="nm-2">${fmtQty(h.quantity)} ${escHtml(h.ticker)}</div></div>
-        <div class="inv-val"><b>${fmtMoney(h.value)}</b>${h.crypto ? cryptoLockNote(h.ref) : ''}</div>
+        <div class="inv-val"><b>${fmtMoney(h.value)}</b>${h.crypto ? cryptoLockNote(h.ref, acc.name) : ''}</div>
         <div class="c-menu" style="position:relative;"><button class="dots-btn" onclick="ui.investMenu=ui.investMenu==='${h.key}'?null:'${h.key}';render()" aria-label="Actions">${ic('dots', 18)}</button>
           ${ui.investMenu === h.key ? `<div class="filter-menu right">
             <button class="fm-row" onclick="startTrade('buy','${h.key}')">Buy</button>
             <button class="fm-row" onclick="startTrade('sell','${h.key}')">Sell</button>
-            ${h.crypto ? `<button class="fm-row" onclick="startTrade('convert','${h.key}')">Convert</button><button class="fm-row" onclick="openCryptoDetails('${escHtml(h.ref)}')">Details (lent, locked)</button>` : ''}
+            ${h.crypto ? `<button class="fm-row" onclick="startTrade('convert','${h.key}')">Convert</button><button class="fm-row" onclick="openStakeForm('${escHtml(h.ref)}', null, '${escHtml(acc.name).replace(/'/g, "\\'")}')">Stake</button>` : ''}
             <button class="fm-row" onclick="ui.investMenu=null;${h.crypto ? `openCryptoAssetEditor('${escHtml(h.ref)}')` : `openPositionForm('${h.ref}')`}">Edit the holding</button>
           </div>` : ''}</div>
       </div>`).join('')}
     </div>` : `<div class="empty-state"><div class="title">No holdings here yet</div><div class="sub">Record a deposit, or add a position from the + Add menu.</div></div>`}
   </div>`;
 }
-function cryptoLockNote(symbol) {
-  const c = cryptoAssetBySymbol(symbol);
-  if (!c || !(+c.lent > 0 || +c.locked > 0)) return '';
-  return `<span class="dim">${+c.lent > 0 ? `${fmtQty(c.lent)} lent` : ''}${+c.lent > 0 && +c.locked > 0 ? ' · ' : ''}${+c.locked > 0 ? `${fmtQty(c.locked)} locked` : ''}</span>`;
+function cryptoLockNote(symbol, accName) {
+  const q = typeof stakedQty === 'function' ? stakedQty(symbol, accName) : 0;
+  return q > 0 ? `<span class="dim">${fmtQty(+q.toFixed(8))} staked</span>` : '';
 }
 
 /* ---- Buy / Sell / Convert (records only) ---- */
@@ -310,45 +308,8 @@ function confirmDeposit() {
   save(); closeModal();
 }
 
-/* ---- Crypto details: available / lent (APY) / interest / locked ---- */
-function openCryptoDetails(symbol) { ui.investMenu = null; ui.modal = { type: 'cryptoDetails', payload: { symbol } }; render(); }
-window.__modalRenderers.cryptoDetails = function (p) {
-  const c = cryptoAssetBySymbol(p.symbol); if (!c) return '';
-  const s = cryptoAssetStats(c.symbol), price = cryptoMarketPrice(c.symbol, 'EUR') || 0;
-  const lent = +c.lent || 0, locked = +c.locked || 0, apy = +c.lentApy || 0;
-  const avail = Math.max(0, s.quantity - lent - locked);
-  const days = c.lentSince ? Math.max(0, (Date.now() - ymdToDate(c.lentSince).getTime()) / 86400000) : 0;
-  const interestQty = lent * (Math.pow(1 + apy / 100, days / 365) - 1);
-  const row = (l, q, sub) => `<div class="cd-row"><span>${l}</span><span style="text-align:right;"><b>${fmtQty(+q.toFixed(8))} ${escHtml(c.symbol)}</b><span class="dim" style="display:block;">${fmtMoney(q * price)}${sub ? ' · ' + sub : ''}</span></span></div>`;
-  return `
-    <div class="modal-head"><div class="modal-title">${escHtml(c.name || c.symbol)}</div><button class="close-x" onclick="closeModal()">✕</button></div>
-    <div class="stack-gap-8">
-      ${row('Available', avail)}
-      ${row('Lent / staked', lent, apy ? `≈ ${apy}% APY` : '')}
-      ${row('Interest earned (estimate)', interestQty, c.lentSince ? `since ${shortDay(c.lentSince)}` : 'set a start date')}
-      ${row('Locked', locked)}
-    </div>
-    <div class="form-grid" style="margin-top:16px;">
-      <label class="field"><span class="label-text">Lent or staked (${escHtml(c.symbol)})</span><input id="cd-lent" type="number" min="0" step="any" value="${lent || ''}"></label>
-      <label class="field"><span class="label-text">APY %</span><input id="cd-apy" type="number" min="0" step="any" value="${apy || ''}"></label>
-      <label class="field"><span class="label-text">Lending since</span><input id="cd-since" type="date" value="${escHtml(c.lentSince || '')}"></label>
-      <label class="field"><span class="label-text">Locked (${escHtml(c.symbol)})</span><input id="cd-locked" type="number" min="0" step="any" value="${locked || ''}"></label>
-    </div>
-    <div id="cd-err" style="display:none;color:var(--negative);font-size:12.5px;margin-top:8px;"></div>
-    <div class="dim" style="margin-top:8px;">Interest is an estimate from the APY; the exchange's own figure is the real one.</div>
-    <div class="modal-actions" style="flex-wrap:wrap;">
-      <button class="btn ghost" onclick="startTrade('buy','c:${escHtml(c.symbol)}')">Buy</button><button class="btn ghost" onclick="startTrade('sell','c:${escHtml(c.symbol)}')">Sell</button><button class="btn ghost" onclick="startTrade('convert','c:${escHtml(c.symbol)}')">Convert</button>
-      <button class="btn primary" style="margin-left:auto;" onclick="saveCryptoDetails('${escHtml(c.symbol)}')">Save</button>
-    </div>`;
-};
-function saveCryptoDetails(symbol) {
-  const c = cryptoAssetBySymbol(symbol); if (!c) return;
-  const n = id => { const v = parseFloat(document.getElementById(id).value); return v > 0 ? v : 0; };
-  const lent = n('cd-lent'), locked = n('cd-locked'), qty = cryptoAssetStats(symbol).quantity;
-  if (lent + locked > qty + 1e-9) { const e = document.getElementById('cd-err'); e.textContent = `Lent + locked can't be more than the ${fmtQty(qty)} ${symbol} you hold.`; e.style.display = ''; return; }
-  Object.assign(c, { lent, locked, lentApy: n('cd-apy'), lentSince: document.getElementById('cd-since').value || '' });
-  save(); closeModal();
-}
+/* Crypto details used to be a small lent / locked panel; staking (staking.js) replaces it. */
+function openCryptoDetails(symbol) { openStakeForm(symbol); }
 document.addEventListener('click', e => {
   if (!ui.investMenu) return;
   if (e.target.closest && e.target.closest('.c-menu')) return;
