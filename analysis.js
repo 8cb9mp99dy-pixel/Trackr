@@ -290,8 +290,8 @@ function profileCardHtml() {
   const risky = pos.filter(x => /stock|etf|crypto|private/i.test(x.t)).reduce((s, x) => s + x.v, 0);
   const share = inv + cash ? risky / (inv + cash) * 100 : null;
   const profile = share == null ? null : share < 25 ? 'Cautious' : share < 50 ? 'Moderate' : share < 75 ? 'Dynamic' : 'Aggressive';
-  const spend = avgMonthlyExpenses(3);
   const ef = data.emergencyFund && data.emergencyFund.enabled ? emergencyState() : null;
+  const spend = ef ? ef.spend : avgMonthlyExpenses(3); // your essential spending once the cushion is set up
   const cushion = spend.avg ? (ef ? ef.current : bankTotal()) / spend.avg : null;
   const debts = manualLiabilitiesTotal();
   const loans = typeof loanList === 'function' ? loanList().filter(L => +L.principal > 0) : [];

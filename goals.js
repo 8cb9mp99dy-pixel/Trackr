@@ -98,8 +98,12 @@ function durationText(months) {
 const GOAL_STATUS = { done: ['Reached', 'up'], on: ['On track', 'up'], behind: ['Behind', 'down'], none: ['No estimate yet', ''] };
 
 /* ---- Average spending (also used by Analysis) ---- */
-function avgMonthlyExpenses(n) {
+/* Average spending of your last n full months (or this month so far if there's none yet).
+   exclude: expense category ids left out — e.g. gifts and travel for the emergency cushion.
+   Also returns the same average per category, for the list where you choose. */
+function avgMonthlyExpenses(n, exclude) {
   n = n || 3;
+  const skip = new Set(exclude || []);
   const now = appToday(), min = budgetMinMonth();
   const months = [];
   for (let i = 1; i <= 24 && months.length < n; i++) {
@@ -107,10 +111,20 @@ function avgMonthlyExpenses(n) {
     if (d < min) break;
     months.push(d);
   }
-  const vals = months.map(d => monthExpenses(d)).filter(v => v > 0);
-  if (vals.length) return { avg: vals.reduce((s, v) => s + v, 0) / vals.length, months: vals.length, partial: false };
-  const cur = monthExpenses(now);
-  return cur > 0 ? { avg: cur, months: 0, partial: true } : { avg: 0, months: 0, partial: false };
+  const spentIn = d => {
+    const byCat = {};
+    monthTransactions(d).filter(t => t.type === 'expense').forEach(t => { const k = t.categoryId || '_none'; byCat[k] = (byCat[k] || 0) + toEUR(t.amount, t.currency); });
+    return byCat;
+  };
+  let used = months.map(spentIn).filter(m => Object.keys(m).length);
+  let partial = false;
+  if (!used.length) { const cur = spentIn(now); if (Object.keys(cur).length) { used = [cur]; partial = true; } }
+  if (!used.length) return { avg: 0, all: 0, months: 0, partial: false, byCat: {} };
+  const byCat = {};
+  used.forEach(m => Object.keys(m).forEach(k => { byCat[k] = (byCat[k] || 0) + m[k] / used.length; }));
+  const all = Object.values(byCat).reduce((t, v) => t + v, 0);
+  const avg = Object.keys(byCat).filter(k => !skip.has(k)).reduce((t, k) => t + byCat[k], 0);
+  return { avg, all, months: partial ? 0 : used.length, partial, byCat };
 }
 
 /* ---- Page ---- */
@@ -252,7 +266,7 @@ function defaultEmergencyLinks() {
 }
 function emergencyState() {
   const ef = data.emergencyFund || {};
-  const spend = avgMonthlyExpenses(3);
+  const spend = avgMonthlyExpenses(3, ef.excludeCats);
   const links = ef.links || defaultEmergencyLinks();
   const current = linksValue(links), months = +ef.months || 6;
   const target = spend.avg * months;
@@ -283,8 +297,9 @@ function emergencyTabHtml() {
       ${s.spend.avg ? `
         <div class="goal-amounts"><b>${fmtMoney(s.current)}</b><span>of ${fmtMoney(s.target)}</span><span class="goal-pct">${s.covered.toFixed(1)} months</span></div>
         <div class="goal-bar"><span style="width:${pct.toFixed(1)}%;"></span></div>
-        <div style="font-size:12.5px;opacity:.65;margin-top:8px;line-height:1.5;">You spend about <b>${fmtMoney(s.spend.avg)}</b> a month (${s.spend.partial ? 'this month so far' : `average of your last ${s.spend.months} full month${s.spend.months > 1 ? 's' : ''}`}). ${s.left ? `${fmtMoney(s.left)} to go${s.eta ? ', reached ' + durationText((s.eta - Date.now()) / 2629800000) + ' at your current pace' : ''}.` : 'Your cushion is complete.'}</div>`
+        <div style="font-size:12.5px;opacity:.65;margin-top:8px;line-height:1.5;">Your essential spending is about <b>${fmtMoney(s.spend.avg)}</b> a month${s.spend.avg < s.spend.all - 0.005 ? ` (out of ${fmtMoney(s.spend.all)} in total — the categories you left out below don't count)` : ''}, ${s.spend.partial ? 'from this month so far' : `the average of your last ${s.spend.months} full month${s.spend.months > 1 ? 's' : ''}`}. ${s.left ? `${fmtMoney(s.left)} to go${s.eta ? ', reached ' + durationText((s.eta - Date.now()) / 2629800000) + ' at your current pace' : ''}.` : 'Your cushion is complete.'}</div>`
         : `<div style="font-size:13px;opacity:.7;margin-top:12px;">Log your expenses in Budget: the target is computed from what you really spend.</div>`}
+      ${emergencyCategoriesHtml(s)}
       <div class="form-grid" style="margin-top:16px;">
         <label class="field"><span class="label-text">Months of spending to keep</span><input type="number" min="1" max="24" step="1" value="${s.months}" onchange="setEmergencyMonths(this.value)"></label>
       </div>
@@ -296,6 +311,26 @@ function emergencyTabHtml() {
 function enableEmergencyFund() { data.emergencyFund = Object.assign({ months: 6 }, data.emergencyFund, { enabled: true, links: (data.emergencyFund || {}).links || defaultEmergencyLinks() }); save(); render(); }
 function disableEmergencyFund() { if (!confirm('Remove the emergency savings goal? Your money isn\'t touched.')) return; data.emergencyFund.enabled = false; save(); render(); }
 function setEmergencyMonths(v) { const n = Math.round(parseFloat(v)); if (n >= 1 && n <= 24) { data.emergencyFund.months = n; save(); } render(); }
+/* Which spending counts: every expense category of the months used, with its monthly average.
+   Untick the ones you'd stop in an emergency (gifts, travel, restaurants…). */
+function emergencyCategoriesHtml(s) {
+  const ids = Object.keys(s.spend.byCat || {}).sort((a, b) => s.spend.byCat[b] - s.spend.byCat[a]);
+  if (!ids.length) return '';
+  const ex = new Set((data.emergencyFund || {}).excludeCats || []);
+  return `
+      <div style="font-weight:600;font-size:13px;margin:16px 0 4px;">Spending that counts in an emergency</div>
+      <div class="dim" style="margin-bottom:6px;">Untick what you'd stop paying if you had to live on this cushion — gifts, travel, going out…</div>
+      <div class="link-list">${ids.map(id => {
+        const c = id === '_none' ? null : categoryById('expense', id);
+        return `<label class="ll-row"><input type="checkbox" ${ex.has(id) ? '' : 'checked'} onchange="toggleEmergencyCategory('${escHtml(id)}')"><span>${c ? `${c.icon || ''} ${escHtml(c.name)}` : 'Uncategorized'}</span><span class="dim" style="margin-left:auto;${ex.has(id) ? 'text-decoration:line-through;' : ''}">${fmtMoney(s.spend.byCat[id])}/month</span></label>`;
+      }).join('')}</div>`;
+}
+function toggleEmergencyCategory(id) {
+  const ef = data.emergencyFund;
+  const l = ef.excludeCats || [];
+  ef.excludeCats = l.includes(id) ? l.filter(x => x !== id) : l.concat(id);
+  save(); render();
+}
 function toggleEmergencyLink(id) {
   const ef = data.emergencyFund;
   const l = ef.links || defaultEmergencyLinks();

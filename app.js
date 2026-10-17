@@ -467,7 +467,7 @@ function defaultData() {
     // of the linked money; see goals.js.
     goals: [],
     // Goals → Emergency savings: a cushion in months of your real spending.
-    emergencyFund: { enabled: false, months: 6, links: null },
+    emergencyFund: { enabled: false, months: 6, links: null, excludeCats: [] },
     // Recurring buys (Investments → an account → Plans) — never real orders, see invest.js.
     investPlans: [],
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
