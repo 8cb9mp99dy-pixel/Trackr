@@ -51,7 +51,6 @@ const EXAMPLES = [
   ['Paying a friend back (Tikkie, Wero…)', 'Expense', 'Family & Social', 'Shared Costs with Friends / Flatmates'],
   ['Flight', 'Expense', 'Travel', 'Flights'],
   ['Bank / card fees', 'Expense', 'Taxes & Fees', 'Bank & Card Fees'],
-  ['Money put into savings or investments', 'Expense', 'Savings', 'Investment Contribution'],
   ['Salary from a part-time job', 'Income', 'Salary', 'Part-time Job'],
   ['Money from parents every month', 'Income', 'Family Support', 'Monthly Allowance'],
   ['Government study grant / student finance', 'Income', 'Scholarships & Grants', 'Government Study Grant'],
@@ -69,21 +68,27 @@ EXAMPLES.forEach(([, type, cat, sub]) => {
 });
 
 const header = BI_COLUMNS.map(c => c.label);
+// Built by column key, so the order always follows BI_COLUMNS.
+const row = o => BI_COLUMNS.map(c => (o[c.key] != null ? o[c.key] : ''));
+const acc0 = accounts[0] || '';
 const sample = [
-  ['Albert Heijn', '2026-09-04', 'Expense', 'Food & Groceries', 'Groceries', 'One-off / Variable', 'Card', accounts[0] || '', 'Neutral', 'EUR', '23.40', 'Maastricht', ''],
-  ['Room rent', '2026-09-01', 'Expense', 'Housing', 'Rent', 'Fixed / Recurring', 'Direct Debit', accounts[0] || '', 'Neutral', 'EUR', '450.00', '', 'September'],
-  ['Parents', '2026-09-03', 'Income', 'Family Support', 'Monthly Allowance', 'Fixed / Recurring', 'Transfer', accounts[0] || '', 'Neutral', 'EUR', '200.00', '', ''],
+  row({ name: 'Albert Heijn', date: '2026-09-04', type: 'Expense', category: 'Food & Groceries', subcategory: 'Groceries', recurring: 'One-off / Variable', paymentMethod: 'Card', account: acc0, impact: 'Neutral', currency: 'EUR', amount: '23.40', location: 'Maastricht' }),
+  row({ name: 'Room rent', date: '2026-09-01', type: 'Expense', category: 'Housing', subcategory: 'Rent', recurring: 'Fixed / Recurring', paymentMethod: 'Direct Debit', account: acc0, impact: 'Neutral', currency: 'EUR', amount: '450.00', description: 'September' }),
+  row({ name: 'Parents', date: '2026-09-03', type: 'Income', category: 'Family Support', subcategory: 'Monthly Allowance', recurring: 'Fixed / Recurring', paymentMethod: 'Transfer', account: acc0, impact: 'Neutral', currency: 'EUR', amount: '200.00' }),
+  row({ name: 'Holiday savings', date: '2026-09-05', type: 'Transfer', recurring: 'One-off / Variable', from: acc0 || 'ING', to: `${acc0 || 'ING'} › Holidays`, currency: 'EUR', amount: '100.00' }),
 ];
 
 const colRules = {
   name: ['Free text', 'Who was paid, or who paid. Keep it short and consistent (e.g. always "Albert Heijn", not "AH 1234 MAASTRICHT"), because Trackr reuses the logo and category of a name it has seen before.', 'Albert Heijn'],
   date: ['<b>YYYY-MM-DD</b> (recommended)', 'Also accepted: DD/MM/YYYY (day first). Never MM/DD/YYYY.', '2026-09-28'],
-  type: ['<b>Expense</b> or <b>Income</b>', 'Exactly one of these two words. Transfers between own accounts, pockets or brokers are NOT imported — leave them out.', 'Expense'],
+  type: ['<b>Expense</b>, <b>Income</b> or <b>Transfer</b>', 'Exactly one of these three words. <b>Transfer</b> = money moved between the user\'s OWN places (bank account ↔ another of their bank accounts, a savings pocket, a broker or a crypto exchange): it is neither income nor spending. For a Transfer, leave Category, Sub-category, Account and Personal Impact empty, write One-off / Variable as Recurring, and fill From and To.', 'Expense'],
   category: ['A category from section 3', 'Must belong to the Type of the row (Income categories for Income, Expense categories for Expense). Spell it exactly as listed. If nothing fits: <b>Other</b>.', 'Food &amp; Groceries'],
   subcategory: ['A sub-category of that category (section 3)', 'Only sub-categories listed under the chosen category. Optional, but always fill it when one fits. If nothing fits under Other: <b>Miscellaneous</b>.', 'Groceries'],
   recurring: [BI_RECURRING_VALUES.map(v => `<b>${esc(v)}</b>`).join(' or '), 'Fixed / Recurring for things that repeat every month (rent, subscriptions, allowance, salary). Everything else: One-off / Variable. (Yes / No are accepted too, but prefer the exact wording.)', 'Fixed / Recurring'],
   paymentMethod: [paymentMethods.map(v => `<b>${esc(v)}</b>`).join(', '), 'How it was paid. Leave empty if unknown.', 'Card'],
   account: [accounts.length ? accounts.map(v => `<b>${esc(v)}</b>`).join(', ') : 'The exact name of a bank account in Trackr', accounts.length ? 'Which bank account the money went in or out of. Leave empty if unknown.' : 'Leave EMPTY unless the user tells you the exact account name as it appears in Trackr. A name Trackr doesn\'t know is ignored.', accounts[0] || '(empty)'],
+  from: ['Transfers only: one of the user\'s places', 'Where the money left. Write it as Trackr names it: a bank account name (e.g. <b>ING</b>), a pocket as <b>Account › Pocket</b> (e.g. <b>ING › Holidays</b>), a broker as <b>Name (broker)</b>, an exchange as <b>Name (exchange)</b>. If you don\'t know the exact name, write the name you see — the user picks the right one in Trackr\'s preview. Empty for Income and Expense.', esc(acc0 || 'ING')],
+  to: ['Transfers only: one of the user\'s places', 'Where the money arrived — same names as From. Empty for Income and Expense.', esc(`${acc0 || 'ING'} › Holidays`)],
   impact: [BI_IMPACT_VALUES.map(v => `<b>${esc(v)}</b>`).join(', '), 'Neutral for almost everything. Positive for things that are good for the user or others (donation, gym, course). Negative for habits they want to cut (tobacco, gambling, excessive takeaway).', 'Neutral'],
   currency: [currencies.map(v => `<b>${esc(v)}</b>`).join(', '), 'Three-letter code only, no symbol.', 'EUR'],
   amount: ['A <b>positive</b> number', 'Dot as decimal separator, 2 decimals, no currency symbol, no thousands separator. The Type column decides whether it is money in or out — never write a minus sign when Type is filled in.', '23.40'],
@@ -139,7 +144,7 @@ const html = `<!doctype html><html><head><meta charset="utf-8"><title>Trackr —
   <li>Only <b>Date</b> and <b>Amount</b> are required, but fill every column you can infer.</li>
   <li>Pick the Category from the list for that row's Type, then the most specific Sub-category under it. If nothing fits, use <b>Other</b> › <b>Miscellaneous</b>.</li>
   <li>Never invent a category or sub-category name: Trackr would create it as a new one.</li>
-  <li>Leave out transfers between the user's own accounts, savings pockets or brokers.</li>
+  <li>Money moved between the user's own accounts, savings pockets, brokers or exchanges is a <b>Transfer</b> (Type = Transfer, From and To filled, no category) — never an expense or income. Money paid to or received from other people is not a transfer.</li>
   <li>When unsure about a value, leave that cell empty rather than guess.</li>
 </ol></div>
 
@@ -175,6 +180,7 @@ ${catTable('expense')}
   <li>Dates written month-first (09/28/2026) — use 2026-09-28.</li>
   <li>Bank jargon as the name ("CARD PAYMENT AH 1234 MAASTR NLD") — write the merchant: "Albert Heijn".</li>
   <li>Recurring written freely ("monthly") — use exactly "Fixed / Recurring" or "One-off / Variable".</li>
+  <li>Putting money into a savings pocket, another own bank account, a broker (Trade Republic…) or an exchange (Binance…) as an Expense — it is a Transfer.</li>
 </ul></div>
 <div class="foot">Trackr · regenerate with <code>node tools/build-claude-reference.js</code> after changing categories.</div>
 </body></html>`;

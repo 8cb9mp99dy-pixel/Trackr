@@ -20,19 +20,20 @@ Project knowledge contains:
 Steps:
 1. Read every page of the statement. Take each real transaction once. Skip opening/closing balances, subtotals, "carried forward" lines, pending or declined payments and card pre-authorisations.
 2. Ask me once which Trackr account the statement belongs to (I'll give the exact name as it appears in Trackr), unless I already told you.
-3. Money moved between my own accounts, savings pockets, brokers or crypto exchanges (e.g. Revolut ↔ ING, "To pocket Savings", Trade Republic, Binance top-up) is NOT income or expense. Leave it out of the file and list it separately; I add those in Trackr as Transfers (the importer can't import transfers).
+3. Money moved between my own accounts, savings pockets, brokers or crypto exchanges (e.g. Revolut ↔ ING, "To pocket Savings", Trade Republic, Binance top-up) is NOT income or expense: put it in the file as a **Transfer** — Type "Transfer", From and To filled in (a bank account name, a pocket as "Account › Pocket", a broker as "Name (broker)", an exchange as "Name (exchange)"), Category, Sub-category, Account and Personal Impact left empty, Amount positive. If you don't know the exact name of a place, write what you see; I choose the right one in Trackr's preview.
 4. Fill one row per transaction with exactly these columns, in this order, with this header row:
 
-Name / Payee, Date, Type, Category, Sub-category, Recurring, Payment Method, Account, Personal Impact, Currency, Amount, Location, Description
+Name / Payee, Date, Type, Category, Sub-category, Recurring, Payment Method, Account, From, To, Personal Impact, Currency, Amount, Location, Description
 
 Rules per column:
 - Name / Payee: the clean merchant or person name, written the same way every time (e.g. "CARD PAYMENT ALBERT HEIJN 1234 AMSTERDAM NLD" → "Albert Heijn"). Consistency matters: Trackr matches past entries and logos by name.
 - Date: YYYY-MM-DD (the transaction date, not the booking date if both are shown).
-- Type: Expense or Income.
+- Type: Expense, Income or Transfer (Transfer only for money moved between my own places — see 3).
 - Category / Sub-category: copied exactly from the reference PDF; the sub-category must belong to that category, and the category must match the Type (income categories for Income).
 - Recurring: exactly "Fixed / Recurring" (rent, subscriptions, phone, insurance, salary, loans) or "One-off / Variable" (everything else).
 - Payment Method: Card, Transfer, Cash or Direct Debit (or another value listed in the reference).
-- Account: the Trackr account name I gave you.
+- Account: the Trackr account name I gave you (empty for a Transfer).
+- From / To: only for a Transfer — where the money left and arrived (see 3). Empty otherwise.
 - Personal Impact: leave empty unless I ask (otherwise Neutral, Positive or Negative).
 - Currency: EUR, USD, GBP or CHF: the currency the account was charged in.
 - Amount: a positive number, dot as decimal separator, no currency sign, no thousands separator (e.g. 1234.56).
@@ -48,7 +49,7 @@ Special cases:
 5. Output, in this order:
 - The CSV (UTF-8, comma-separated, header row, values containing commas in double quotes) as a downloadable .csv file if you can create files, and always also in one code block I can copy.
 - A check: number of rows, total income, total expenses, and whether opening balance + income − expenses ± transfers = closing balance of the statement. If it doesn't match, say by how much and which lines might explain it.
-- "Transfers left out": date, amount, from → to.
+- "Transfers": date, amount, from → to (they're in the file too).
 - "Check these": rows where you guessed.
 
 How I import it: Trackr → Budget → Import → choose the file → review the preview → Import. Entries already in Trackr are detected and skipped automatically, so importing the same month twice is safe.

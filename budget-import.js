@@ -14,6 +14,14 @@
  * names, a signed Amount or separate Debit/Credit columns, dates like 2026-09-28, 28/09/2026,
  * 20260928 or "28 Sep 2026", and European numbers like "1.234,56".
  *
+ * Transfers — money moving between your own places (bank account → pocket, → another bank
+ * account, → a broker's or exchange's cash) — are imported as transfers, exactly like Budget →
+ * Add transaction → Transfer: neither income nor spending, both sides move. In the template:
+ * Type "Transfer" with From and To (drop-down lists of your places). In a bank file: a row whose
+ * Type or Category says transfer, or whose name points at one of your own accounts or pockets
+ * ("Naar spaarrekening", "To pocket Holidays"…). The statement's own account is one side; the
+ * other side is found from the name, or chosen in the preview.
+ *
  * The template itself is built by buildBudgetTemplateWorkbook(), which is also loaded from Node by
  * tools/build-budget-template.js to regenerate templates/Trackr-transactions-template.xlsx — one
  * definition for both. Browser-only setup is guarded at the bottom of this file.
@@ -24,12 +32,14 @@
 const BI_COLUMNS = [
   { key: 'name', label: 'Name / Payee', width: 24, help: 'Who you paid, or who paid you.', aliases: ['name', 'payee', 'merchant', 'counterparty', 'beneficiary', 'libelle', 'libelle operation', 'beneficiaire', 'naam', 'naam / omschrijving', 'naam tegenpartij', 'tegenpartij'] },
   { key: 'date', label: 'Date', required: true, width: 12, help: 'Day of the transaction — 28/09/2026, 2026-09-28 or a real Excel date.', aliases: ['transaction date', 'booking date', 'posting date', 'value date', 'started date', 'completed date', 'date operation', "date d'operation", "date de l'operation", 'date de valeur', 'datum', 'boekdatum', 'transactiedatum', 'rentedatum'] },
-  { key: 'type', label: 'Type', width: 10, help: 'Expense or Income. Leave empty to use the sign of Amount (negative = expense).', aliases: ['income/expense', 'in/out', 'debit/credit', 'credit/debit', 'af bij', 'af/bij', 'sens', 'transaction type'] },
+  { key: 'type', label: 'Type', width: 10, help: 'Expense, Income or Transfer (money moving between your own accounts, pockets, brokers or exchanges — then fill From and To). Leave empty to use the sign of Amount (negative = expense).', aliases: ['income/expense', 'in/out', 'debit/credit', 'credit/debit', 'af bij', 'af/bij', 'sens', 'transaction type'] },
   { key: 'category', label: 'Category', width: 22, help: 'Pick from the list (it follows Type). A sub-category name alone also works. Empty = Other; a new name becomes a new category.', aliases: ['categorie', 'cat'] },
   { key: 'subcategory', label: 'Sub-category', width: 26, help: 'Pick from the list (it follows Category). A new name becomes a new sub-category.', aliases: ['subcategory', 'sub category', 'sous-categorie', 'sous categorie', 'subcategorie'] },
   { key: 'recurring', label: 'Recurring', width: 18, help: 'Fixed / Recurring for rent, subscriptions… Empty = One-off / Variable.', aliases: ['nature', 'fixed', 'recurrent', 'vast', 'terugkerend'] },
   { key: 'paymentMethod', label: 'Payment Method', width: 15, help: 'Card, Transfer, Cash, Direct Debit… (from the list).', aliases: ['payment', 'method', 'moyen de paiement', 'betaalwijze', 'betaalmethode'] },
-  { key: 'account', label: 'Account', width: 16, help: 'Optional — one of your bank accounts in Trackr (from the list).', aliases: ['bank', 'bank account', 'account name', 'compte', 'rekening'] },
+  { key: 'account', label: 'Account', width: 16, help: 'Optional — one of your bank accounts in Trackr (from the list). Not used for a transfer (see From / To).', aliases: ['bank', 'bank account', 'account name', 'compte', 'rekening'] },
+  { key: 'from', label: 'From', width: 24, help: 'Transfers only — where the money leaves: a bank account, a pocket ("Account › Pocket"), a broker or an exchange (from the list).', aliases: ['from account', 'source', 'de', 'depuis', 'van', 'van rekening'] },
+  { key: 'to', label: 'To', width: 24, help: 'Transfers only — where the money arrives (same list as From).', aliases: ['to account', 'destination', 'vers', 'naar', 'naar rekening'] },
   { key: 'impact', label: 'Personal Impact', width: 15, help: 'Optional — Neutral, Positive or Negative.', aliases: ['impact'] },
   { key: 'currency', label: 'Currency', width: 9, help: "EUR, USD, GBP or CHF. Empty = the account's currency, otherwise your default one.", aliases: ['devise', 'valuta', 'munt', 'ccy', 'currency code'] },
   { key: 'amount', label: 'Amount', required: true, width: 11, help: 'A number like 12.50. Negative is fine — with Type empty it then counts as an expense.', aliases: ['montant', 'montant operation', 'montant eur', 'bedrag', 'bedrag eur', 'value', 'sum', 'transaction amount'] },
@@ -59,6 +69,9 @@ function biExampleRows(ctx) {
   };
   const pm = name => ((ctx.paymentMethods || []).find(p => biNorm(p) === biNorm(name)) || '');
   const account = (ctx.accounts || [])[0] || '';
+  const places = ctx.transferPlaces || [];
+  const pocketPlace = places.find(p => p.includes(' › ')) || `${account || 'Current account'} › Holidays`;
+  const brokerPlace = places.find(p => / \(broker\)$/.test(p)) || 'Trade Republic (broker)';
   const currency = ctx.defaultCurrency || 'EUR';
   const t = ctx.today || new Date();
   const day = d => new Date(t.getFullYear(), t.getMonth(), d);
@@ -71,13 +84,16 @@ function biExampleRows(ctx) {
     { name: 'Spotify', date: day(6), type: 'Expense', ...pick('expense', 'Subscriptions', 'Music'), recurring: fixed, paymentMethod: pm('Card'), amount: 6.99 },
     { name: 'Train to Amsterdam', date: day(9), type: 'Expense', ...pick('expense', 'Transport', 'Train'), recurring: oneOff, paymentMethod: pm('Card'), amount: 25.5, description: 'Weekend trip' },
     { name: 'Book donation', date: day(11), type: 'Expense', ...pick('expense', 'Gifts & Donations', 'Charity'), recurring: oneOff, paymentMethod: pm('Card'), impact: 'Positive', amount: 10 },
+    { name: 'Holiday savings', date: day(2), type: 'Transfer', category: '', subcategory: '', recurring: oneOff, from: account || 'Current account', to: pocketPlace, amount: 100, description: 'Into the pocket' },
+    { name: 'Monthly ETF money', date: day(5), type: 'Transfer', category: '', subcategory: '', recurring: oneOff, from: account || 'Current account', to: brokerPlace, amount: 50 },
     // Type left empty on purpose: the minus sign makes it an expense.
     { name: 'Coffee', date: day(12), type: '', ...pick('expense', 'Food & Groceries', 'Coffee & Snacks'), recurring: oneOff, paymentMethod: pm('Card'), amount: -3.2, description: 'Type empty + negative amount = expense' },
   ];
   return rows.map(r => BI_COLUMNS.map(c => {
-    if (c.key === 'account') return account;
+    const transfer = r.type === 'Transfer';
+    if (c.key === 'account') return transfer ? '' : account;
     if (c.key === 'currency') return currency;
-    if (c.key === 'impact') return r.impact || 'Neutral';
+    if (c.key === 'impact') return transfer ? '' : (r.impact || 'Neutral');
     return r[c.key] != null ? r[c.key] : '';
   }));
 }
@@ -98,7 +114,7 @@ function buildBudgetTemplateWorkbook(XLSX, ctx) {
     ['How to import your income & expenses into Trackr'],
     [''],
     ['1. Type your transactions in the "Transactions" sheet, one row per transaction — same fields as Budget → Add transaction. Keep the first row (the column names) as it is.'],
-    ['2. Only Date and Amount are required. Type, Category, Sub-category, Recurring, Payment Method, Account, Personal Impact and Currency have drop-down lists (in Excel).'],
+    ['2. Only Date and Amount are required. Type, Category, Sub-category, Recurring, Payment Method, Account, From, To, Personal Impact and Currency have drop-down lists (in Excel).'],
     ['3. Save the file, then in Trackr open Budget → Import → Choose file.'],
     ['4. Check the preview. Nothing is saved until you press Import, and transactions already in Trackr are unticked, so importing the same file twice is safe.'],
     [''],
@@ -108,10 +124,11 @@ function buildBudgetTemplateWorkbook(XLSX, ctx) {
     ['Tips'],
     ['• See the "Example" sheet for filled-in rows, and "Categories" / "Lists" for every name Trackr knows.'],
     ['• The Category list follows the Type you picked, and the Sub-category list follows the Category. You can still type a new name — it will be created.'],
-    ['• Transfers (to a pocket, broker or exchange) can\'t be imported — add those in Trackr with Budget → Add transaction → Transfer.'],
+    ['• Transfers: money moving between your own places — bank account → pocket, → another bank account, → a broker\'s or exchange\'s cash. Type "Transfer", then From and To (pick from the lists; a pocket is "Account › Pocket"). Category, Account and Recurring are left empty. A transfer is neither income nor spending.'],
+    ['• In a bank export, a transfer to your own savings account or pocket is recognised from its name or its Type/Category; the preview lets you choose where it went if Trackr can\'t tell.'],
     ['• Bank exports (Excel or CSV) usually work as they are: Date, Amount (or Debit/Credit columns) and Description are recognised, in English, French or Dutch.'],
     ['• Budget → Export to Excel uses these same column names, so you can export, edit and re-import.'],
-    ['• Account balances only change if you tick "Also update account balances" in the preview.'],
+    ['• Account balances (and pockets, broker and exchange cash for transfers) only change if you tick "Also update balances" in the preview.'],
   ];
   const helpWs = XLSX.utils.aoa_to_sheet(help);
   helpWs['!cols'] = [{ wch: 130 }];
@@ -145,7 +162,7 @@ function buildBudgetTemplateWorkbook(XLSX, ctx) {
   // 5. Lists — the values behind every other drop-down.
   const names = kind => ((ctx.categories || {})[kind] || []).map(c => c.name);
   const lists = [
-    ['Type', ['Expense', 'Income']],
+    ['Type', ['Expense', 'Income', 'Transfer']],
     ['Currency', ctx.currencies || ['EUR', 'USD', 'GBP', 'CHF']],
     ['Recurring', BI_RECURRING_VALUES],
     ['Personal Impact', BI_IMPACT_VALUES],
@@ -153,6 +170,7 @@ function buildBudgetTemplateWorkbook(XLSX, ctx) {
     ['Payment Method', ctx.paymentMethods || []],
     ['Expense categories', names('expense')],
     ['Income categories', names('income')],
+    ['Transfer places', ctx.transferPlaces || []],
   ];
   const height = Math.max(1, ...lists.map(l => l[1].length));
   const listAoa = [lists.map(l => l[0])];
@@ -192,6 +210,7 @@ function biAddTemplateExtras(XLSX, bytes, count) {
   ];
   if (count['Payment Method']) v.push(list('paymentMethod', range('F', count['Payment Method'])));
   if (count['Account']) v.push(list('account', range('E', count['Account'])));
+  if (count['Transfer places']) { v.push(list('from', range('I', count['Transfer places']))); v.push(list('to', range('I', count['Transfer places']))); }
   const block = `<dataValidations count="${v.length}">${v.join('')}</dataValidations>`;
   const after = ['<hyperlinks', '<printOptions', '<pageMargins', '<pageSetup', '<headerFooter', '<rowBreaks', '<colBreaks', '<customProperties', '<cellWatches', '<ignoredErrors', '<smartTags', '<drawing', '<legacyDrawing', '<picture', '<oleObjects', '<controls', '<webPublishItems', '<tableParts', '<extLst', '</worksheet>'];
   const at = Math.min(...after.map(t => xml.indexOf(t)).filter(i => i >= 0));
@@ -371,9 +390,14 @@ function biPickSheets(wb) {
     if (!best) continue;
     // A "Type" column that never says income/expense (Revolut: CARD_PAYMENT, TOPUP…) describes
     // something else — drop it and use the sign of Amount, instead of a note on every row.
+    // A Type column that only says TRANSFER for some rows and other bank codes for the rest is
+    // kept, but read as "bank codes" (see biParseRows).
+    let typeCodes = false;
     if (best.map.type != null) {
       const vals = aoa.slice(best.headerIdx + 1).map(l => (l || [])[best.map.type]).filter(v => v !== '' && v != null);
-      if (vals.length && !vals.some(v => ['income', 'expense'].includes(biParseType(v)))) delete best.map.type;
+      const kinds = vals.map(biParseType);
+      if (vals.length && !kinds.some(k => ['income', 'expense', 'transfer'].includes(k))) delete best.map.type;
+      else typeCodes = kinds.includes('unknown');
     }
     const header = aoa[best.headerIdx];
     // A status column (Revolut "State", many banks "Status"): cancelled/declined rows are left out.
@@ -382,7 +406,7 @@ function biPickSheets(wb) {
     if (st >= 0) best.map.state = st;
     const hasData = aoa.slice(best.headerIdx + 1).some(line => (line || []).some(v => v !== '' && v != null));
     const picked = {
-      sheetName, aoa, rowOffset, headerIdx: best.headerIdx, map: best.map,
+      sheetName, aoa, rowOffset, headerIdx: best.headerIdx, map: best.map, typeCodes,
       mapping: Object.entries(best.map).map(([key, idx]) => ({ label: key === 'out' ? 'Money out' : key === 'in' ? 'Money in' : key === 'state' ? 'Status' : BI_COLUMNS.find(c => c.key === key).label, header: String(header[idx]).trim() })),
       ignored: header.map((h, i) => (Object.values(best.map).includes(i) ? '' : String(h).trim())).filter(Boolean),
     };
@@ -436,6 +460,86 @@ function biResolveAccount(raw) {
   return a || null;
 }
 
+/* ---------- Transfers: your own places ----------
+   Every place money can move between, with the names a file may use for it. The labels are the
+   ones in the template's From / To lists: "ING", "ING › Holidays" (a pocket), "Trade Republic
+   (broker)", "Binance (exchange)". Same refs as Budget → Add transaction → Transfer. */
+function biPlaces() {
+  const out = [];
+  (data.accounts || []).forEach(a => {
+    out.push({ ref: 'acc:' + a.id, label: a.name, kind: 'account', names: [a.name] });
+    (a.pockets || []).forEach(p => out.push({ ref: `pk:${a.id}:${p.id}`, label: `${a.name} › ${p.name}`, kind: 'pocket', names: [`${a.name} › ${p.name}`, `${a.name} ${p.name}`, p.name, `${p.name} pocket`] }));
+  });
+  (data.brokers || []).forEach(b => out.push({ ref: 'brk:' + b.id, label: `${b.name} (broker)`, kind: 'broker', names: [b.name, `${b.name} (broker)`, `${b.name} (cash)`, `${b.name} cash`] }));
+  (typeof cryptoBrokerNames === 'function' ? cryptoBrokerNames() : []).forEach(n => {
+    if (out.some(x => x.kind === 'broker' && biNorm(x.names[0]) === biNorm(n))) return;
+    out.push({ ref: 'cx:' + n, label: `${n} (exchange)`, kind: 'exchange', names: [n, `${n} (exchange)`, `${n} (cash)`, `${n} cash`] });
+  });
+  return out;
+}
+function biPlaceLabels() { return biPlaces().map(p => p.label); }
+function biPlaceLabel(ref) { const p = biPlaces().find(x => x.ref === ref); return p ? p.label : ((transferEndpoint(ref) || {}).label || ''); }
+/* A From / To cell → a ref. Exact names only (a pocket's own name only when no other pocket has it). */
+function biResolvePlace(raw) {
+  const n = biNorm(raw);
+  if (!n) return null;
+  const hits = biPlaces().filter(p => p.names.some(x => biNorm(x) === n));
+  const uniq = Array.from(new Set(hits.map(h => h.ref)));
+  if (uniq.length === 1) return uniq[0];
+  const acc = hits.find(h => h.kind === 'account' && biNorm(h.label) === n);   // "ING" the account beats a pocket also called ING
+  return acc ? acc.ref : null;
+}
+const BI_TRANSFER_WORDS = ['transfer', 'transfert', 'virement', 'overboeking', 'overschrijving', 'pocket', 'vault', 'spaar', 'spaarrekening', 'savings', 'saving', 'epargne', 'livret', 'naar', 'topup', 'deposit', 'depot', 'storting'];
+const BI_TRANSFER_CATS = ['transfer', 'transfers', 'transfert', 'virement', 'virements', 'virementinterne', 'internaltransfer', 'overboeking', 'overboekingen', 'eigenrekening', 'owntransfer'];
+/* One of your places named in a bank line ("Naar Oranje spaarrekening", "To pocket EUR Holidays"),
+   other than `exclude`. strict: the whole name must be the place's name; otherwise the place's
+   name inside the text plus a transfer word. The longest name wins. */
+function biGuessPlace(text, exclude, strict) {
+  const t = biNorm(text);
+  if (!t) return null;
+  const words = biWords(text).concat(String(text || '').toLowerCase().split(/[^a-z]+/));
+  const hasWord = BI_TRANSFER_WORDS.some(w => words.includes(w) || t.includes(w));
+  let best = null;
+  biPlaces().forEach(p => {
+    if (p.ref === exclude) return;
+    p.names.forEach(nm => {
+      const k = biNorm(nm);
+      if (k.length < 4) return;
+      const ok = t === k || (!strict && hasWord && t.includes(k));
+      if (ok && (!best || k.length > best.len)) best = { ref: p.ref, len: k.length };
+    });
+  });
+  return best ? best.ref : null;
+}
+/* The two sides of a transfer row as they'll be imported: what the file said, else the
+   statement's own account (the row's Account, or "Account for rows without one"). */
+function biTransferRefs(r, st) {
+  const ownId = r.accountId || (st && st.defaultAccountId && accountById(st.defaultAccountId) ? st.defaultAccountId : null);
+  const own = ownId ? 'acc:' + ownId : null;
+  const from = r.fromRef || (r.ownSide === 'from' ? own : null);
+  const to = r.toRef || (r.ownSide === 'to' ? own : null);
+  return { from, to, ok: !!(from && to && from !== to && transferEndpoint(from) && transferEndpoint(to)) };
+}
+/* Turns a parsed row into a transfer. fromRaw / toRaw: what the file said (may be empty). */
+function biMakeTransferRow(r, fromRaw, toRaw, detected) {
+  const fromRef = fromRaw ? biResolvePlace(fromRaw) : null, toRef = toRaw ? biResolvePlace(toRaw) : null;
+  const notes = r.notes.filter(n => !/^Category from your past/.test(n));
+  if (fromRaw && !fromRef) notes.push(`From "${fromRaw}" isn't one of your accounts, pockets, brokers or exchanges — choose it below`);
+  if (toRaw && !toRef) notes.push(`To "${toRaw}" isn't one of your accounts, pockets, brokers or exchanges — choose it below`);
+  let ownSide = null;
+  if (!fromRaw && !toRaw) ownSide = r.signedAmount < 0 ? 'from' : 'to';
+  else if (!fromRaw) ownSide = 'from';
+  else if (!toRaw) ownSide = 'to';
+  const out = Object.assign(r, { type: 'transfer', fromRef, toRef, ownSide, fromRaw, toRaw, notes, detected: detected || '' });
+  // A bank line: the other side from the name ("Naar spaarrekening" → your savings account).
+  if (ownSide && !fromRaw && !toRaw) {
+    const own = r.accountId ? 'acc:' + r.accountId : null;
+    const other = biGuessPlace(`${r.name} ${r.description}`, own) || biGuessPlace(r.name, own, true);
+    if (other) { if (ownSide === 'from') out.toRef = other; else out.fromRef = other; }
+  }
+  return out;
+}
+
 /* Reads one sheet. Each row ends up in exactly one place: rows (to import, or already in Trackr
    once biMarkDuplicates has looked), or errors — kind 'skip' (left out on purpose: cancelled at
    the bank, a transfer, an amount of 0) or kind 'problem' (something in the file to fix). */
@@ -472,12 +576,15 @@ function biParseRows(picked, opts) {
 
     const rawType = str('type');
     let type = biParseType(rawType);
-    if (type === 'transfer' && biNorm(str('category')) === 'transfer') {
-      errors.push(Object.assign({ kind: 'skip', reasons: ['A transfer between your own accounts — not income or spending (add it in Budget → Add transaction → Transfer if you want it)'] }, where));
-      continue;
-    } else if (type === 'transfer' || type === 'unknown') {
-      if (!isNaN(amount) && amount !== 0) notes.push(`Type "${rawType}" isn't Income/Expense — used the sign of Amount`);
-      else if (!reasons.length) reasons.push(`Type "${rawType}" isn't Income or Expense`);
+    const fromRaw = str('from'), toRaw = str('to');
+    // A transfer: Type says so (in a bank file with its own codes — Revolut's TRANSFER also covers
+    // paying a friend — only when the other side is one of your places), the Category says so, or
+    // both From and To are filled in.
+    let transfer = (type === 'transfer' && !picked.typeCodes) || BI_TRANSFER_CATS.includes(biNorm(str('category'))) || !!(fromRaw && toRaw);
+    const bankTransfer = type === 'transfer' && picked.typeCodes;
+    if (type === 'transfer' || type === 'unknown') {
+      if (isNaN(amount) || amount === 0) { if (!reasons.length && type === 'unknown') reasons.push(`Type "${rawType}" isn't Income, Expense or Transfer`); }
+      else if (type === 'unknown' && !picked.typeCodes) notes.push(`Type "${rawType}" isn't Income/Expense/Transfer — used the sign of Amount`);
       type = '';
     }
     if (!type && !isNaN(amount) && amount !== 0) type = amount < 0 ? 'expense' : 'income';
@@ -493,8 +600,11 @@ function biParseRows(picked, opts) {
     if (reasons.length) { errors.push(Object.assign({ kind: 'problem', reasons }, where)); continue; }
 
     const name0 = str('name') || (map.name == null ? str('description') : '');
-    let cat = biResolveCategory(type, str('category'), str('subcategory'));
-    if (!str('category') && !str('subcategory') && name0) {
+    // "Transfer" in Category (and Trackr's own export's "A → B" sub-category) isn't a category.
+    const catSaysTransfer = BI_TRANSFER_CATS.includes(biNorm(str('category')));
+    const catRaw = catSaysTransfer ? '' : str('category'), subRaw = catSaysTransfer ? '' : str('subcategory');
+    let cat = biResolveCategory(type, catRaw, subRaw);
+    if (!catRaw && !subRaw && name0) {
       // Bank files have no categories — reuse the one you gave this payee last time.
       const past = typeof learnedTxFor === 'function' ? learnedTxFor(name0, type)
         : data.budgetTransactions.filter(t => t.type === type && t.categoryId && !['inc_other', 'exp_other'].includes(t.categoryId) && biNorm(t.comment) === biNorm(name0)).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
@@ -510,15 +620,28 @@ function biParseRows(picked, opts) {
     // A bank file with only a "Description" column: that text is the payee.
     const name = name0;
     const description = map.name == null ? '' : str('description');
-    rows.push({
-      rowNum, date, type, amount: Math.abs(amount), currency, name, description,
+    const row = {
+      rowNum, date, type, amount: Math.abs(amount), signedAmount: amount, currency, name, description,
       location: str('location'), recurring: biYes(cell('recurring')), impact: biParseImpact(cell('impact')),
       accountId: account ? account.id : null, accountName: account ? account.name : '',
       paymentMethodId: pm ? pm.id : null,
       categoryId: cat.categoryId, categoryName: cat.categoryName, newCategory: cat.newCategory,
       subCategoryId: cat.subCategoryId, subName: cat.subName, newSub: cat.newSub,
       notes: notes.concat(cat.notes), duplicate: false, included: !pending, pending, sheetName,
-    });
+    };
+    // Kept to go back to income / expense ("Not a transfer" in the preview).
+    row.plain = { type, categoryId: cat.categoryId, categoryName: cat.categoryName, newCategory: cat.newCategory, subCategoryId: cat.subCategoryId, subName: cat.subName, newSub: cat.newSub, notes: row.notes.slice() };
+    if (transfer) biMakeTransferRow(row, fromRaw, toRaw);
+    else if (!catRaw && !subRaw) {
+      // A bank line to one of your own accounts or pockets ("Naar Oranje spaarrekening").
+      const own = account ? 'acc:' + account.id : null;
+      const other = biGuessPlace(`${name} ${description}`, own) || biGuessPlace(name, own, true);
+      if (other) {
+        biMakeTransferRow(row, '', '', biPlaceLabel(other));
+        row.notes.push(`Looks like a transfer ${row.ownSide === 'from' ? 'to' : 'from'} ${biPlaceLabel(other)} — press "Not a transfer" if it isn't`);
+      } else if (bankTransfer) row.notes.push(`Your bank calls it a transfer — if it went to one of your own accounts or pockets, press "It's a transfer"`);
+    }
+    rows.push(row);
   }
   const spell = new Map();
   rows.forEach(r => {
@@ -545,6 +668,8 @@ function biNameSimilar(a, b) {
 }
 const biDayDiff = (a, b) => Math.abs(Math.round((ymdToDate(a) - ymdToDate(b)) / 86400000));
 function biMarkDuplicates(rows) {
+  biMarkTransferDuplicates(rows);
+  rows = rows.filter(r => r.type !== 'transfer');
   const pool = data.budgetTransactions.filter(t => t.type === 'income' || t.type === 'expense');
   const used = new Set();
   const sameMoney = (t, r) => t.type === r.type && t.currency === r.currency && Math.abs(t.amount - r.amount) < 0.005;
@@ -567,11 +692,38 @@ function biMarkDuplicates(rows) {
     if (t) { used.add(t.id); r.replacesAuto = t; }
   });
 }
+/* A transfer already in Trackr: same amount and currency within 3 days, and the same places on
+   the sides the file names (at least one). An automatic recurring transfer of that month is
+   replaced by the real one, like for income and expenses. */
+function biMarkTransferDuplicates(rows, st) {
+  const pool = data.budgetTransactions.filter(t => t.type === 'transfer');
+  const used = new Set();
+  rows.filter(r => r.type === 'transfer' && !r.duplicate).forEach(r => {
+    delete r.replacesAuto;
+    const refs = biTransferRefs(r, st);
+    if (!refs.from && !refs.to) return;
+    const fits = t => !used.has(t.id) && t.currency === r.currency && Math.abs(t.amount - r.amount) < 0.005
+      && (!refs.from || t.from === refs.from) && (!refs.to || t.to === refs.to);
+    const t = pool.filter(t => fits(t) && (t.auto ? ymOf(t.date) === ymOf(r.date) : biDayDiff(t.date, r.date) <= 3))
+      .sort((x, y) => biDayDiff(x.date, r.date) - biDayDiff(y.date, r.date))[0];
+    if (!t) return;
+    used.add(t.id);
+    if (t.auto) r.replacesAuto = t;
+    else Object.assign(r, { duplicate: t.date === r.date ? 'exact' : 'likely', match: t, included: false });
+  });
+}
+/* A transfer row can only be ticked once both sides are known. */
+function biTransferReady(r, st) { return r.type !== 'transfer' || biTransferRefs(r, st).ok; }
+function biRefreshTransfers(st) {
+  st.rows.forEach(r => { if (r.type === 'transfer' && !biTransferReady(r, st)) r.included = false; });
+}
+
 /* Reads every sheet again with one date order (the preview's "read dates as…" switch). */
 function biBuild(sources, opts) {
   const rows = [], errors = [];
   sources.forEach(src => { const p = biParseRows(src, opts); rows.push(...p.rows); errors.push(...p.errors); });
   biMarkDuplicates(rows);
+  rows.forEach(r => { if (r.type === 'transfer' && !biTransferReady(r)) r.included = false; });
   rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   return { rows, errors };
 }
@@ -612,7 +764,7 @@ function biStartHtml(error) {
           <tbody>${BI_COLUMNS.map(c => `<tr><td style="font-weight:600;white-space:nowrap;">${escHtml(c.label)}</td><td>${c.required ? 'Yes' : ''}</td><td style="opacity:.7;">${escHtml(c.help)}</td></tr>`).join('')}</tbody>
         </table>
       </div>
-      <div style="font-size:12.5px;opacity:.6;margin-top:12px;line-height:1.5;">Column names can also be in French or Dutch, and a bank file with separate Debit / Credit columns works too. Budget → Export to Excel uses these same columns, so you can export, edit and re-import.</div>
+      <div style="font-size:12.5px;opacity:.6;margin-top:12px;line-height:1.5;">Column names can also be in French or Dutch, and a bank file with separate Debit / Credit columns works too. Budget → Export to Excel uses these same columns, so you can export, edit and re-import.<br>Transfers to your own accounts, pockets, brokers or exchanges are imported as transfers (not spending): Type "Transfer" with From and To in the template; in a bank file Trackr spots them from the name, and you can mark or unmark any row in the preview.</div>
     </div>`;
 }
 function biChooseFile() {
@@ -621,7 +773,7 @@ function biChooseFile() {
 }
 function biTemplateContext() {
   return {
-    categories: data.categories, accounts: data.accounts.map(a => a.name), paymentMethods: data.paymentMethods.map(p => p.name),
+    categories: data.categories, accounts: data.accounts.map(a => a.name), paymentMethods: data.paymentMethods.map(p => p.name), transferPlaces: biPlaceLabels(),
     currencies: CURRENCIES, defaultCurrency: data.settings.defaultCurrency || 'EUR', today: new Date(),
   };
 }
@@ -670,18 +822,20 @@ async function biHandleFile(file) {
 }
 
 function biSelectionSummary(st) {
-  const sel = st.rows.filter(r => r.included);
+  const sel = st.rows.filter(r => r.included && biTransferReady(r, st));
+  const transfers = sel.filter(r => r.type === 'transfer');
   const income = sel.filter(r => r.type === 'income').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
   const expenses = sel.filter(r => r.type === 'expense').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
   const dates = sel.map(r => r.date).sort();
   const newCats = new Set(), newSubs = new Set();
-  sel.forEach(r => {
+  sel.filter(r => r.type !== 'transfer').forEach(r => {
     if (r.newCategory) newCats.add(r.categoryName);
     if (r.newSub) newSubs.add(`${r.categoryName} › ${r.subName}`);
   });
-  return { count: sel.length, income, expenses, from: dates[0], to: dates[dates.length - 1], newCats: [...newCats], newSubs: [...newSubs], withAccount: sel.filter(r => r.accountId || st.defaultAccountId).length };
+  return { count: sel.length, income, expenses, transfers: transfers.length, moved: transfers.reduce((s, r) => s + toEUR(r.amount, r.currency), 0), from: dates[0], to: dates[dates.length - 1], newCats: [...newCats], newSubs: [...newSubs], withAccount: sel.filter(r => r.accountId || st.defaultAccountId).length };
 }
 const biFmt = ymd => fmtDate(ymdToDate(ymd)); // local day, never shifted by the time zone
+const needsOwn = st => st.rows.some(r => r.type === 'transfer' && r.ownSide && !r.accountId && !st.defaultAccountId && !r.duplicate);
 function biSummaryHtml(st) {
   const s = biSelectionSummary(st);
   const dup = st.rows.filter(r => r.duplicate).length, repl = st.rows.filter(r => r.replacesAuto && r.included).length;
@@ -697,6 +851,8 @@ function biSummaryHtml(st) {
       ${skip ? chip(`${skip} left out on purpose`) : ''}
       ${prob ? chip(`${prob} with a problem`, 'var(--negative)') : ''}
       ${s.count ? chip(`<span class="positive">+${fmtMoney(s.income)}</span>&nbsp;·&nbsp;<span class="negative">−${fmtMoney(s.expenses)}</span>`) : ''}
+      ${s.transfers ? chip(`⇄ ${s.transfers} transfer${s.transfers === 1 ? '' : 's'} · ${fmtMoney(s.moved)} moved`) : ''}
+      ${(() => { const n = st.rows.filter(r => r.type === 'transfer' && !r.duplicate && !biTransferReady(r, st)).length; return n ? chip(`${n} transfer${n === 1 ? '' : 's'} to complete: choose From / To${needsOwn(st) ? ', or the account for rows without one' : ''}`, 'var(--accent-1)') : ''; })()}
       ${s.count ? chip(`${escHtml(biFmt(s.from))}${s.to !== s.from ? ' → ' + escHtml(biFmt(s.to)) : ''}`) : ''}
     </div>
     ${s.newCats.length || s.newSubs.length ? `<div style="font-size:12.5px;line-height:1.5;margin-bottom:10px;">
@@ -720,7 +876,7 @@ function biRowStatus(r) {
     r.duplicate === 'likely' ? badge(`Probably already in Trackr: “${m.comment || 'no name'}”, ${biFmt(m.date)} — tick to import anyway`, '#E8963C') : '',
     a ? badge(`Replaces the automatic “${a.comment || 'recurring'}” entry of ${biFmt(a.date)}`, '#3B5BDB') : '',
     r.pending ? badge('Pending at your bank — tick to import it now', '#6B7080') : '',
-    r.recurring ? badge('recurring', '#6C63FF') : '',
+    r.recurring && r.type !== 'transfer' ? badge('recurring', '#6C63FF') : '',
   ].join('') + r.notes.map(n => `<div style="font-size:11.5px;opacity:.6;">${escHtml(n)}</div>`).join('');
 }
 function biErrorsHtml(st) {
@@ -741,22 +897,32 @@ function biErrorsHtml(st) {
 function biPreviewHtml(st) {
   const s = biSelectionSummary(st);
   const fallbackAcc = st.defaultAccountId ? accountById(st.defaultAccountId) : null;
-  const anyAccount = st.rows.some(r => r.accountId) || !!fallbackAcc;
-  const needsAccount = st.rows.some(r => !r.accountId);
+  const anyAccount = st.rows.some(r => r.accountId || r.type === 'transfer') || !!fallbackAcc;
+  const needsAccount = st.rows.some(r => !r.accountId && (r.type !== 'transfer' || r.ownSide));
   const badge = (text, color) => `<span class="badge" style="background:${color}22;color:${color};margin:1px 4px 1px 0;display:inline-block;">${escHtml(text)}</span>`;
   const multi = st.sheetNames && st.sheetNames.length > 1;
   const total = st.rows.length + st.errors.length;
-  const body = st.rows.map((r, i) => `
-    <tr class="${r.included ? '' : 'bi-off'}" id="bi-row-${i}">
-      <td><input type="checkbox" ${r.included ? 'checked' : ''} onchange="biToggleRow(${i}, this.checked)" aria-label="Import row ${r.rowNum}"></td>
+  const places = biPlaces();
+  const placeSelect = (i, side, ref) => `<select class="mini-select bi-place" onchange="biSetTransferSide(${i},'${side}',this.value)" aria-label="${side === 'from' ? 'From' : 'To'}">
+      <option value="">${side === 'from' ? 'From…' : 'To…'}</option>
+      ${places.map(p => `<option value="${escHtml(p.ref)}" ${p.ref === ref ? 'selected' : ''}>${escHtml(p.label)}</option>`).join('')}
+    </select>`;
+  const body = st.rows.map((r, i) => {
+    const tr = r.type === 'transfer', refs = tr ? biTransferRefs(r, st) : null;
+    return `
+    <tr class="${r.included ? '' : tr && !refs.ok && !r.duplicate ? 'bi-need' : 'bi-off'}" id="bi-row-${i}">
+      <td><input type="checkbox" ${r.included ? 'checked' : ''} ${tr && !refs.ok ? 'disabled title="Choose From and To first"' : ''} onchange="biToggleRow(${i}, this.checked)" aria-label="Import row ${r.rowNum}"></td>
       <td style="white-space:nowrap;">${escHtml(biFmt(r.date))}</td>
       <td><div style="font-weight:600;">${escHtml(r.name || '—')}</div>${r.description ? `<div style="font-size:11.5px;opacity:.55;">${escHtml(r.description)}</div>` : ''}${multi ? `<div style="font-size:11px;opacity:.45;">${escHtml(r.sheetName)}, row ${r.rowNum}</div>` : ''}</td>
-      <td>${escHtml(r.categoryName)}${r.subName ? ` <span style="opacity:.55;">› ${escHtml(r.subName)}</span>` : ''}
+      ${tr ? `<td colspan="2"><div class="bi-transfer-head">${badge('Transfer', '#3B5BDB')}<button class="link-btn" style="font-size:11.5px;" onclick="biUntransfer(${i})">Not a transfer</button></div>
+          <div class="bi-transfer"><span class="bi-side">From</span>${placeSelect(i, 'from', refs.from)}<span class="bi-side">To</span>${placeSelect(i, 'to', refs.to)}</div></td>`
+      : `<td>${escHtml(r.categoryName)}${r.subName ? ` <span style="opacity:.55;">› ${escHtml(r.subName)}</span>` : ''}
         ${r.newCategory ? badge('new category', '#4FA6D9') : r.newSub ? badge('new sub-category', '#4FA6D9') : ''}</td>
-      <td style="white-space:nowrap;">${r.accountName ? escHtml(r.accountName) : fallbackAcc ? `<span style="opacity:.6;">${escHtml(fallbackAcc.name)}</span>` : '—'}</td>
-      <td class="num ${r.type === 'income' ? 'positive' : 'negative'}" style="white-space:nowrap;font-weight:700;">${r.type === 'income' ? '+' : '−'}${fmtMoney(r.amount, r.currency)}</td>
-      <td style="min-width:180px;">${biRowStatus(r)}</td>
-    </tr>`).join('');
+      <td style="white-space:nowrap;">${r.accountName ? escHtml(r.accountName) : fallbackAcc ? `<span style="opacity:.6;">${escHtml(fallbackAcc.name)}</span>` : '—'}</td>`}
+      <td class="num ${tr ? '' : r.type === 'income' ? 'positive' : 'negative'}" style="white-space:nowrap;font-weight:700;">${tr ? '⇄ ' : r.type === 'income' ? '+' : '−'}${fmtMoney(r.amount, r.currency)}</td>
+      <td style="min-width:180px;">${biRowStatus(r)}${!tr && places.length > 1 ? `<button class="link-btn" style="font-size:11.5px;" onclick="biMakeTransfer(${i})">It's a transfer</button>` : ''}</td>
+    </tr>`;
+  }).join('');
   return `
     <div class="card" style="margin-bottom:16px;">
       <div class="row-flex" style="margin-bottom:10px;gap:10px;flex-wrap:wrap;">
@@ -775,13 +941,13 @@ function biPreviewHtml(st) {
       </details>
       ${needsAccount && data.accounts.length ? `<label class="row-flex" style="gap:12px;margin-bottom:10px;">
         <span style="font-size:13px;line-height:1.45;"><strong>Account for rows without one</strong><br><span style="opacity:.6;">Handy for a bank statement: link every row to that bank account.</span></span>
-        <select onchange="ui.budgetImport.defaultAccountId=this.value;render();" style="max-width:180px;flex:none;">
+        <select onchange="biSetDefaultAccount(this.value)" style="max-width:180px;flex:none;">
           <option value="">None</option>
           ${data.accounts.map(a => `<option value="${a.id}" ${st.defaultAccountId === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}
         </select>
       </label>` : ''}
       ${anyAccount ? `<label class="row-flex" style="gap:12px;cursor:pointer;margin-bottom:4px;">
-        <span style="font-size:13px;line-height:1.45;"><strong>Also update account balances</strong><br><span style="opacity:.6;">Leave off if your balances on the Accounts page already include these transactions (usual for a bank statement) — otherwise they'd be counted twice.</span></span>
+        <span style="font-size:13px;line-height:1.45;"><strong>Also update balances</strong><br><span style="opacity:.6;">Accounts, and for transfers the pockets and broker / exchange cash too. Leave off if they already include these transactions (usual for a bank statement) — otherwise they'd be counted twice.</span></span>
         <input type="checkbox" ${st.updateBalances ? 'checked' : ''} onchange="ui.budgetImport.updateBalances=this.checked" style="width:18px;height:18px;flex:none;">
       </label>` : ''}
     </div>
@@ -806,9 +972,10 @@ const biImportLabel = n => (n ? `Import ${n} transaction${n === 1 ? '' : 's'}` :
 function biToggleRow(i, on) {
   const st = ui.budgetImport;
   if (!st || !st.rows[i]) return;
+  if (on && !biTransferReady(st.rows[i], st)) { render(); return; }
   st.rows[i].included = on;
   const tr = document.getElementById('bi-row-' + i);
-  if (tr) tr.classList.toggle('bi-off', !on);
+  if (tr) { tr.classList.toggle('bi-off', !on); tr.classList.remove('bi-need'); }
   const sum = document.getElementById('bi-summary');
   if (sum) sum.innerHTML = biSummaryHtml(st);
   const btn = document.getElementById('bi-import-btn');
@@ -819,19 +986,86 @@ function biToggleRow(i, on) {
     btn.style.opacity = n ? '' : '.5';
   }
 }
-function biSelectAll(on) { ui.budgetImport.rows.forEach(r => { r.included = on; }); render(); }
+function biSelectAll(on) { const st = ui.budgetImport; st.rows.forEach(r => { r.included = on && biTransferReady(r, st); }); render(); }
+/* Preview: the transfer's From / To, chosen or corrected. */
+function biSetTransferSide(i, side, ref) {
+  const st = ui.budgetImport, r = st && st.rows[i];
+  if (!r) return;
+  if (side === 'from') r.fromRef = ref || null; else r.toRef = ref || null;
+  if (r.ownSide === side) r.ownSide = null;   // chosen by hand: no longer "the statement's account"
+  r.duplicate = false;
+  biMarkTransferDuplicates([r], st);
+  if (!r.duplicate) r.included = biTransferReady(r, st) && !r.pending;
+  render();
+}
+function biSetDefaultAccount(id) {
+  const st = ui.budgetImport;
+  st.defaultAccountId = id;
+  st.rows.forEach(r => {
+    if (r.type !== 'transfer' || !r.ownSide || r.duplicate) return;
+    r.duplicate = false;
+    biMarkTransferDuplicates([r], st);
+    if (!r.duplicate) r.included = biTransferReady(r, st) && !r.pending;
+  });
+  render();
+}
+/* "Not a transfer": back to income / expense as it would have been read. */
+function biUntransfer(i) {
+  const st = ui.budgetImport, r = st && st.rows[i];
+  if (!r || !r.plain) return;
+  const p = r.plain;
+  Object.assign(r, { type: p.type, categoryId: p.categoryId, categoryName: p.categoryName, newCategory: p.newCategory, subCategoryId: p.subCategoryId, subName: p.subName, newSub: p.newSub, notes: p.notes.slice(), fromRef: null, toRef: null, ownSide: null, duplicate: false, match: null, detected: '' });
+  delete r.replacesAuto;
+  biMarkDuplicates([r]);
+  if (!r.duplicate) r.included = !r.pending;
+  render();
+}
+/* "It's a transfer": the statement's account on one side (by the sign), the other found from the
+   name or chosen. */
+function biMakeTransfer(i) {
+  const st = ui.budgetImport, r = st && st.rows[i];
+  if (!r) return;
+  biMakeTransferRow(Object.assign(r, { duplicate: false, match: null }), '', '');
+  delete r.replacesAuto;
+  biMarkTransferDuplicates([r], st);
+  if (!r.duplicate) r.included = biTransferReady(r, st) && !r.pending;
+  render();
+}
 function biCancel() { ui.budgetImport = null; render(); }
 
 async function biApply() {
   const st = ui.budgetImport;
   if (!st) return;
-  const sel = st.rows.filter(r => r.included);
+  const sel = st.rows.filter(r => r.included && biTransferReady(r, st));
   if (!sel.length) return;
   const created = { cats: 0, subs: 0 };
   const imported = [];
   let replaced = 0;
   sel.forEach(r => {
     const kind = r.type;
+    if (kind === 'transfer') {
+      const refs = biTransferRefs(r, st);
+      if (!refs.ok) return;
+      const record = {
+        id: uid('tx'), date: r.date, type: 'transfer', categoryId: null, subCategoryId: null, nature: 'Variable',
+        paymentMethodId: null, accountId: null, currency: r.currency, amount: r.amount, comment: r.name, location: '', description: r.description, logo: '', impact: '',
+        from: refs.from, to: refs.to, fromLabel: transferEndpoint(refs.from).label, toLabel: transferEndpoint(refs.to).label,
+      };
+      const auto = r.replacesAuto && data.budgetTransactions.find(t => t.id === r.replacesAuto.id);
+      if (auto) {
+        Object.assign(record, { nature: 'Fixed', recurringId: auto.recurringId });
+        applyTxToAccountBalance(auto, -1);
+        data.budgetTransactions = data.budgetTransactions.filter(t => t !== auto);
+        data.budgetTransactions.push(record);
+        applyTxToAccountBalance(record, 1);
+        replaced++;
+      } else {
+        data.budgetTransactions.push(record);
+        if (st.updateBalances) applyTxToAccountBalance(record, 1);
+      }
+      imported.push(record);
+      return;
+    }
     // Always re-checked against live data, so two rows naming the same new category create it once.
     let cat = (r.categoryId && (data.categories[kind] || []).find(c => c.id === r.categoryId))
       || (data.categories[kind] || []).find(c => biNorm(c.name) === biNorm(r.categoryName));
@@ -882,13 +1116,14 @@ async function biApply() {
   }
   await save();
   const dates = sel.map(r => r.date).sort();
-  ui.budgetImport = { step: 'done', count: sel.length, from: dates[0], to: dates[dates.length - 1], created, replaced, balances: st.updateBalances && sel.some(r => r.accountId || st.defaultAccountId), fileName: st.fileName };
+  ui.budgetImport = { step: 'done', count: sel.length, transfers: imported.filter(t => t.type === 'transfer').length, from: dates[0], to: dates[dates.length - 1], created, replaced, balances: st.updateBalances && sel.some(r => r.accountId || st.defaultAccountId || r.type === 'transfer'), fileName: st.fileName };
   render();
 }
 function biDoneHtml(st) {
   const extra = [
     st.created.cats ? `${st.created.cats} new categor${st.created.cats === 1 ? 'y' : 'ies'}` : '',
     st.created.subs ? `${st.created.subs} new sub-categor${st.created.subs === 1 ? 'y' : 'ies'}` : '',
+    st.transfers ? `${st.transfers} transfer${st.transfers === 1 ? '' : 's'}` : '',
     st.replaced ? `${st.replaced} automatic recurring entr${st.replaced === 1 ? 'y' : 'ies'} replaced by the real one` : '',
     st.balances ? 'account balances updated' : '',
   ].filter(Boolean).join(' · ');

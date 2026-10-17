@@ -1082,3 +1082,43 @@ html.compact .tab-row { margin-bottom: 12px; }
 .safety-toast.warn { box-shadow: inset 4px 0 0 var(--negative), 0 10px 30px rgba(0,0,0,.25); }
 .safety-toast.good { box-shadow: inset 4px 0 0 var(--positive), 0 10px 30px rgba(0,0,0,.25); }
 .recap-banner .close-x { flex: none; }
+
+/* ============ Budget: month timeline ============ */
+.bt.card { padding: 14px 14px 10px; margin-bottom: 18px; }
+.bt-head { display: flex; align-items: center; gap: 12px; }
+.bt-head .icon-btn-round { flex: none; display: inline-flex; align-items: center; justify-content: center; }
+.bt-head .icon-btn-round:disabled { opacity: .3; cursor: default; }
+.bt-title { flex: 1; text-align: center; min-width: 0; }
+.bt-month { font-weight: 800; font-size: 17px; letter-spacing: -.01em; }
+.bt-sub { font-size: 12.5px; opacity: .85; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bt-sub > span { font-weight: 600; }
+.bt-strip { display: flex; gap: 4px; overflow-x: auto; margin: 12px -4px 0; padding: 0 4px 4px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+.bt-strip::-webkit-scrollbar { height: 4px; }
+.bt-strip > :first-child { margin-left: auto; } .bt-strip > :last-child { margin-right: auto; }   /* centred when few, scrolls when many */
+.bt-strip::-webkit-scrollbar-thumb { background: var(--light-border); border-radius: 10px; }
+.bt-m { flex: 1 0 52px; max-width: 92px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 0 7px; border: none; background: none; border-radius: 12px; cursor: pointer; font: inherit; color: inherit; scroll-snap-align: center; transition: background-color .15s ease; }
+.bt-m:hover { background: rgba(128,128,128,.08); }
+.bt-y { height: 12px; font-size: 10px; font-weight: 700; opacity: .45; letter-spacing: .02em; }
+.bt-bars { height: 40px; display: flex; align-items: flex-end; gap: 3px; }
+.bt-bars i { display: block; width: 7px; border-radius: 3px 3px 1px 1px; transition: height .35s ease; }
+.bt-bars i.in, .bt-key i.in { background: var(--positive); opacity: .45; }
+.bt-bars i.out, .bt-key i.out { background: var(--negative); opacity: .45; }
+.bt-l { font-size: 12.5px; font-weight: 600; opacity: .6; padding: 2px 8px; border-radius: 999px; }
+.bt-m.now .bt-l { box-shadow: inset 0 0 0 1.5px var(--light-accent-1); opacity: .9; }
+.bt-m.on .bt-bars i { opacity: 1; }
+.bt-m.on .bt-l { background: var(--light-accent-1); color: #fff; opacity: 1; }
+.bt-m.empty .bt-l { opacity: .35; }
+.bt-foot { display: flex; align-items: center; gap: 14px; margin-top: 6px; font-size: 11.5px; }
+.bt-key { display: inline-flex; align-items: center; gap: 5px; opacity: .6; }
+.bt-key i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+.bt-foot .link-btn { margin-left: auto; }
+@media (max-width: 640px) { .bt-m { flex-basis: 46px; } .bt-month { font-size: 16px; } .bt-strip { scrollbar-width: none; } .bt-strip::-webkit-scrollbar { display: none; } }
+
+/* Budget import: transfer rows */
+.bi-transfer-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.bi-transfer-head .badge { margin: 0 !important; }
+.bi-transfer { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 8px; align-items: center; min-width: 210px; }
+.bi-side { font-size: 11.5px; opacity: .55; font-weight: 600; }
+.bi-transfer .bi-place { width: 100%; max-width: 240px; padding-top: 5px; padding-bottom: 5px; }
+.bi-table tr.bi-need td { background: rgba(59,91,219,.05); }
+.bi-table tr.bi-need td:first-child { box-shadow: inset 3px 0 0 var(--light-accent-1); }

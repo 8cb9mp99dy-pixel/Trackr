@@ -2814,12 +2814,7 @@ function budgetTransactionsTab() {
   const atMin = m.getFullYear() === minMonth.getFullYear() && m.getMonth() === minMonth.getMonth();
   const investedCardHtmlStr = investedCardHtml(m);
   return `
-    <div class="row-flex" style="margin-bottom:10px;">
-      <button class="icon-btn-round" onclick="shiftBudgetMonth(-1)" ${atMin ? 'style="opacity:.3;cursor:default;" disabled' : ''}>‹</button>
-      <div style="font-weight:700;font-size:16px;">${monthLabel(m)}</div>
-      <button class="icon-btn-round" onclick="shiftBudgetMonth(1)">›</button>
-    </div>
-    ${budgetMonthPillsHtml(m)}
+    ${budgetTimelineHtml(m)}
 
     ${categoryFoldHtml(m, expenseSegments, incomeSegments, animateCharts)}
     ${budgetsGlanceHtml(m)}
@@ -2949,11 +2944,7 @@ function budgetLimitsTab() {
   const minMonth = budgetMinMonth();
   const atMin = m.getFullYear() === minMonth.getFullYear() && m.getMonth() === minMonth.getMonth();
   return `
-    <div class="row-flex" style="margin-bottom:12px;">
-      <button class="icon-btn-round" onclick="shiftBudgetMonth(-1)" ${atMin ? 'style="opacity:.3;cursor:default;" disabled' : ''}>‹</button>
-      <div style="font-weight:700;font-size:16px;">${monthLabel(m)}</div>
-      <button class="icon-btn-round" onclick="shiftBudgetMonth(1)">›</button>
-    </div>
+    ${budgetTimelineHtml(m)}
     ${withLimit.length ? `
     <div class="card" style="margin-bottom:16px;">
       <div class="row-flex" style="align-items:baseline;"><div class="eyebrow">Planned this month</div><div style="font-size:13px;opacity:.7;">${over ? `<span class="negative">${over} over</span>` : 'all on track'}</div></div>
@@ -3287,19 +3278,76 @@ function investedCardHtml(monthDate) {
    forward — never earlier than budgetMinMonth(), since no data exists before it) — click any
    pill to jump straight to that month, Revolut-style. Always includes every future month you
    page into, so the timeline naturally keeps extending as time passes. */
-function budgetMonthPillsHtml(m) {
+/* ---- Month timeline (Budget → Transactions) ----
+   Every month from your first transaction to today, side by side: two small bars per month — what
+   came in and what went out, on one scale for the whole strip — so the busy and the quiet months
+   show at a glance. Tap a month to open it; ‹ › step one month; "This month" comes back to today.
+   The strip scrolls by itself so the open month sits in the middle. Bars are sizes only: with the
+   eye off, the amounts in the tooltips are hidden like everywhere else. */
+function budgetMaxMonth() {
+  const t = appToday();
+  let max = new Date(t.getFullYear(), t.getMonth(), 1);
+  (data.budgetTransactions || []).forEach(x => {
+    if (x.nature === 'Fixed' && x.date > todayYmd()) return;   // an automatic entry that isn't due yet
+    const d = ymdToDate(x.date);
+    if (!isNaN(d)) { const m = new Date(d.getFullYear(), d.getMonth(), 1); if (m > max) max = m; }
+  });
+  return max;
+}
+function budgetTimelineHtml(m) {
+  const min = budgetMinMonth(), max = budgetMaxMonth(), now = appToday();
   const months = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(m.getFullYear(), m.getMonth() - i, 1);
-    if (d >= budgetMinMonth()) months.push(d);
-  }
-  if (!months.length) months.push(new Date(m.getFullYear(), m.getMonth(), 1));
-  return `<div class="chip-scroll" style="margin-bottom:18px;">
-    ${months.map(d => {
-      const active = d.getFullYear() === m.getFullYear() && d.getMonth() === m.getMonth();
-      return `<span class="chip" style="cursor:pointer;${active ? 'background:var(--light-accent-1);border-color:var(--light-accent-1);color:#fff;' : ''}" onclick="setBudgetMonthTo(${d.getFullYear()},${d.getMonth()})">${d.toLocaleDateString('en-US', { month: 'short' })}</span>`;
-    }).join('')}
-  </div>`;
+  for (let d = new Date(min); d <= max && months.length < 240; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push(d);
+  const sums = months.map(d => {
+    const txs = monthTransactions(d);
+    const sum = type => txs.filter(t => t.type === type).reduce((s, t) => s + toEUR(t.amount, t.currency), 0);
+    return { d, inc: sum('income'), exp: sum('expense'), n: txs.length };
+  });
+  const top = Math.max(1, ...sums.map(x => Math.max(x.inc, x.exp)));
+  const same = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+  const isNow = same(m, now), atMin = same(m, min) || m < min, atMax = same(m, max) || m > max;
+  const cur = sums.find(x => same(x.d, m)) || { inc: 0, exp: 0, n: 0 };
+  const daysLeft = isNow ? new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate() : null;
+  const h = v => (v > 0 ? Math.max(3, Math.round(v / top * 38)) : 0);
+  setTimeout(budgetTimelineScroll, 0);
+  return `
+    <div class="bt card">
+      <div class="bt-head">
+        <button class="icon-btn-round" onclick="shiftBudgetMonth(-1)" ${atMin ? 'disabled' : ''} aria-label="Previous month">${ic('chevronLeft', 16)}</button>
+        <div class="bt-title">
+          <div class="bt-month">${escHtml(monthLabel(m))}</div>
+          <div class="bt-sub">${[cur.n ? `${cur.n} transaction${cur.n === 1 ? '' : 's'}` : 'Nothing logged yet', daysLeft != null ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} left` : ''].filter(Boolean).join(' · ')}</div>
+        </div>
+        <button class="icon-btn-round" onclick="shiftBudgetMonth(1)" ${atMax ? 'disabled' : ''} aria-label="Next month">${ic('chevronRight', 16)}</button>
+      </div>
+      <div class="bt-strip" id="bt-strip" role="tablist" aria-label="Months">
+        ${sums.map((x, i) => {
+          const on = same(x.d, m), first = i === 0 || x.d.getMonth() === 0;
+          const tip = `${monthLabel(x.d)} — in ${fmtMoney(x.inc)}, out ${fmtMoney(x.exp)}`;
+          return `<button class="bt-m ${on ? 'on' : ''} ${same(x.d, now) ? 'now' : ''} ${x.n ? '' : 'empty'}" role="tab" aria-selected="${on}" title="${escHtml(tip)}" onclick="setBudgetMonthTo(${x.d.getFullYear()},${x.d.getMonth()})">
+            <span class="bt-y">${first ? x.d.getFullYear() : ''}</span>
+            <span class="bt-bars"><i class="in" style="height:${h(x.inc)}px"></i><i class="out" style="height:${h(x.exp)}px"></i></span>
+            <span class="bt-l">${x.d.toLocaleDateString('en-US', { month: 'short' })}</span>
+          </button>`;
+        }).join('')}
+      </div>
+      <div class="bt-foot">
+        <span class="bt-key"><i class="in"></i>In</span><span class="bt-key"><i class="out"></i>Out</span>
+        ${isNow ? '' : `<button class="link-btn" onclick="setBudgetMonthTo(${now.getFullYear()},${now.getMonth()})">This month</button>`}
+      </div>
+    </div>`;
+}
+/* Keeps the open month in the middle of the strip (smoothly when you move, at once on arrival). */
+let budgetTimelineLast = null;
+function budgetTimelineScroll() {
+  const strip = document.getElementById('bt-strip');
+  const on = strip && strip.querySelector('.bt-m.on');
+  if (!on) return;
+  const key = on.getAttribute('title');
+  const left = on.offsetLeft - strip.clientWidth / 2 + on.offsetWidth / 2;
+  const reduced = typeof motionReduced === 'function' && motionReduced();
+  strip.scrollTo({ left, behavior: budgetTimelineLast && budgetTimelineLast !== key && !reduced ? 'smooth' : 'auto' });
+  budgetTimelineLast = key;
 }
 function setBudgetMonthTo(year, month) {
   const d = new Date(year, month, 1);
@@ -3608,6 +3656,7 @@ function budgetRecurringTab() {
 function shiftBudgetMonth(delta) {
   const d = new Date(ui.budgetMonth); d.setMonth(d.getMonth() + delta);
   if (d < budgetMinMonth()) return;
+  if (delta > 0 && ui.budgetTab !== 'recurring' && ui.budgetTab !== 'totals' && d > budgetMaxMonth()) return;
   ui.budgetMonth = d; ui.investedAnimate = true; render();
 }
 /* Real per-category totals for the month, powering the "Spending by category" and "Income by
@@ -6220,13 +6269,16 @@ const BUDGET_TX_EXPORT_COLUMNS = {
   'Date': { width: 85, type: 'Date', value: t => t.date },
   'Name / Payee': { width: 170, type: 'String', value: t => t.comment || '' },
   'Category': { width: 150, type: 'String', value: t => t.type === 'transfer' ? 'Transfer' : (categoryById(t.type, t.categoryId) || {}).name || '' },
-  'Sub-category': { width: 150, type: 'String', value: t => { if (t.type === 'transfer') return `${(transferEndpoint(t.from) || {}).label || t.fromLabel || '?'} → ${(transferEndpoint(t.to) || {}).label || t.toLabel || '?'}`; const cat = categoryById(t.type, t.categoryId); const sub = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null; return sub ? sub.name : ''; } },
+  'Sub-category': { width: 150, type: 'String', value: t => { if (t.type === 'transfer') return ''; const cat = categoryById(t.type, t.categoryId); const sub = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null; return sub ? sub.name : ''; } },
   'Amount': { width: 95, type: 'Number', value: t => t.amount },
   'Currency': { width: 70, type: 'String', value: t => t.currency },
-  'Type': { width: 75, type: 'String', value: t => t.type },
+  'Type': { width: 75, type: 'String', value: t => ({ income: 'Income', expense: 'Expense', transfer: 'Transfer' })[t.type] || t.type },
   'Nature': { width: 90, type: 'String', value: t => t.nature },
   'Payment Method': { width: 125, type: 'String', value: t => (paymentMethodById(t.paymentMethodId) || {}).name || '' },
   'Account': { width: 130, type: 'String', value: t => (t.accountId && accountById(t.accountId) || {}).name || '' },
+  // Transfers: where the money left and arrived — the same names the import template's From / To lists use.
+  'From': { width: 150, type: 'String', value: t => (t.type === 'transfer' ? (transferEndpoint(t.from) || {}).label || t.fromLabel || '' : '') },
+  'To': { width: 150, type: 'String', value: t => (t.type === 'transfer' ? (transferEndpoint(t.to) || {}).label || t.toLabel || '' : '') },
   'Personal Impact': { width: 100, type: 'String', value: t => t.impact === 'positive' ? 'Positive' : t.impact === 'negative' ? 'Negative' : '' },
   'Location': { width: 130, type: 'String', value: t => t.location || '' },
   'Description': { width: 220, type: 'String', value: t => t.description || '' },

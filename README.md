@@ -22,10 +22,11 @@ just open a file in your browser.
   Settings → Logos & Images, and is applied automatically to a new bank,
   broker or payee with a matching name (`Trade_Republic.png` → "Trade Republic").
 - `templates/Trackr-transactions-template.xlsx` — blank template for importing
-  income & expenses (Budget → Import). Same fields as Budget → Add transaction,
-  with drop-down lists (Category follows Type, Sub-category follows Category).
-  The in-app "Download template" button builds the same file with *your*
-  current categories, accounts and payment methods. Regenerate the shipped copy
+  income, expenses and transfers (Budget → Import). Same fields as Budget → Add transaction,
+  with drop-down lists (Category follows Type, Sub-category follows Category). A transfer
+  between your own places (bank account → pocket, another account, a broker or exchange) is
+  Type "Transfer" with From and To. The in-app "Download template" button builds the same file
+  with *your* current categories, accounts, pockets, brokers and payment methods. Regenerate the shipped copy
   after changing the default categories: `node tools/build-budget-template.js`.
 - `templates/Trackr-positions-template.xlsx` — template for updating your brokers
   (Investments → Import Excel): one row per position with ISIN, quantity, average buy
