@@ -2345,7 +2345,8 @@ function renderModal() {
   const renderers = window.__modalRenderers || {};
   const fn = renderers[ui.modal.type];
   if (!fn) return '';
-  return `<div class="modal-backdrop" onclick="if(event.target===this) closeModal()"><div class="modal">${fn(ui.modal.payload)}</div></div>`;
+  const wide = ui.modal.type === 'goalView' ? ' modal-wide modal-flush' : '';
+  return `<div class="modal-backdrop" onclick="if(event.target===this) closeModal()"><div class="modal${wide}">${fn(ui.modal.payload)}</div></div>`;
 }
 window.__modalRenderers = {};
 
@@ -2614,6 +2615,7 @@ function pocketRowHtml(acc, p) {
         <div>
           <div style="font-weight:600;font-size:13.5px;">${escHtml(p.name)}</div>
           <div style="font-size:12px;opacity:.6;">${fmtMoney(p.amountSaved, acc.currency)}${p.targetAmount ? ' / ' + fmtMoney(p.targetAmount, acc.currency) + ' · ' + pct.toFixed(0) + '%' : ''}</div>
+          ${(() => { const g = typeof goalForPocket === 'function' && goalForPocket(acc.id, p.id); return g ? `<button class="pk-goal" onclick="event.stopPropagation();goPage('goals');openGoalView('${g.id}')">${ic('target', 12)} Goal: ${escHtml(g.name)}</button>` : ''; })()}
         </div>
       </div>
       <div style="display:flex;gap:2px;">
@@ -6633,7 +6635,60 @@ $$;
 
 grant execute on function save_trackr_backup(text, date, jsonb) to anon;
 grant execute on function list_trackr_backups(text) to anon;
-grant execute on function get_trackr_backup(text, date) to anon;`;
+grant execute on function get_trackr_backup(text, date) to anon;
+
+-- Photos of your goals, kept apart from your data so the data stays small and quick to sync.
+-- One row per photo; same protection as above: only reachable with your secret.
+create table if not exists trackr_images (
+  id text primary key,
+  owner text not null,
+  data text not null,
+  saved_at timestamptz not null default now()
+);
+alter table trackr_images enable row level security;
+
+create or replace function set_trackr_image(secret text, p_id text, p_data text)
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  owner_id text := encode(digest(secret, 'sha256'), 'hex');
+begin
+  if not exists (select 1 from trackr_data where id = owner_id) then
+    return;
+  end if;
+  if length(p_data) > 4000000 then
+    raise exception 'photo too large';
+  end if;
+  insert into trackr_images (id, owner, data, saved_at) values (owner_id || ':' || p_id, owner_id, p_data, now())
+  on conflict (id) do update set data = excluded.data, saved_at = excluded.saved_at;
+end;
+$$;
+
+create or replace function get_trackr_image(secret text, p_id text)
+returns text
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  select i.data from trackr_images i
+   where i.id = encode(digest(secret, 'sha256'), 'hex') || ':' || p_id;
+$$;
+
+create or replace function delete_trackr_image(secret text, p_id text)
+returns void
+language sql
+security definer
+set search_path = public, extensions
+as $$
+  delete from trackr_images where id = encode(digest(secret, 'sha256'), 'hex') || ':' || p_id;
+$$;
+
+grant execute on function set_trackr_image(text, text, text) to anon;
+grant execute on function get_trackr_image(text, text) to anon;
+grant execute on function delete_trackr_image(text, text) to anon;`;
 function toggleSupabaseSetupSql() { ui.supabaseSetupSqlOpen = !ui.supabaseSetupSqlOpen; render(); }
 function toggleSupabaseManualSetup() { ui.supabaseManualOpen = !ui.supabaseManualOpen; render(); }
 /* The setup code is the three connection values (project URL, anon key, secret) packed into one

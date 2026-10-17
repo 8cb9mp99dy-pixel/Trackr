@@ -74,8 +74,19 @@ function linksMonthlyPace(links) {
 }
 
 function goalState(g) {
-  const current = linksValue(g.links), target = +g.target || 0;
-  const pace = linksMonthlyPace(g.links);
+  const current = linksValue(g.links), target = goalTarget(g);
+  // A pocket goal: the pace is what you really moved into the pocket over the last 3 months
+  // (at least one month counted). Otherwise: how fast the followed money grew (daily history).
+  let pace = null;
+  if (g.pocket) {
+    const from = dateToYmd(new Date(Date.now() - 91 * 86400000));
+    const mv = pocketMoves(g.pocket).filter(m => m.date >= from);
+    if (mv.length) {
+      const since = mv[mv.length - 1].date;
+      const months = Math.max(1, (Date.now() - ymdToDate(since).getTime()) / (30.44 * 86400000));
+      pace = { perMonth: mv.reduce((t, m) => t + m.amount, 0) / months, since };
+    }
+  } else pace = linksMonthlyPace(g.links);
   const typed = +g.monthly > 0 ? +g.monthly : null;
   const perMonth = typed != null ? typed : pace ? pace.perMonth : null;
   const left = Math.max(0, target - current);
@@ -164,94 +175,262 @@ function goalsTimelineHtml() {
       ${marks.length ? '' : '<div style="font-size:12.5px;opacity:.55;margin-top:6px;">Your goals appear here on the year they should be reached.</div>'}
     </div>`;
 }
+/* ---- Goals and pockets ----
+   A goal usually lives in a pocket (Accounts → an account → its pockets): the goal's progress is
+   the pocket's balance — which your transfers in Budget already keep up to date — and the goal's
+   target is the pocket's target (change one, the other follows). A goal can instead follow other
+   money (whole net worth, investments, accounts…). */
+function pocketByRef(ref) {
+  const m = /^pk:([^:]+):(.+)$/.exec(ref || '');
+  const a = m && accountById(m[1]);
+  const p = a && (a.pockets || []).find(x => x.id === m[2]);
+  return p ? { a, p, ref } : null;
+}
+function goalForPocket(accId, pkId) { return (data.goals || []).find(g => g.pocket === `pk:${accId}:${pkId}`) || null; }
+function goalTarget(g) {
+  const pk = pocketByRef(g.pocket);
+  return pk && +pk.p.targetAmount > 0 ? toEUR(+pk.p.targetAmount, pk.a.currency) : (+g.target || 0);
+}
+/* Money moved into / out of a pocket through Budget transfers, newest first. */
+function pocketMoves(ref) {
+  return (data.budgetTransactions || []).filter(t => t.type === 'transfer' && (t.to === ref || t.from === ref))
+    .map(t => ({ date: t.date, amount: (t.to === ref ? 1 : -1) * toEUR(t.amount, t.currency), other: t.to === ref ? (t.fromLabel || '') : (t.toLabel || ''), comment: t.comment || '' }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+function goalColor(g) { return g.color || hashColor(g.name || 'goal'); }
+
+/* ---- The showroom ---- */
 function goalsTabHtml() {
   const goals = data.goals || [];
   return `
-    <button class="btn primary" style="margin-bottom:14px;" onclick="openGoalForm()">${ic('plus', 15)} Add a goal</button>
-    ${goals.length ? `<div class="goal-grid">${goals.map(goalCardHtml).join('')}</div>` : `
-      <div class="card"><div class="empty-state"><div class="title">No goals yet</div><div class="sub">A trip, a flat deposit, financial independence… set an amount and pick the money that counts toward it.</div></div></div>`}`;
+    <div class="gs-grid">
+      ${goals.map(goalShowCardHtml).join('')}
+      <button class="gs-add" onclick="openGoalForm()"><span class="gs-add-ic">${ic('plus', 22)}</span><span><b>New goal</b><span>A trip, a car, a flat deposit…</span></span></button>
+    </div>`;
 }
-function goalCardHtml(g) {
+function goalShowCardHtml(g) {
   const s = goalState(g);
   const [label, tone] = GOAL_STATUS[s.status];
-  const paceTxt = s.perMonth == null
-    ? 'Needs 30 days of history to estimate — or type a monthly amount'
-    : s.typed ? `${fmtMoney(s.perMonth)} a month (typed by you)`
-    : `${s.perMonth >= 0 ? '+' : '−'}${fmtMoney(Math.abs(s.perMonth))} a month since ${shortDay(s.pace.since)}`;
+  const photos = g.photos || [];
+  const cover = photos.length ? photoUrl(photos[0].id) : null;
+  const pk = pocketByRef(g.pocket);
+  const where = pk ? `${ic('wallet', 13)} ${escHtml(pk.p.name)} · ${escHtml(pk.a.name)}` : g.pocket ? `${ic('alert', 13)} Pocket removed` : escHtml((g.links || []).map(id => sourceLabel(id) || 'Removed').join(' · '));
   return `
-    <div class="card goal-card">
-      <div class="row-flex" style="gap:8px;align-items:flex-start;">
-        <div style="display:flex;gap:10px;align-items:center;min-width:0;"><span class="goal-icon">${escHtml(g.icon || '🎯')}</span><div class="nm"><div class="nm-1" style="font-size:15px;">${escHtml(g.name)}</div><div class="nm-2">${s.status === 'done' ? 'Target reached' : s.eta ? durationText(s.months) + ' · ' + s.eta.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : 'No date yet'}${g.targetDate ? ` · aim: ${ymdToDate(g.targetDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''}</div></div></div>
-        <span class="status-pill ${tone}">${label}</span>
+    <article class="gs-card" style="--gs-c:${goalColor(g)};" onclick="openGoalView('${g.id}')" tabindex="0" onkeydown="if(event.key==='Enter')openGoalView('${g.id}')">
+      <div class="gs-media">
+        ${cover ? `<img src="${cover}" alt="" loading="lazy">` : `<div class="gs-emoji">${escHtml(g.icon || '🎯')}</div>`}
+        <div class="gs-shade"></div>
+        <span class="status-pill ${tone} gs-status">${label}</span>
+        ${photos.length > 1 ? `<span class="gs-count">${ic('photo', 13)} ${photos.length}</span>` : ''}
+        <div class="gs-title"><div class="gs-name">${escHtml(g.icon || '')} ${escHtml(g.name)}</div><div class="gs-eta">${s.status === 'done' ? 'Target reached' : s.eta ? `${durationText(s.months)} · ${s.eta.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : g.targetDate ? `Aim: ${ymdToDate(g.targetDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : 'No date yet'}</div></div>
       </div>
-      <div class="goal-amounts"><b>${fmtMoney(s.current)}</b><span>of ${fmtMoney(s.target)}</span><span class="goal-pct">${s.pct.toFixed(0)}%</span></div>
-      <div class="goal-bar"><span style="width:${s.pct.toFixed(1)}%;"></span></div>
-      <div style="font-size:12px;opacity:.6;margin-top:8px;">${paceTxt}</div>
-      <div class="chip-scroll" style="margin-top:10px;">${(g.links || []).map(id => `<span class="chip" style="font-size:11.5px;">${escHtml(sourceLabel(id) || 'Removed')}</span>`).join('') || '<span class="dim">No money linked</span>'}</div>
-      <div style="display:flex;gap:8px;margin-top:12px;"><button class="btn small" onclick="openGoalForm('${g.id}')">${ic('edit', 14)} Edit</button><button class="btn small ghost" style="color:var(--negative);" onclick="deleteGoal('${g.id}')">${ic('trash', 14)} Delete</button></div>
+      <div class="gs-body">
+        <div class="gs-amts"><b class="count-up">${fmtMoney(s.current)}</b><span>of ${fmtMoney(s.target)}</span><span class="gs-pct">${s.pct.toFixed(0)}%</span></div>
+        <div class="goal-bar gs-bar"><span style="width:${s.pct.toFixed(1)}%;"></span></div>
+        <div class="gs-meta">${where}</div>
+      </div>
+    </article>`;
+}
+
+/* ---- One goal, full view: gallery, story, money ---- */
+let goalGalleryTimer = null;
+function openGoalView(id) { ui.modal = { type: 'goalView', payload: { id, slide: 0 } }; render(); startGoalGallery(); }
+function startGoalGallery() {
+  clearInterval(goalGalleryTimer);
+  goalGalleryTimer = setInterval(() => {
+    if (!ui.modal || ui.modal.type !== 'goalView') { clearInterval(goalGalleryTimer); return; }
+    if (!document.hidden && !document.querySelector('.gv-gallery:hover')) goalGalleryGo(1, true);
+  }, 5000);
+}
+/* Changes the photo without redrawing the window (crossfade). */
+function goalGalleryGo(delta, auto, to) {
+  const p = ui.modal && ui.modal.payload; if (!p) return;
+  const slides = document.querySelectorAll('.gv-slide'), dots = document.querySelectorAll('.gv-dot, .gv-thumb');
+  if (slides.length < 2) return;
+  p.slide = to != null ? to : (p.slide + delta + slides.length) % slides.length;
+  slides.forEach((el, i) => el.classList.toggle('on', i === p.slide));
+  dots.forEach(el => el.classList.toggle('on', +el.dataset.i === p.slide));
+  if (!auto) startGoalGallery();
+}
+window.__modalRenderers.goalView = function (p) {
+  const g = (data.goals || []).find(x => x.id === p.id); if (!g) return '';
+  const s = goalState(g);
+  const [label, tone] = GOAL_STATUS[s.status];
+  const photos = g.photos || [];
+  const pk = pocketByRef(g.pocket);
+  const moves = pk ? pocketMoves(pk.ref) : [];
+  const putIn = moves.filter(m => m.amount > 0).reduce((t, m) => t + m.amount, 0), takenOut = -moves.filter(m => m.amount < 0).reduce((t, m) => t + m.amount, 0);
+  const startedWith = pk ? s.current - (putIn - takenOut) : null;
+  const details = String(g.details || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => { const i = l.indexOf(':'); return i > 0 ? [l.slice(0, i).trim(), l.slice(i + 1).trim()] : ['', l]; });
+  const paceTxt = s.perMonth == null ? (g.pocket ? 'No transfer into the pocket in the last 3 months' : 'Needs 30 days of history — or type a monthly amount') : `${s.perMonth >= 0 ? '+' : '−'}${fmtMoney(Math.abs(s.perMonth))} a month${s.typed ? ' (typed by you)' : g.pocket ? ' put in' : ''}`;
+  return `
+    <div class="gv">
+      <div class="gv-gallery" style="--gs-c:${goalColor(g)};">
+        ${photos.length ? photos.map((ph, i) => { const u = photoUrl(ph.id); return u ? `<img class="gv-slide ${i === (p.slide || 0) ? 'on' : ''}" src="${u}" alt="">` : `<div class="gv-slide gv-missing ${i === (p.slide || 0) ? 'on' : ''}">${ic('photo', 26)}<span>Loading the photo…</span></div>`; }).join('')
+          : `<div class="gv-slide on gv-hero"><span>${escHtml(g.icon || '🎯')}</span></div>`}
+        ${photos.length > 1 ? `<button class="gv-arrow l" onclick="event.stopPropagation();goalGalleryGo(-1)" aria-label="Previous photo">${ic('chevronLeft', 20)}</button><button class="gv-arrow r" onclick="event.stopPropagation();goalGalleryGo(1)" aria-label="Next photo">${ic('chevronRight', 20)}</button>
+          <div class="gv-dots">${photos.map((_, i) => `<span class="gv-dot ${i === (p.slide || 0) ? 'on' : ''}" data-i="${i}" onclick="goalGalleryGo(0,false,${i})"></span>`).join('')}</div>` : ''}
+        <button class="gv-close" onclick="closeModal()" aria-label="Close">${ic('x', 18)}</button>
+      </div>
+      <div class="gv-info">
+        <div class="row-flex" style="gap:10px;align-items:flex-start;">
+          <div><div class="gv-name">${escHtml(g.icon || '')} ${escHtml(g.name)}</div><div class="nm-2" style="font-size:13px;">${s.status === 'done' ? 'Target reached' : s.eta ? `${durationText(s.months)} · ${s.eta.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}` : 'No date yet'}${g.targetDate ? ` · aim: ${ymdToDate(g.targetDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''}</div></div>
+          <span class="status-pill ${tone}">${label}</span>
+        </div>
+        ${g.description ? `<p class="gv-desc">${escHtml(g.description).replace(/\n/g, '<br>')}</p>` : ''}
+        <div class="gv-money">
+          <div class="gv-big"><b class="count-up">${fmtMoney(s.current)}</b><span>of ${fmtMoney(s.target)} · ${s.pct.toFixed(0)}%</span></div>
+          <div class="goal-bar gs-bar"><span style="width:${s.pct.toFixed(1)}%;"></span></div>
+          <div class="gv-stats">
+            <div><span class="eyebrow">Still to save</span><b>${fmtMoney(s.left)}</b></div>
+            <div><span class="eyebrow">Pace</span><b style="font-size:13px;">${paceTxt}</b></div>
+            ${pk ? `<div><span class="eyebrow">Put in</span><b class="positive">+${fmtMoney(putIn)}</b></div><div><span class="eyebrow">Taken out</span><b>${takenOut ? '−' + fmtMoney(takenOut) : '—'}</b></div>` : ''}
+          </div>
+        </div>
+        ${details.length ? `<div class="gv-details">${details.map(([k, v]) => `<div>${k ? `<span>${escHtml(k)}</span>` : ''}<b>${escHtml(v)}</b></div>`).join('')}</div>` : ''}
+        ${g.link ? `<a class="btn small" href="${escHtml(g.link)}" target="_blank" rel="noopener noreferrer" style="align-self:flex-start;">${ic('share', 14)} Open the link</a>` : ''}
+        <div class="gv-where">${ic('wallet', 15)}<span>${pk ? `In the pocket <b>${escHtml(pk.p.name)}</b> of <b>${escHtml(pk.a.name)}</b> — your transfers in Budget update it.` : g.pocket ? 'The pocket of this goal was removed — edit the goal to pick another one.' : `Follows: ${escHtml((g.links || []).map(id => sourceLabel(id) || 'Removed').join(', '))}`}</span></div>
+        ${pk ? `<div class="gv-moves"><div class="eyebrow" style="margin-bottom:6px;">Money in and out</div>
+          ${moves.slice(0, 6).map(m => `<div class="row-flex"><span>${escHtml(fmtDate(ymdToDate(m.date)))} <span class="dim">${escHtml(m.comment || m.other)}</span></span><b class="${m.amount >= 0 ? 'positive' : ''}">${m.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(m.amount))}</b></div>`).join('') || '<div class="dim">No transfers yet.</div>'}
+          ${startedWith > 0.005 ? `<div class="row-flex"><span class="dim">Already in the pocket before</span><b>${fmtMoney(startedWith)}</b></div>` : ''}
+        </div>` : ''}
+        <div class="gv-actions">
+          ${pk ? `<button class="btn primary" onclick="addMoneyToGoal('${g.id}')">${ic('plus', 15)} Add money</button>` : ''}
+          <button class="btn" onclick="openGoalForm('${g.id}')">${ic('edit', 15)} Edit</button>
+          <button class="btn ghost" style="color:var(--negative);" onclick="deleteGoal('${g.id}')">${ic('trash', 15)}</button>
+        </div>
+      </div>
     </div>`;
+};
+/* "Add money": a Budget transfer into the goal's pocket, ready to fill in. */
+function addMoneyToGoal(id) {
+  const g = (data.goals || []).find(x => x.id === id); if (!g || !pocketByRef(g.pocket)) return;
+  openTxForm();
+  Object.assign(ui.modal.payload, { type: 'transfer', to: g.pocket, comment: `To ${g.name}` });
+  render();
 }
 
 /* ---- Goal form ---- */
+const GOAL_FORM_FIELDS = ['gf-icon', 'gf-name', 'gf-target', 'gf-date', 'gf-monthly', 'gf-desc', 'gf-link', 'gf-details', 'gf-pocket'];
+function goalFormKeep() { return GOAL_FORM_FIELDS.map(k => [k, (document.getElementById(k) || {}).value]); }
+function goalFormRedraw(change) {
+  const kept = goalFormKeep();
+  if (change) change(ui.modal.payload);
+  render();
+  kept.forEach(([k, v]) => { const el = document.getElementById(k); if (el && v != null) el.value = v; });
+}
 function openGoalForm(id) {
   const g = id ? (data.goals || []).find(x => x.id === id) : null;
-  ui.modal = { type: 'goal', payload: { id: id || null, links: g ? (g.links || []).slice() : [] } };
+  const firstAcc = (data.accounts || []).find(a => a.visibleInTotals) || (data.accounts || [])[0];
+  ui.modal = { type: 'goal', payload: {
+    id: id || null,
+    mode: g ? (g.pocket ? 'pocket' : 'other') : (firstAcc ? 'pocket' : 'other'),
+    pocket: g && g.pocket ? g.pocket : (firstAcc ? 'new:' + firstAcc.id : ''),
+    links: g ? (g.links || []).filter(l => l !== g.pocket) : [],
+    photos: g ? (g.photos || []).map(x => Object.assign({}, x)) : [],
+  } };
   render();
 }
 window.__modalRenderers.goal = function (p) {
   const g = p.id ? (data.goals || []).find(x => x.id === p.id) : null;
-  const v = g || { name: '', icon: '🎯', target: '', targetDate: '', monthly: '' };
-  const sources = goalSources();
+  const v = g || { name: '', icon: '🎯', target: '', targetDate: '', monthly: '', description: '', link: '', details: '' };
+  const pocketTarget = g ? goalTarget(g) : '';
+  const sources = goalSources().filter(s => !s.id.startsWith('pk:'));
   const groups = Array.from(new Set(sources.map(s => s.group)));
   const nw = p.links.includes('nw');
+  const accs = data.accounts || [];
   return `
-    <div class="modal-head"><div class="modal-title">${g ? 'Edit goal' : 'Add a goal'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${g ? 'Edit goal' : 'New goal'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="gf-photos">
+      ${p.photos.map((ph, i) => { const u = photoUrl(ph.id); return `<div class="gf-ph ${i === 0 ? 'cover' : ''}">${u ? `<img src="${u}" alt="">` : `<span>${ic('photo', 18)}</span>`}
+        ${i === 0 ? '<span class="gf-ph-tag">Cover</span>' : `<button class="gf-ph-btn star" title="Use as cover" onclick="goalFormRedraw(p=>p.photos.unshift(p.photos.splice(${i},1)[0]))">★</button>`}
+        <button class="gf-ph-btn del" title="Remove" onclick="goalFormRedraw(p=>p.photos.splice(${i},1))">✕</button></div>`; }).join('')}
+      <label class="gf-ph gf-ph-add">${ic('plus', 20)}<span>Add photos</span><input type="file" accept="image/*" multiple onchange="goalAddPhotos(this.files);this.value=''"></label>
+    </div>
+    ${photoCloud === false ? '<div class="dim" style="margin:-6px 0 10px;">Photos stay on this device until you run the updated setup SQL in Supabase (Settings → Supabase Sync → setup SQL).</div>' : ''}
     <div class="form-grid">
       <label class="field" style="max-width:90px;"><span class="label-text">Icon</span><input id="gf-icon" value="${escHtml(v.icon || '🎯')}" maxlength="4"></label>
       <label class="field"><span class="label-text">Name</span><input id="gf-name" value="${escHtml(v.name)}" placeholder="e.g. Trip to Japan"></label>
-      <label class="field"><span class="label-text">Target amount (€)</span><input id="gf-target" type="number" step="any" inputmode="decimal" value="${escHtml(String(v.target))}"></label>
+      <label class="field"><span class="label-text">Target amount (€)</span><input id="gf-target" type="number" step="any" inputmode="decimal" value="${escHtml(String(g ? (pocketTarget || v.target) : ''))}"></label>
       <label class="field"><span class="label-text">Aim to reach it by <span style="opacity:.6;">(optional)</span></span><input id="gf-date" type="date" value="${escHtml(v.targetDate || '')}"></label>
-      <label class="field span-2"><span class="label-text">Monthly amount you put in <span style="opacity:.6;">(optional — leave empty to use the real pace from your history)</span></span><input id="gf-monthly" type="number" step="any" inputmode="decimal" value="${escHtml(String(v.monthly || ''))}"></label>
+      <label class="field span-2"><span class="label-text">Description <span style="opacity:.6;">(optional)</span></span><textarea id="gf-desc" rows="3" placeholder="Why it matters, what's the plan…">${escHtml(v.description || '')}</textarea></label>
+      <label class="field span-2"><span class="label-text">Extra details <span style="opacity:.6;">(optional — one per line, e.g. "Flight: €850")</span></span><textarea id="gf-details" rows="3" placeholder="Flight: €850&#10;Hotel: 12 nights&#10;When: April 2027">${escHtml(v.details || '')}</textarea></label>
+      <label class="field span-2"><span class="label-text">Link <span style="opacity:.6;">(optional — the product, the trip, the flat…)</span></span><input id="gf-link" type="url" inputmode="url" value="${escHtml(v.link || '')}" placeholder="https://…"></label>
     </div>
-    <div style="font-weight:600;font-size:13px;margin:14px 0 6px;">Money that counts toward it</div>
-    <div class="link-list">
-      ${groups.map(gr => `<div class="ll-group">${escHtml(gr)}</div>${sources.filter(s => s.group === gr).map(s => {
-        const disabled = nw && s.id !== 'nw';
-        return `<label class="ll-row ${disabled ? 'disabled' : ''}"><input type="checkbox" ${p.links.includes(s.id) ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="toggleGoalLink('${escHtml(s.id)}')"><span>${escHtml(s.label)}</span><span class="dim" style="margin-left:auto;">${fmtMoney(sourceValue(s.id))}</span></label>`;
-      }).join('')}`).join('')}
+    <div style="font-weight:600;font-size:13px;margin:16px 0 6px;">Where the money is</div>
+    <div class="seg-row" style="margin-bottom:10px;">
+      <button class="seg ${p.mode === 'pocket' ? 'on' : ''}" onclick="goalFormRedraw(p=>{p.mode='pocket'})">${ic('wallet', 14)} A pocket</button>
+      <button class="seg ${p.mode === 'other' ? 'on' : ''}" onclick="goalFormRedraw(p=>{p.mode='other'})">Other money</button>
     </div>
-    ${nw ? '<div style="font-size:12px;opacity:.6;margin-top:6px;">Your whole net worth already includes everything else.</div>' : ''}
+    ${p.mode === 'pocket' ? (accs.length ? `
+      <label class="field"><span class="label-text">Pocket</span><select id="gf-pocket" onchange="ui.modal.payload.pocket=this.value">
+        ${accs.map(a => `<option value="new:${a.id}" ${p.pocket === 'new:' + a.id ? 'selected' : ''}>＋ New pocket in ${escHtml(a.name)}</option>`).join('')}
+        ${accs.flatMap(a => (a.pockets || []).map(pk => { const ref = `pk:${a.id}:${pk.id}`, other = goalForPocket(a.id, pk.id); return `<option value="${ref}" ${p.pocket === ref ? 'selected' : ''} ${other && other.id !== p.id ? 'disabled' : ''}>${escHtml(pk.icon || '')} ${escHtml(pk.name)} · ${escHtml(a.name)} · ${fmtMoney(pk.amountSaved, a.currency)}${other && other.id !== p.id ? ' (goal: ' + escHtml(other.name) + ')' : ''}</option>`; })).join('')}
+      </select></label>
+      <div class="dim" style="margin-top:6px;">The goal shows the pocket's balance, kept up to date by your transfers in Budget. Its target becomes the pocket's target.</div>`
+      : '<div class="dim">Add a bank account first (Accounts) to keep this goal in a pocket.</div>') : `
+      <div class="link-list">
+        ${groups.map(gr => `<div class="ll-group">${escHtml(gr)}</div>${sources.filter(s => s.group === gr).map(s => {
+          const disabled = nw && s.id !== 'nw';
+          return `<label class="ll-row ${disabled ? 'disabled' : ''}"><input type="checkbox" ${p.links.includes(s.id) ? 'checked' : ''} ${disabled ? 'disabled' : ''} onchange="toggleGoalLink('${escHtml(s.id)}')"><span>${escHtml(s.label)}</span><span class="dim" style="margin-left:auto;">${fmtMoney(sourceValue(s.id))}</span></label>`;
+        }).join('')}`).join('')}
+      </div>
+      <label class="field" style="margin-top:10px;"><span class="label-text">Monthly amount you put in <span style="opacity:.6;">(optional — else the real pace from your history)</span></span><input id="gf-monthly" type="number" step="any" inputmode="decimal" value="${escHtml(String(v.monthly || ''))}"></label>`}
     <div id="gf-err" style="display:none;color:var(--negative);font-size:12.5px;margin-top:8px;"></div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveGoal()">Save</button></div>`;
 };
-/* Ticking a box keeps what's typed in the fields above (they're read back before redrawing). */
 function toggleGoalLink(id) {
-  const p = ui.modal && ui.modal.payload; if (!p) return;
-  const keep = ['gf-icon', 'gf-name', 'gf-target', 'gf-date', 'gf-monthly'].map(k => [k, (document.getElementById(k) || {}).value]);
-  p.links = p.links.includes(id) ? p.links.filter(x => x !== id) : (id === 'nw' ? ['nw'] : p.links.concat(id));
-  render();
-  keep.forEach(([k, val]) => { const el = document.getElementById(k); if (el && val != null) el.value = val; });
+  goalFormRedraw(p => { p.links = p.links.includes(id) ? p.links.filter(x => x !== id) : (id === 'nw' ? ['nw'] : p.links.concat(id)); });
+}
+async function goalAddPhotos(files) {
+  if (!files || !files.length) return;
+  const added = await addPhotoFiles(files);
+  if (ui.modal && ui.modal.type === 'goal') goalFormRedraw(p => { p.photos = p.photos.concat(added); });
 }
 function saveGoal() {
   const p = ui.modal.payload;
-  const g = k => document.getElementById(k).value.trim();
+  const g = k => { const el = document.getElementById(k); return el ? el.value.trim() : ''; };
   const name = g('gf-name'), target = parseFloat(g('gf-target').replace(',', '.'));
   const err = document.getElementById('gf-err');
   const fail = m => { err.textContent = m; err.style.display = ''; };
   if (!name) return fail('Give the goal a name.');
   if (!(target > 0)) return fail('Type the amount you want to reach.');
-  if (!p.links.length) return fail('Tick at least one place where the money is.');
-  const monthly = parseFloat(g('gf-monthly').replace(',', '.'));
-  const rec = { name, icon: g('gf-icon') || '🎯', target, targetDate: g('gf-date') || '', monthly: monthly > 0 ? monthly : null, links: p.links.slice() };
+  let link = g('gf-link');
+  if (link && !/^https?:\/\//i.test(link)) link = 'https://' + link;
+  const rec = { name, icon: g('gf-icon') || '🎯', target, targetDate: g('gf-date') || '', description: g('gf-desc'), details: g('gf-details'), link, photos: p.photos.slice() };
+  if (p.mode === 'pocket') {
+    let ref = g('gf-pocket') || p.pocket;
+    if (!ref) return fail('Pick a pocket, or a new one.');
+    if (ref.startsWith('new:')) {
+      const a = accountById(ref.slice(4)); if (!a) return fail('That account no longer exists.');
+      const pk = { id: uid('pk'), icon: rec.icon, name, amountSaved: 0, targetAmount: Math.round(convertCurrency(target, 'EUR', a.currency) * 100) / 100, color: hashColor(name) };
+      if (!Array.isArray(a.pockets)) a.pockets = [];
+      a.pockets.push(pk);
+      ref = `pk:${a.id}:${pk.id}`;
+    } else {
+      const pk = pocketByRef(ref); if (!pk) return fail('That pocket no longer exists.');
+      pk.p.targetAmount = Math.round(convertCurrency(target, 'EUR', pk.a.currency) * 100) / 100; // one target for both
+    }
+    Object.assign(rec, { pocket: ref, links: [ref], monthly: null });
+  } else {
+    if (!p.links.length) return fail('Tick at least one place where the money is.');
+    const monthly = parseFloat(g('gf-monthly').replace(',', '.'));
+    Object.assign(rec, { pocket: null, links: p.links.slice(), monthly: monthly > 0 ? monthly : null });
+  }
   if (!Array.isArray(data.goals)) data.goals = [];
-  if (p.id) Object.assign(data.goals.find(x => x.id === p.id) || {}, rec);
-  else data.goals.push(Object.assign({ id: uid('goal'), createdAt: new Date().toISOString() }, rec));
-  save(); closeModal();
+  let saved;
+  if (p.id) { saved = data.goals.find(x => x.id === p.id); Object.assign(saved, rec); }
+  else { saved = Object.assign({ id: uid('goal'), createdAt: new Date().toISOString() }, rec); data.goals.push(saved); }
+  save();
+  ui.modal = { type: 'goalView', payload: { id: saved.id, slide: 0 } };
+  render(); startGoalGallery();
+  setTimeout(() => photoCleanup().catch(() => {}), 500);
 }
 function deleteGoal(id) {
   const g = (data.goals || []).find(x => x.id === id); if (!g) return;
-  if (!confirm(`Delete the goal "${g.name}"? Your money isn't touched.`)) return;
+  if (!confirm(`Delete the goal "${g.name}"? Your money${g.pocket ? ' and its pocket' : ''} aren't touched.`)) return;
   data.goals = data.goals.filter(x => x.id !== id);
+  ui.modal = null;
   save(); render();
 }
 

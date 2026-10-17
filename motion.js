@@ -37,13 +37,13 @@ function afterRenderMotion(app) {
   }
   if (modalOpened) {
     const bd = app.querySelector('.modal-backdrop');
-    if (bd) { bd.classList.add('modal-enter'); setTimeout(() => bd.classList.remove('modal-enter'), 500); }
+    if (bd) { bd.classList.add('modal-enter'); setTimeout(() => bd.classList.remove('modal-enter'), 1600); countUpAmounts(bd); }
   }
 }
 /* "€4,984.16" counts up from 0 to its value (the cents keep their lighter look at the end). */
 function countUpAmounts(root) {
   if (typeof privacyOn === 'function' && privacyOn()) return;
-  root.querySelectorAll('.big-number, .scan-val').forEach(el => {
+  root.querySelectorAll('.big-number, .scan-val, .count-up').forEach(el => {
     const text = el.textContent;
     const m = /^([^\d−-]*)([−-]?)([\d,]+)(\.\d+)?(.*)$/.exec(text.trim());
     if (!m) return;
