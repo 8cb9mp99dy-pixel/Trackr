@@ -223,19 +223,21 @@ const BI_MONTHS = {
   sep: 9, sept: 9, septembre: 9, september: 9, oct: 10, okt: 10, octobre: 10, october: 10, oktober: 10,
   nov: 11, novembre: 11, november: 11, dec: 12, decembre: 12, december: 12,
 };
-/* Returns 'YYYY-MM-DD' or null. Numeric dates are read day-first (European) unless that's
-   impossible (e.g. 09/28/2026 can only be September 28). */
-function biParseDate(v) {
+/* Returns 'YYYY-MM-DD' or null.
+   - Excel dates are read from the cell's serial number (the file is opened without converting
+     dates), so a time of day — even 23:30 — never moves a transaction to another day.
+   - Numeric text dates (03/04/2026) are read in ONE order for the whole file (opts.order:
+     'dmy' day first, the European default, or 'mdy'), chosen by biDetectDateOrder — never
+     guessed row by row, which used to read some rows one way and the next rows the other way. */
+function biParseDate(v, opts) {
+  opts = opts || {};
   if (v instanceof Date) {
     if (isNaN(v)) return null;
-    // +12h: absorbs any timezone offset in how the spreadsheet library built the Date, so it
-    // can never land on the previous or next day.
-    const t = new Date(v.getTime() + 12 * 3600e3);
-    return biYmd(t.getFullYear(), t.getMonth() + 1, t.getDate());
+    return biYmd(v.getFullYear(), v.getMonth() + 1, v.getDate());
   }
   if (typeof v === 'number') {
-    if (v > 20000 && v < 80000 && typeof XLSX !== 'undefined') { const p = XLSX.SSF.parse_date_code(v); return p ? biYmd(p.y, p.m, p.d) : null; }
-    if (v >= 19700101 && v <= 21001231) return biParseDate(String(Math.round(v)));
+    if (v > 20000 && v < 80000 && typeof XLSX !== 'undefined') { const p = XLSX.SSF.parse_date_code(v, { date1904: !!opts.date1904 }); return p ? biYmd(p.y, p.m, p.d) : null; }
+    if (v >= 19700101 && v <= 21001231) return biParseDate(String(Math.round(v)), opts);
     return null;
   }
   const s = String(v == null ? '' : v).trim();
@@ -244,11 +246,10 @@ function biParseDate(v) {
   if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/))) return biYmd(+m[1], +m[2], +m[3]);
   if ((m = s.match(/^(\d{4})(\d{2})(\d{2})$/))) return biYmd(+m[1], +m[2], +m[3]);
   if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})(?!\d)/))) {
-    let d = +m[1], mo = +m[2];
-    if (d <= 12 && mo > 12) [d, mo] = [mo, d];
+    const [d, mo] = opts.order === 'mdy' ? [+m[2], +m[1]] : [+m[1], +m[2]];
     return biYmd(+m[3], mo, d);
   }
-  const t = s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const t = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const word = (t.match(/[a-z]+/g) || []).find(w => BI_MONTHS[w]);
   const nums = (t.match(/\d+/g) || []).map(Number);
   if (word && nums.length >= 2) {
@@ -257,6 +258,20 @@ function biParseDate(v) {
     if (d != null) return biYmd(y, BI_MONTHS[word], d);
   }
   return null;
+}
+/* Looks at every "nn/nn/yyyy" date of the file: a first number above 12 means day first, a second
+   one above 12 means month first. { order, sure, conflict } — not sure = every date fits both
+   ways (then day first, and the preview lets you switch). */
+function biDetectDateOrder(values) {
+  let dmy = false, mdy = false;
+  values.forEach(v => {
+    if (typeof v !== 'string') return;
+    const m = v.trim().match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4}|\d{2})(?!\d)/);
+    if (!m) return;
+    if (+m[1] > 12) dmy = true;
+    if (+m[2] > 12) mdy = true;
+  });
+  return { order: mdy && !dmy ? 'mdy' : 'dmy', sure: dmy !== mdy, conflict: dmy && mdy, any: values.some(v => typeof v === 'string' && /^\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}/.test(v.trim())) };
 }
 /* Numbers as banks and spreadsheets write them: 12.50, 12,50, 1.234,56, 1,234.56, "€ -12,50",
    "12,50-", "(12.50)", "+12,50", "EUR 3.20". Returns NaN if it isn't a number. */
@@ -336,9 +351,10 @@ const biHasAmount = map => map.amount != null || map.out != null || map.in != nu
 /* Picks the sheet and the header row to read. The Transactions sheet wins; the template's helper
    sheets are never read. Banks often put a few lines (account number, period…) above the column
    names, so the header row is searched for in the first 25 rows. */
-function biPickSheet(wb) {
+function biPickSheets(wb) {
   const names = wb.SheetNames.filter(n => !BI_SKIP_SHEETS.includes(biNorm(n)))
     .sort((a, b) => (biNorm(b) === 'transactions') - (biNorm(a) === 'transactions'));
+  const found = [];
   let emptyHeader = null;
   for (const sheetName of names) {
     const ws = wb.Sheets[sheetName];
@@ -359,18 +375,25 @@ function biPickSheet(wb) {
       const vals = aoa.slice(best.headerIdx + 1).map(l => (l || [])[best.map.type]).filter(v => v !== '' && v != null);
       if (vals.length && !vals.some(v => ['income', 'expense'].includes(biParseType(v)))) delete best.map.type;
     }
-    const hasData = aoa.slice(best.headerIdx + 1).some(line => (line || []).some(v => v !== '' && v != null));
     const header = aoa[best.headerIdx];
+    // A status column (Revolut "State", many banks "Status"): cancelled/declined rows are left out.
+    const used = new Set(Object.values(best.map));
+    const st = header.map(biNorm).findIndex((h, i) => h && !used.has(i) && BI_STATE_ALIASES.includes(h));
+    if (st >= 0) best.map.state = st;
+    const hasData = aoa.slice(best.headerIdx + 1).some(line => (line || []).some(v => v !== '' && v != null));
     const picked = {
       sheetName, aoa, rowOffset, headerIdx: best.headerIdx, map: best.map,
-      mapping: Object.entries(best.map).map(([key, idx]) => ({ label: key === 'out' ? 'Money out' : key === 'in' ? 'Money in' : BI_COLUMNS.find(c => c.key === key).label, header: String(header[idx]).trim() })),
+      mapping: Object.entries(best.map).map(([key, idx]) => ({ label: key === 'out' ? 'Money out' : key === 'in' ? 'Money in' : key === 'state' ? 'Status' : BI_COLUMNS.find(c => c.key === key).label, header: String(header[idx]).trim() })),
       ignored: header.map((h, i) => (Object.values(best.map).includes(i) ? '' : String(h).trim())).filter(Boolean),
     };
-    if (hasData) return picked;
-    if (!emptyHeader) emptyHeader = picked;
+    if (hasData) found.push(picked);
+    else if (!emptyHeader) emptyHeader = picked;
   }
-  return emptyHeader ? { ...emptyHeader, empty: true } : null;
+  return found.length ? found : (emptyHeader ? [{ ...emptyHeader, empty: true }] : []);
 }
+const BI_STATE_ALIASES = ['state', 'status', 'statut', 'etat', 'transactionstatus', 'transactionstate'];
+const BI_STATE_SKIP = ['reverted', 'declined', 'failed', 'cancelled', 'canceled', 'refused', 'rejected', 'annule', 'refuse', 'rejete', 'echoue', 'geannuleerd', 'geweigerd', 'mislukt'];
+const BI_STATE_PENDING = ['pending', 'enattente', 'inbehandeling', 'inprogress', 'processing'];
 
 function biResolveCategory(kind, catRaw, subRaw) {
   const cats = data.categories[kind] || [];
@@ -413,8 +436,12 @@ function biResolveAccount(raw) {
   return a || null;
 }
 
-function biParseRows(picked) {
-  const { aoa, headerIdx, map, rowOffset } = picked;
+/* Reads one sheet. Each row ends up in exactly one place: rows (to import, or already in Trackr
+   once biMarkDuplicates has looked), or errors — kind 'skip' (left out on purpose: cancelled at
+   the bank, a transfer, an amount of 0) or kind 'problem' (something in the file to fix). */
+function biParseRows(picked, opts) {
+  opts = opts || {};
+  const { aoa, headerIdx, map, rowOffset, sheetName } = picked;
   const rows = [], errors = [];
   for (let r = headerIdx + 1; r < aoa.length; r++) {
     const line = aoa[r] || [];
@@ -423,9 +450,14 @@ function biParseRows(picked) {
     const cell = k => (map[k] == null ? '' : line[map[k]]);
     const str = k => { const v = cell(k); return v instanceof Date ? '' : String(v == null ? '' : v).trim(); };
     const reasons = [], notes = [];
+    const where = { rowNum, sheetName };
+
+    const state = biNorm(str('state'));
+    if (state && BI_STATE_SKIP.includes(state)) { errors.push(Object.assign({ kind: 'skip', reasons: [`Cancelled at your bank (${str('state')})`] }, where)); continue; }
+    const pending = !!state && BI_STATE_PENDING.includes(state);
 
     const rawDate = cell('date');
-    const date = biParseDate(rawDate);
+    const date = biParseDate(rawDate, opts);
     if (!date) reasons.push(rawDate === '' || rawDate == null ? 'Date is empty' : `Can't read the date "${rawDate instanceof Date ? rawDate.toString() : String(rawDate).trim()}"`);
 
     let amount, amountText = '';
@@ -436,13 +468,13 @@ function biParseRows(picked) {
       amountText = `${cell('out')} ${cell('in')}`;
     }
     if (isNaN(amount)) reasons.push(String(cell('amount') || '').trim() || map.amount == null ? `Can't read the amount "${String(map.amount != null ? cell('amount') : amountText).trim()}"` : 'Amount is empty');
-    else if (amount === 0) reasons.push('Amount is 0');
+    else if (amount === 0) { errors.push(Object.assign({ kind: 'skip', reasons: ['Amount is 0'] }, where)); continue; }
 
     const rawType = str('type');
     let type = biParseType(rawType);
     if (type === 'transfer' && biNorm(str('category')) === 'transfer') {
-      reasons.push('Transfers can’t be imported — add them in Trackr (Budget → Add transaction → Transfer)');
-      type = '';
+      errors.push(Object.assign({ kind: 'skip', reasons: ['A transfer between your own accounts — not income or spending (add it in Budget → Add transaction → Transfer if you want it)'] }, where));
+      continue;
     } else if (type === 'transfer' || type === 'unknown') {
       if (!isNaN(amount) && amount !== 0) notes.push(`Type "${rawType}" isn't Income/Expense — used the sign of Amount`);
       else if (!reasons.length) reasons.push(`Type "${rawType}" isn't Income or Expense`);
@@ -458,7 +490,7 @@ function biParseRows(picked) {
     if (currency && !CURRENCIES.includes(currency)) reasons.push(`Currency "${rawCcy}" isn't one of ${CURRENCIES.join(', ')}`);
     if (!currency) currency = biCurrencyFromText(amountText) || (account ? account.currency : '') || data.settings.defaultCurrency || 'EUR';
 
-    if (reasons.length) { errors.push({ rowNum, reasons }); continue; }
+    if (reasons.length) { errors.push(Object.assign({ kind: 'problem', reasons }, where)); continue; }
 
     const name0 = str('name') || (map.name == null ? str('description') : '');
     let cat = biResolveCategory(type, str('category'), str('subcategory'));
@@ -485,7 +517,7 @@ function biParseRows(picked) {
       paymentMethodId: pm ? pm.id : null,
       categoryId: cat.categoryId, categoryName: cat.categoryName, newCategory: cat.newCategory,
       subCategoryId: cat.subCategoryId, subName: cat.subName, newSub: cat.newSub,
-      notes: notes.concat(cat.notes), duplicate: false, included: true,
+      notes: notes.concat(cat.notes), duplicate: false, included: !pending, pending, sheetName,
     });
   }
   const spell = new Map();
@@ -495,21 +527,59 @@ function biParseRows(picked) {
   });
   return { rows, errors };
 }
-/* Rows identical to a transaction already in Trackr (same date, type, amount, currency and name)
-   are unticked — matched one-for-one, so a file with two identical coffees on a day where Trackr
-   already has one only unticks the first. */
-function biTxKey(date, type, amount, currency, name) { return [date, type, Math.abs(amount).toFixed(2), currency, biNorm(name)].join('|'); }
+/* Already in Trackr? Each transaction of yours can match at most one row of the file:
+   1. same day, type, amount, currency and name → certainly already there (unticked);
+   2. same type, amount and currency, within 3 days, with a similar name (or no name on one
+      side) → the same one written differently by your bank, or with its value date (unticked,
+      showing which one it matches — tick it to import it anyway);
+   3. an entry Trackr added BY ITSELF for a recurring item (rent, a subscription…) in the same
+      month, same type, amount within 10 %, same category or similar name → the file has the real
+      one: it's imported and takes that automatic entry's place, so nothing is counted twice. */
+function biWords(v) { return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 4); }
+function biNameSimilar(a, b) {
+  const x = biNorm(a), y = biNorm(b);
+  if (!x || !y) return true;
+  if (x.includes(y) || y.includes(x)) return true;
+  const wb = new Set(biWords(b));
+  return biWords(a).some(w => wb.has(w));
+}
+const biDayDiff = (a, b) => Math.abs(Math.round((ymdToDate(a) - ymdToDate(b)) / 86400000));
 function biMarkDuplicates(rows) {
-  const counts = new Map();
-  data.budgetTransactions.forEach(t => {
-    if (t.type !== 'income' && t.type !== 'expense') return;
-    const k = biTxKey(t.date, t.type, t.amount, t.currency, t.comment);
-    counts.set(k, (counts.get(k) || 0) + 1);
+  const pool = data.budgetTransactions.filter(t => t.type === 'income' || t.type === 'expense');
+  const used = new Set();
+  const sameMoney = (t, r) => t.type === r.type && t.currency === r.currency && Math.abs(t.amount - r.amount) < 0.005;
+  rows.forEach(r => {
+    const t = pool.find(t => !used.has(t.id) && !t.auto && sameMoney(t, r) && t.date === r.date && biNorm(t.comment) === biNorm(r.name));
+    if (t) { used.add(t.id); Object.assign(r, { duplicate: 'exact', match: t, included: false }); }
   });
   rows.forEach(r => {
-    const k = biTxKey(r.date, r.type, r.amount, r.currency, r.name), n = counts.get(k) || 0;
-    if (n > 0) { r.duplicate = true; r.included = false; counts.set(k, n - 1); }
+    if (r.duplicate) return;
+    const t = pool.filter(t => !used.has(t.id) && !t.auto && sameMoney(t, r) && biDayDiff(t.date, r.date) <= 3 && biNameSimilar(t.comment, r.name))
+      .sort((x, y) => biDayDiff(x.date, r.date) - biDayDiff(y.date, r.date))[0];
+    if (t) { used.add(t.id); Object.assign(r, { duplicate: 'likely', match: t, included: false }); }
   });
+  rows.forEach(r => {
+    if (r.duplicate) return;
+    const eur = toEUR(r.amount, r.currency);
+    const t = pool.find(t => !used.has(t.id) && t.auto && t.type === r.type && ymOf(t.date) === ymOf(r.date)
+      && Math.abs(toEUR(t.amount, t.currency) - eur) <= 0.1 * toEUR(t.amount, t.currency) + 0.005
+      && (t.categoryId === r.categoryId || biNameSimilar(t.comment, r.name)));
+    if (t) { used.add(t.id); r.replacesAuto = t; }
+  });
+}
+/* Reads every sheet again with one date order (the preview's "read dates as…" switch). */
+function biBuild(sources, opts) {
+  const rows = [], errors = [];
+  sources.forEach(src => { const p = biParseRows(src, opts); rows.push(...p.rows); errors.push(...p.errors); });
+  biMarkDuplicates(rows);
+  rows.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return { rows, errors };
+}
+function biSetDateOrder(order) {
+  const st = ui.budgetImport; if (!st) return;
+  st.opts = Object.assign({}, st.opts, { order });
+  Object.assign(st, biBuild(st.sources, st.opts));
+  render();
 }
 
 /* ---------- UI (Budget → Import tab) ---------- */
@@ -572,19 +642,24 @@ async function biHandleFile(file) {
     let wb;
     if (/\.(csv|txt|tsv)$/i.test(file.name) || /^text\//.test(file.type)) {
       // raw:true — the library must not guess dates/numbers from text itself: it reads 03/04/2026
-      // as March 4 (US). biParseDate/biParseAmount read them the European way instead.
+      // as March 4 (US). biParseDate/biParseAmount read them in one order for the whole file.
       let text = new TextDecoder('utf-8').decode(buf);
-      if (text.includes('�')) text = new TextDecoder('windows-1252').decode(buf); // older bank CSVs aren't UTF-8
-      wb = XLSX.read(text.replace(/^﻿/, ''), { type: 'string', raw: true });
+      if (text.includes('\uFFFD')) text = new TextDecoder('windows-1252').decode(buf); // older bank CSVs aren't UTF-8
+      wb = XLSX.read(text.replace(/^\uFEFF/, ''), { type: 'string', raw: true });
     } else {
-      wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      // Dates stay Excel serial numbers here (no conversion to a JavaScript date and back), so
+      // the day is read exactly, whatever the time zone or the time of day in the cell.
+      wb = XLSX.read(buf, { type: 'array', cellDates: false });
     }
-    const picked = biPickSheet(wb);
-    if (!picked) throw new Error("no sheet has a Date column and an Amount column (or Debit / Credit columns). Start from the template to be sure.");
-    if (picked.empty) throw new Error(`the "${picked.sheetName}" sheet has no transactions yet — add them under the column names (see the Example sheet).`);
-    const parsed = biParseRows(picked);
-    biMarkDuplicates(parsed.rows);
-    ui.budgetImport = { step: 'preview', fileName: file.name, sheetName: picked.sheetName, mapping: picked.mapping, ignored: picked.ignored, rows: parsed.rows, errors: parsed.errors, updateBalances: false, defaultAccountId: '' };
+    const sources = biPickSheets(wb);
+    if (!sources.length) throw new Error("no sheet has a Date column and an Amount column (or Debit / Credit columns). Start from the template to be sure.");
+    if (sources[0].empty) throw new Error(`the "${sources[0].sheetName}" sheet has no transactions yet — add them under the column names (see the Example sheet).`);
+    const dates = sources.flatMap(src => src.aoa.slice(src.headerIdx + 1).map(l => (l || [])[src.map.date]));
+    const detected = biDetectDateOrder(dates);
+    const opts = { order: detected.order, date1904: !!(wb.Workbook && wb.Workbook.WBProps && wb.Workbook.WBProps.date1904) };
+    ui.budgetImport = Object.assign({ step: 'preview', fileName: file.name, sources, opts, detected,
+      sheetNames: sources.map(x => x.sheetName), mapping: sources[0].mapping, ignored: sources[0].ignored,
+      updateBalances: false, defaultAccountId: '' }, biBuild(sources, opts));
     render();
   } catch (e) {
     ui.budgetImport = { step: 'start', error: `Couldn't import ${file.name}: ${e && e.message ? e.message : e}` };
@@ -606,21 +681,62 @@ function biSelectionSummary(st) {
   });
   return { count: sel.length, income, expenses, from: dates[0], to: dates[dates.length - 1], newCats: [...newCats], newSubs: [...newSubs], withAccount: sel.filter(r => r.accountId || st.defaultAccountId).length };
 }
+const biFmt = ymd => fmtDate(ymdToDate(ymd)); // local day, never shifted by the time zone
 function biSummaryHtml(st) {
   const s = biSelectionSummary(st);
-  const dup = st.rows.filter(r => r.duplicate).length;
+  const dup = st.rows.filter(r => r.duplicate).length, repl = st.rows.filter(r => r.replacesAuto && r.included).length;
+  const pend = st.rows.filter(r => r.pending).length;
+  const skip = st.errors.filter(e => e.kind === 'skip').length, prob = st.errors.filter(e => e.kind !== 'skip').length;
   const chip = (text, color) => `<span class="chip" style="cursor:default;${color ? `color:${color};` : ''}">${text}</span>`;
   return `
     <div class="chip-scroll" style="flex-wrap:wrap;margin-bottom:12px;">
       ${chip(`<strong>${s.count}</strong>&nbsp;to import`)}
       ${dup ? chip(`${dup} already in Trackr`, 'var(--manual-accent)') : ''}
-      ${st.errors.length ? chip(`${st.errors.length} with problems`, 'var(--negative)') : ''}
+      ${repl ? chip(`${repl} replace an automatic recurring entry`, 'var(--accent-1)') : ''}
+      ${pend ? chip(`${pend} pending at your bank`) : ''}
+      ${skip ? chip(`${skip} left out on purpose`) : ''}
+      ${prob ? chip(`${prob} with a problem`, 'var(--negative)') : ''}
       ${s.count ? chip(`<span class="positive">+${fmtMoney(s.income)}</span>&nbsp;·&nbsp;<span class="negative">−${fmtMoney(s.expenses)}</span>`) : ''}
-      ${s.count ? chip(`${escHtml(fmtDate(s.from))}${s.to !== s.from ? ' → ' + escHtml(fmtDate(s.to)) : ''}`) : ''}
+      ${s.count ? chip(`${escHtml(biFmt(s.from))}${s.to !== s.from ? ' → ' + escHtml(biFmt(s.to)) : ''}`) : ''}
     </div>
     ${s.newCats.length || s.newSubs.length ? `<div style="font-size:12.5px;line-height:1.5;margin-bottom:10px;">
       <strong>Will be created:</strong> ${s.newCats.map(n => `category “${escHtml(n)}”`).concat(s.newSubs.map(n => `sub-category “${escHtml(n)}”`)).join(', ')}.
       <span style="opacity:.6;">Not intended? Fix the name in the file and import it again.</span></div>` : ''}`;
+}
+function biDateOrderHtml(st) {
+  const d = st.detected || {};
+  if (!d.any) return '';
+  const dmy = st.opts.order !== 'mdy';
+  const ex = dmy ? '03/04/2026 = 3 April 2026' : '03/04/2026 = March 4, 2026';
+  if (d.conflict) return `<div class="bi-note warn">This file mixes day/month and month/day dates (some start with a number above 12, others have one second). They're read as <strong>${dmy ? 'day/month' : 'month/day'}</strong> — check the dates below. <button class="link-btn" onclick="biSetDateOrder('${dmy ? 'mdy' : 'dmy'}')">Read as ${dmy ? 'month/day' : 'day/month'}</button></div>`;
+  if (d.sure) return `<div class="bi-note">Dates read as <strong>${dmy ? 'day/month/year' : 'month/day/year'}</strong> (${ex}) — found from the dates in your file.</div>`;
+  return `<div class="bi-note">Every date in this file could be read both ways. They're read as <strong>${dmy ? 'day/month/year' : 'month/day/year'}</strong> (${ex}). <button class="link-btn" onclick="biSetDateOrder('${dmy ? 'mdy' : 'dmy'}')">Read them as ${dmy ? 'month/day' : 'day/month'} instead</button></div>`;
+}
+function biRowStatus(r) {
+  const badge = (text, color) => `<span class="badge" style="background:${color}22;color:${color};margin:1px 4px 1px 0;display:inline-block;white-space:normal;">${escHtml(text)}</span>`;
+  const m = r.match, a = r.replacesAuto;
+  return [
+    r.duplicate === 'exact' ? badge('Already in Trackr', '#E8963C') : '',
+    r.duplicate === 'likely' ? badge(`Probably already in Trackr: “${m.comment || 'no name'}”, ${biFmt(m.date)} — tick to import anyway`, '#E8963C') : '',
+    a ? badge(`Replaces the automatic “${a.comment || 'recurring'}” entry of ${biFmt(a.date)}`, '#3B5BDB') : '',
+    r.pending ? badge('Pending at your bank — tick to import it now', '#6B7080') : '',
+    r.recurring ? badge('recurring', '#6C63FF') : '',
+  ].join('') + r.notes.map(n => `<div style="font-size:11.5px;opacity:.6;">${escHtml(n)}</div>`).join('');
+}
+function biErrorsHtml(st) {
+  const prob = st.errors.filter(e => e.kind !== 'skip'), skip = st.errors.filter(e => e.kind === 'skip');
+  const where = e => `${st.sheetNames && st.sheetNames.length > 1 ? `${escHtml(e.sheetName)}, ` : ''}row ${e.rowNum}`;
+  const groups = {};
+  skip.forEach(e => { const k = e.reasons[0].replace(/\s*\(.*\)$/, ''); (groups[k] = groups[k] || []).push(e); });
+  return `
+    ${prob.length ? `<div class="card" style="margin-bottom:16px;border:1px solid var(--negative);">
+      <div style="font-weight:700;color:var(--negative);margin-bottom:4px;">${prob.length} row${prob.length === 1 ? '' : 's'} can't be read — fix ${prob.length === 1 ? 'it' : 'them'} in the file and import it again</div>
+      <div style="font-size:12.5px;opacity:.85;max-height:180px;overflow:auto;line-height:1.6;">${prob.map(e => `<div>${where(e)}: ${escHtml(e.reasons.join(' · '))}</div>`).join('')}</div>
+    </div>` : ''}
+    ${skip.length ? `<details class="card" style="margin-bottom:16px;">
+      <summary style="cursor:pointer;font-weight:600;">${skip.length} row${skip.length === 1 ? '' : 's'} left out on purpose</summary>
+      <div style="font-size:12.5px;opacity:.8;line-height:1.6;margin-top:8px;">${Object.keys(groups).map(k => `<div><strong>${escHtml(k)}</strong> — ${groups[k].map(where).join(', ')}</div>`).join('')}</div>
+    </details>` : ''}`;
 }
 function biPreviewHtml(st) {
   const s = biSelectionSummary(st);
@@ -628,27 +744,30 @@ function biPreviewHtml(st) {
   const anyAccount = st.rows.some(r => r.accountId) || !!fallbackAcc;
   const needsAccount = st.rows.some(r => !r.accountId);
   const badge = (text, color) => `<span class="badge" style="background:${color}22;color:${color};margin:1px 4px 1px 0;display:inline-block;">${escHtml(text)}</span>`;
+  const multi = st.sheetNames && st.sheetNames.length > 1;
+  const total = st.rows.length + st.errors.length;
   const body = st.rows.map((r, i) => `
     <tr class="${r.included ? '' : 'bi-off'}" id="bi-row-${i}">
       <td><input type="checkbox" ${r.included ? 'checked' : ''} onchange="biToggleRow(${i}, this.checked)" aria-label="Import row ${r.rowNum}"></td>
-      <td style="white-space:nowrap;">${escHtml(fmtDate(r.date))}</td>
-      <td><div style="font-weight:600;">${escHtml(r.name || '—')}</div>${r.description ? `<div style="font-size:11.5px;opacity:.55;">${escHtml(r.description)}</div>` : ''}</td>
+      <td style="white-space:nowrap;">${escHtml(biFmt(r.date))}</td>
+      <td><div style="font-weight:600;">${escHtml(r.name || '—')}</div>${r.description ? `<div style="font-size:11.5px;opacity:.55;">${escHtml(r.description)}</div>` : ''}${multi ? `<div style="font-size:11px;opacity:.45;">${escHtml(r.sheetName)}, row ${r.rowNum}</div>` : ''}</td>
       <td>${escHtml(r.categoryName)}${r.subName ? ` <span style="opacity:.55;">› ${escHtml(r.subName)}</span>` : ''}
         ${r.newCategory ? badge('new category', '#4FA6D9') : r.newSub ? badge('new sub-category', '#4FA6D9') : ''}</td>
       <td style="white-space:nowrap;">${r.accountName ? escHtml(r.accountName) : fallbackAcc ? `<span style="opacity:.6;">${escHtml(fallbackAcc.name)}</span>` : '—'}</td>
       <td class="num ${r.type === 'income' ? 'positive' : 'negative'}" style="white-space:nowrap;font-weight:700;">${r.type === 'income' ? '+' : '−'}${fmtMoney(r.amount, r.currency)}</td>
-      <td>${r.duplicate ? badge('already in Trackr', '#E8963C') : ''}${r.recurring ? badge('recurring', '#6C63FF') : ''}${r.notes.map(n => `<div style="font-size:11.5px;opacity:.6;">${escHtml(n)}</div>`).join('')}</td>
+      <td style="min-width:180px;">${biRowStatus(r)}</td>
     </tr>`).join('');
   return `
     <div class="card" style="margin-bottom:16px;">
       <div class="row-flex" style="margin-bottom:10px;gap:10px;flex-wrap:wrap;">
         <div style="min-width:0;">
           <div style="font-weight:700;font-size:16px;">Review before importing</div>
-          <div style="font-size:12.5px;opacity:.6;overflow-wrap:anywhere;">${escHtml(st.fileName)} · sheet “${escHtml(st.sheetName)}” · ${st.rows.length + st.errors.length} row${st.rows.length + st.errors.length === 1 ? '' : 's'}</div>
+          <div style="font-size:12.5px;opacity:.6;overflow-wrap:anywhere;">${escHtml(st.fileName)} · ${multi ? `${st.sheetNames.length} sheets (${st.sheetNames.map(escHtml).join(', ')})` : `sheet “${escHtml(st.sheetNames[0])}”`} · ${total} row${total === 1 ? '' : 's'}, each listed below</div>
         </div>
         <button class="btn small ghost" onclick="biCancel()">Cancel</button>
       </div>
       <div id="bi-summary">${biSummaryHtml(st)}</div>
+      ${biDateOrderHtml(st)}
       <details style="font-size:12.5px;margin-bottom:12px;">
         <summary style="cursor:pointer;opacity:.75;">Columns used (${st.mapping.length})${st.ignored.length ? ` · ${st.ignored.length} ignored` : ''}</summary>
         <div style="margin-top:8px;line-height:1.7;">${st.mapping.map(m => `<span class="chip" style="cursor:default;font-size:12px;padding:4px 9px;">${escHtml(m.label)} ← “${escHtml(m.header)}”</span>`).join(' ')}</div>
@@ -666,18 +785,15 @@ function biPreviewHtml(st) {
         <input type="checkbox" ${st.updateBalances ? 'checked' : ''} onchange="ui.budgetImport.updateBalances=this.checked" style="width:18px;height:18px;flex:none;">
       </label>` : ''}
     </div>
-    ${st.errors.length ? `<div class="card" style="margin-bottom:16px;border:1px solid var(--negative);">
-      <div style="font-weight:700;color:var(--negative);margin-bottom:6px;">${st.errors.length} row${st.errors.length === 1 ? '' : 's'} can't be imported</div>
-      <div style="font-size:12.5px;opacity:.8;max-height:160px;overflow:auto;line-height:1.6;">${st.errors.map(e => `<div>Row ${e.rowNum}: ${escHtml(e.reasons.join(' · '))}</div>`).join('')}</div>
-    </div>` : ''}
+    ${biErrorsHtml(st)}
     ${st.rows.length ? `<div class="card" style="margin-bottom:16px;">
       <div class="row-flex" style="margin-bottom:10px;">
-        <div class="eyebrow">Transactions</div>
+        <div class="eyebrow">Transactions · newest first</div>
         <div style="display:flex;gap:6px;"><button class="btn small" onclick="biSelectAll(true)">Select all</button><button class="btn small" onclick="biSelectAll(false)">None</button></div>
       </div>
       <div style="overflow-x:auto;">
         <table class="data-table bi-table">
-          <thead><tr><th></th><th>Date</th><th>Name</th><th>Category</th><th>Account</th><th class="num">Amount</th><th></th></tr></thead>
+          <thead><tr><th></th><th>Date</th><th>Name</th><th>Category</th><th>Account</th><th class="num">Amount</th><th>Status</th></tr></thead>
           <tbody>${body}</tbody>
         </table>
       </div>
@@ -713,6 +829,7 @@ async function biApply() {
   if (!sel.length) return;
   const created = { cats: 0, subs: 0 };
   const imported = [];
+  let replaced = 0;
   sel.forEach(r => {
     const kind = r.type;
     // Always re-checked against live data, so two rows naming the same new category create it once.
@@ -741,8 +858,20 @@ async function biApply() {
       nature: r.recurring ? 'Fixed' : 'Variable', paymentMethodId: r.paymentMethodId || null, accountId: r.accountId || (accountById(st.defaultAccountId) ? st.defaultAccountId : null),
       currency: r.currency, amount: r.amount, comment: r.name, location: r.location, description: r.description, logo, impact: r.impact,
     };
-    data.budgetTransactions.push(record);
-    if (st.updateBalances) applyTxToAccountBalance(record, 1);
+    const auto = r.replacesAuto && data.budgetTransactions.find(t => t.id === r.replacesAuto.id);
+    if (auto) {
+      // The real entry takes the automatic one's place: same series, and its effect on the
+      // account balance is swapped for the real amount (it was already counted once).
+      Object.assign(record, { nature: 'Fixed', recurringId: auto.recurringId, accountId: record.accountId || auto.accountId || null });
+      applyTxToAccountBalance(auto, -1);
+      data.budgetTransactions = data.budgetTransactions.filter(t => t !== auto);
+      data.budgetTransactions.push(record);
+      if (auto.accountId || st.updateBalances) applyTxToAccountBalance(record, 1);
+      replaced++;
+    } else {
+      data.budgetTransactions.push(record);
+      if (st.updateBalances) applyTxToAccountBalance(record, 1);
+    }
     imported.push(record);
   });
   // Recurring rows join (or start) their monthly series; a real row replaces that month's
@@ -753,20 +882,21 @@ async function biApply() {
   }
   await save();
   const dates = sel.map(r => r.date).sort();
-  ui.budgetImport = { step: 'done', count: sel.length, from: dates[0], to: dates[dates.length - 1], created, balances: st.updateBalances && sel.some(r => r.accountId || st.defaultAccountId), fileName: st.fileName };
+  ui.budgetImport = { step: 'done', count: sel.length, from: dates[0], to: dates[dates.length - 1], created, replaced, balances: st.updateBalances && sel.some(r => r.accountId || st.defaultAccountId), fileName: st.fileName };
   render();
 }
 function biDoneHtml(st) {
   const extra = [
     st.created.cats ? `${st.created.cats} new categor${st.created.cats === 1 ? 'y' : 'ies'}` : '',
     st.created.subs ? `${st.created.subs} new sub-categor${st.created.subs === 1 ? 'y' : 'ies'}` : '',
+    st.replaced ? `${st.replaced} automatic recurring entr${st.replaced === 1 ? 'y' : 'ies'} replaced by the real one` : '',
     st.balances ? 'account balances updated' : '',
   ].filter(Boolean).join(' · ');
   return `
     <div class="card" style="text-align:center;padding:32px 20px;">
       
       <div style="font-weight:700;font-size:17px;">${st.count} transaction${st.count === 1 ? '' : 's'} imported</div>
-      <div style="font-size:13px;opacity:.65;margin-top:4px;">${escHtml(fmtDate(st.from))}${st.to !== st.from ? ' → ' + escHtml(fmtDate(st.to)) : ''}${extra ? ' · ' + escHtml(extra) : ''}</div>
+      <div style="font-size:13px;opacity:.65;margin-top:4px;">${escHtml(biFmt(st.from))}${st.to !== st.from ? ' → ' + escHtml(biFmt(st.to)) : ''}${extra ? ' · ' + escHtml(extra) : ''}</div>
       <div class="grid-2" style="margin-top:20px;">
         <button class="btn primary" onclick="biViewImported()">View transactions</button>
         <button class="btn" onclick="biCancel()">Import another file</button>

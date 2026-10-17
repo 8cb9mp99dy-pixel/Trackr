@@ -946,3 +946,5 @@ html.modal-open, html.modal-open body { overflow: hidden; overscroll-behavior: n
   .modal-backdrop { top: var(--vv-top, 0px); bottom: auto; height: var(--vv-h, 100%); }
   .modal { max-height: calc(var(--vv-h, 100dvh) - 8px); }
 }
+.bi-note { font-size: 12.5px; line-height: 1.5; padding: 9px 12px; border-radius: 10px; background: var(--dark-card-2); margin-bottom: 12px; }
+.bi-note.warn { background: rgba(232,150,60,.12); }
