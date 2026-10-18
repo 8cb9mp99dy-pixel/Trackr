@@ -200,7 +200,7 @@ if (typeof SETTINGS_BODY !== 'undefined' && typeof SETTINGS_BODY.backuprestore =
 }
 
 /* ---------- 3. Offline & instant ---------- */
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(e => console.error('Offline mode unavailable', e));
   });
