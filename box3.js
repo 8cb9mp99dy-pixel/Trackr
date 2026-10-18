@@ -86,7 +86,7 @@ if (typeof window !== 'undefined') {
       <div class="ret-grid">
         <div><div class="eyebrow">Bank savings</div><div class="ret-big">${fmtMoney(E.bank)}</div></div>
         <div><div class="eyebrow">Other assets</div><div class="ret-big">${fmtMoney(E.other)}</div><div class="ret-sub">investments, crypto, cash at brokers${withLoan && F.loanValue ? ` (incl. ${fmtMoney(F.loanValue)} bought with the loan)` : ''}</div></div>
-        <div><div class="eyebrow">Debts</div><div class="ret-big">${fmtMoney(E.debts)}</div><div class="ret-sub">${fmtMoney(E.debtCounted)} counted (above ${fmtMoney(r.debtThreshold * (s.partner ? 2 : 1))})</div></div>
+        <div><div class="eyebrow">Debts</div><div class="ret-big">${fmtMoney(E.debts)}</div><div class="ret-sub">${fmtMoney(E.debtCounted)} counted (above ${fmtMoney(r.debtThreshold * (s.partner ? 2 : 1))})${F.source === 'snapshot' ? ' · debts use today\'s figures (approximate)' : ''}</div></div>
       </div>
       <div class="b3-result">${E.taxable > 0
         ? `Estimated box 3 tax: <strong class="negative">${fmtMoney(E.tax)}</strong> <span style="opacity:.6;">· deemed return ${fmtMoney(E.deemed)}, taxable ${fmtMoney(E.taxable)} (above the ${fmtMoney(E.allowance)} allowance)</span>`

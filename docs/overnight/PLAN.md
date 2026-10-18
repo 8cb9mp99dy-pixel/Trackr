@@ -135,7 +135,7 @@ Value and effort are scored 1–5. Score = value × 2 − effort.
 | 5 | Notification centre (A4) | 4 | 2 | 6 | Makes the toggles real and keeps a history |
 | 6 | Returns: XIRR/TWR, realised, dividends (B1) | 4 | 3 | 5 | Limited by undated holdings; labelled |
 | 7 | New navigation beta (C) | 4 | 3 | 5 | Fixes the 5 overlaps |
-| 8 | Historical FX (Frankfurter) | 3 | 2 | 4 | Keyless, CORS-friendly (to verify) |
+| 8 | Historical FX (Frankfurter) | 3 | 2 | 4 | Keyless, CORS allowed, no quota (checked 18 Oct) |
 | 9 | Emergency pack export | 3 | 2 | 4 | Nothing is sent automatically |
 | 10 | Apply to holdings (B7) | 4 | 4 | 4 | Off by default; risk of data change |
 

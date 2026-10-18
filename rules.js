@@ -156,7 +156,7 @@ if (typeof window !== 'undefined') {
         <div class="rule-preview">
           ${!w.text.trim() ? '<span class="ret-sub">Type a name to see which past transactions match.</span>' : `
           <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${matches.length} past transaction${matches.length === 1 ? '' : 's'} match${matches.length === 1 ? 'es' : ''}${changing.length ? ` · ${changing.length} would change` : ''}</div>
-          ${changing.length ? `<div style="font-size:12px;opacity:.6;margin-bottom:6px;">Tick the ones to update now (category / name only):</div>
+          ${changing.length ? `<div style="font-size:12px;opacity:.6;margin-bottom:6px;">Tick the ones to update now (category / name only)${changing.length > 60 ? ` — the first 60 are shown; save, then open the rule again for the rest` : ''}:</div>
           <div class="rule-matches">${changing.slice(0, 60).map(tx => { const ch = ruleChanges(p, tx.type), c0 = categoryById(tx.type, tx.categoryId), c1 = ch.categoryId ? categoryById(tx.type, ch.categoryId) : c0; return `<label class="rule-match"><input type="checkbox" ${p.pick[tx.id] ? 'checked' : ''} onchange="ui.modal.payload.pick['${tx.id}']=this.checked" style="width:16px;height:16px;flex:none;"><span class="rm-d">${escHtml(ymdToDate(tx.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' }))}</span><span class="rm-n">${escHtml(tx.comment || '—')}${ch.comment && ch.comment !== tx.comment ? ` → ${escHtml(ch.comment)}` : ''}</span><span class="rm-c">${escHtml(c0 ? c0.name : '—')}${c1 !== c0 ? ` → ${escHtml(c1 ? c1.name : '—')}` : ''}</span><span class="rm-a">${fmtMoney(tx.amount, tx.currency)}</span></label>`; }).join('')}</div>
           <div style="margin-top:6px;"><button class="link-btn" style="font-size:12.5px;" onclick="changingPick(true)">Tick all</button> · <button class="link-btn" style="font-size:12.5px;" onclick="changingPick(false)">None</button></div>` : ''}`}
         </div>
@@ -165,12 +165,15 @@ if (typeof window !== 'undefined') {
       <div class="modal-actions">
         ${p.id ? `<button class="btn ghost" style="margin-right:auto;color:var(--negative);" onclick="deleteRule('${p.id}')">Delete</button>` : ''}
         <button class="btn ghost" onclick="closeModal()">Cancel</button>
-        <button class="btn primary" onclick="saveTxRule()">Save${Object.values(p.pick).some(Boolean) ? ' and update the ticked ones' : ''}</button>
+        <button class="btn primary" onclick="saveTxRule()">${(n => n ? `Save and update ${n} transaction${n === 1 ? '' : 's'}` : 'Save')(Object.values(p.pick).filter(Boolean).length)}</button>
       </div>`;
   };
+  // Ticks only the rows on screen (the list shows up to 60), so nothing you didn't see changes.
   window.changingPick = function (on) {
     const p = ruleFormRead();
-    rulePastMatches(p).forEach(tx => { p.pick[tx.id] = on; });
+    const changing = rulePastMatches(p).filter(tx => { const ch = ruleChanges(p, tx.type); return (ch.categoryId && (ch.categoryId !== tx.categoryId || (ch.subCategoryId || '') !== (tx.subCategoryId || ''))) || (ch.comment && ch.comment !== tx.comment); });
+    p.pick = {};
+    changing.slice(0, 60).forEach(tx => { p.pick[tx.id] = on; });
     render();
   };
   window.saveTxRule = function () {

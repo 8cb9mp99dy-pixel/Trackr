@@ -4481,7 +4481,7 @@ function brokersCardHtml(opts) {
             </div>
             ${expanded ? `
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">
-                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div><div style="font-weight:600;font-size:13px;">Cash</div>${linkedAccountForBroker(b) ? `<div style="font-size:11px;opacity:.55;">Same as your ${escHtml(linkedAccountForBroker(b).name)} bank account</div>` : ''}</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(brokerCash(b), brokerCashCurrency(b))}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" aria-label="Edit broker" title="Edit" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>` : ''}</div></div></div>` : ''}
+                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div><div style="font-weight:600;font-size:13px;">Cash</div>${linkedAccountForBroker(b) ? `<div style="font-size:11px;opacity:.55;">Same as your ${escHtml(linkedAccountForBroker(b).name)} bank account</div>` : ''}</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(brokerCash(b), brokerCashCurrency(b))}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" aria-label="Edit cash" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>` : ''}</div></div></div>` : ''}
                 <div class="stack-gap-8">
                   ${positions.map(p => positionRowHtml(p)).join('') || '<div style="opacity:.5;font-size:13px;">No positions here yet.</div>'}
                 </div>
@@ -6221,7 +6221,7 @@ async function handleImportBackupFile(file) {
     catch (e) { throw new Error("This file isn't valid JSON."); }
     // An encrypted backup (Settings → Emergency pack): ask for its passphrase, then carry on.
     if (parsed && parsed.format === 'trackr-encrypted-v1' && typeof decryptJson === 'function') {
-      const pass = prompt('This backup is encrypted. Type its passphrase:');
+      const pass = typeof passphraseDialog === 'function' ? await passphraseDialog({ title: 'Encrypted backup', text: 'This backup is encrypted. Type its passphrase.' }) : prompt('This backup is encrypted. Type its passphrase:');
       if (pass == null) return;
       try { parsed = JSON.parse(await decryptJson(parsed, pass)); }
       catch (e) { throw new Error('Wrong passphrase, or the file was changed — nothing was restored.'); }

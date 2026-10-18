@@ -1,8 +1,9 @@
 # TEMPLATE — daily cache of public market data (ECB rates via Frankfurter, coin prices via
 # CoinGecko) into the trackr_market_cache table (supabase/migrations/002_market_cache.sql), so
 # the app opens with fresh rates even when those APIs are slow. Only public numbers are written.
-# This one needs the SERVICE ROLE key to write the cache (anon can't), so keep it in the PRIVATE
-# repo and scope it to this job. Secrets: TRACKR_SUPABASE_URL, TRACKR_SERVICE_ROLE_KEY.
+# It writes through set_market_cache(), which needs your sync secret — the anon key is enough,
+# no service-role key. Keep it in the PRIVATE repo. Secrets: TRACKR_SUPABASE_URL,
+# TRACKR_ANON_KEY, TRACKR_SYNC_SECRET.
 # The app doesn't read this cache yet (backlog: read get_market_cache before the live fetch).
 name: Market data cache
 on:
@@ -15,11 +16,14 @@ jobs:
     steps:
       - env:
           URL: ${{ secrets.TRACKR_SUPABASE_URL }}
-          SRK: ${{ secrets.TRACKR_SERVICE_ROLE_KEY }}
+          KEY: ${{ secrets.TRACKR_ANON_KEY }}
+          SECRET: ${{ secrets.TRACKR_SYNC_SECRET }}
         run: |
           set -euo pipefail
           fx=$(curl -sf 'https://api.frankfurter.dev/v1/latest?base=EUR&symbols=USD,GBP,CHF')
           coins=$(curl -sf 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=eur')
           rows=$(jq -n --argjson fx "$fx" --argjson c "$coins" '[($fx.rates|to_entries[]|{key:("fx:"+.key),value:.value}), ($c|to_entries[]|{key:("coin:"+.key),value:.value.eur})]')
-          curl -sf "$URL/rest/v1/trackr_market_cache" -H "apikey: $SRK" -H "Authorization: Bearer $SRK" \
-               -H 'Content-Type: application/json' -H 'Prefer: resolution=merge-duplicates' -d "$rows" -o /dev/null
+          jq -n --arg s "$SECRET" --argjson r "$rows" '{secret:$s, rows:$r}' > /tmp/body.json
+          curl -sf "$URL/rest/v1/rpc/set_market_cache" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+               -H 'Content-Type: application/json' -d @/tmp/body.json -o /dev/null
+          rm -f /tmp/body.json

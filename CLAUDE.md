@@ -1,6 +1,6 @@
 # Trackr — notes for Claude
 
-A personal finance PWA for one person: an economics student in Maastricht, also linked to Luxembourg and France, EUR first. It is zero-build vanilla JavaScript on GitHub Pages (repo `8cb9mp99dy-pixel/Trackr`, **public**; Pages serves `main`). Data lives in localStorage and syncs to the user's own Supabase project.
+A personal finance PWA for one person in the EU, EUR first. It is zero-build vanilla JavaScript on GitHub Pages (repo `8cb9mp99dy-pixel/Trackr`, **public**; Pages serves `main`). Data lives in localStorage and syncs to the user's own Supabase project.
 
 ## Hard rules
 

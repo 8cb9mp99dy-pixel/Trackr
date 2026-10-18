@@ -51,6 +51,8 @@ grant execute on function get_server_snapshots(text, date) to anon;
 -- select cron.schedule('trackr-daily-snapshot', '0 22 * * *', $$
 --   select net.http_post(
 --     url := (select decrypted_secret from vault.decrypted_secrets where name = 'trackr_snapshot_url'),
---     headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'trackr_anon_key'), 'Content-Type', 'application/json'),
+--     headers := jsonb_build_object('Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'trackr_anon_key'),
+--                                   'x-trackr-cron', (select decrypted_secret from vault.decrypted_secrets where name = 'trackr_cron_token'),
+--                                   'Content-Type', 'application/json'),
 --     body := '{}'::jsonb);
 -- $$);

@@ -365,6 +365,18 @@ function renameExchange(oldName, newName) {
     (c.stakes || []).forEach(s => { if (same(s.exchange)) s.exchange = newName; });
   });
   (data.cryptoLots || []).forEach(l => { if (same(l.broker)) l.broker = newName; });
+  // Merging into an exchange that already held the coin: one row per coin and exchange, with the
+  // quantities added and the average price weighted (converted to the kept row's currency).
+  const nk = newName.trim().toLowerCase();
+  (data.cryptoAssets || []).forEach(c => {
+    const rows = (c.snapshots || []).filter(r => (r.broker || '').trim().toLowerCase() === nk);
+    if (rows.length < 2) return;
+    const keep = rows[0];
+    let q = +keep.quantity || 0, cost = q * (+keep.price || 0);
+    rows.slice(1).forEach(r => { const rq = +r.quantity || 0; q += rq; cost += rq * convertCurrency(+r.price || 0, r.currency || 'EUR', keep.currency || 'EUR'); });
+    keep.quantity = q; keep.price = q ? cost / q : 0;
+    c.snapshots = c.snapshots.filter(r => !rows.slice(1).includes(r));
+  });
   // Cash: one line per exchange — merged if the new name already has one.
   const cashOld = (data.cryptoExchangeCash || []).filter(c => same(c.exchange));
   const target = (data.cryptoExchangeCash || []).find(c => !same(c.exchange) && (c.exchange || '').trim().toLowerCase() === newName.trim().toLowerCase());
@@ -409,16 +421,21 @@ function saveExchangeForm() {
   }
   const logo = document.getElementById('ex-logo').value.trim();
   const cashRaw = document.getElementById('ex-cash').value.trim(), ccy = document.getElementById('ex-ccy').value;
+  // Check everything before changing anything.
+  const amt = cashRaw === '' ? null : parseFloat(cashRaw);
+  if (amt != null && (!isFinite(amt) || amt < 0)) { err.textContent = 'Cash must be zero or more.'; err.style.display = 'block'; return; }
+  const merging = name.toLowerCase() !== p.name.trim().toLowerCase() && cryptoBrokerNames().some(n => n.trim().toLowerCase() === name.toLowerCase());
+  if (merging && !confirm(`"${name}" is already one of your exchanges: the two will be merged (coins and cash added together). Continue?`)) return;
   if (name !== p.name) renameExchange(p.name, name);
   data.exchangeLogos = data.exchangeLogos || {};
-  if (logo) data.exchangeLogos[name.toLowerCase()] = logo; else delete data.exchangeLogos[name.toLowerCase()];
+  if (logo) data.exchangeLogos[name.toLowerCase()] = logo; else if (!merging) delete data.exchangeLogos[name.toLowerCase()];
+  // When merging, the two cash amounts were already added together: the field (which showed only
+  // the old exchange's cash) isn't applied over that total.
   let cash = cryptoExchangeCashFor(name);
-  if (cashRaw !== '') {
-    const amt = parseFloat(cashRaw);
-    if (!isFinite(amt) || amt < 0) { err.textContent = 'Cash must be zero or more.'; err.style.display = 'block'; return; }
+  if (!merging && amt != null) {
     if (!cash) { cash = { id: uid('cec'), exchange: name, amount: 0, currency: ccy, interestBearing: false, interestRate: null }; data.cryptoExchangeCash.push(cash); }
     cash.amount = amt; cash.currency = ccy;
-  } else if (cash) cash.currency = ccy;
+  } else if (!merging && cash) cash.currency = ccy;
   ui.investAccount = 'exchange:' + name;
   save(); closeModal();
 }

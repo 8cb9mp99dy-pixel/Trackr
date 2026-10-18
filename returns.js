@@ -203,7 +203,8 @@ if (typeof window !== 'undefined') {
     const out = {}, unmatched = { total: 0, n: 0 };
     divs.forEach(t => {
       const txt = (t.comment || '') + ' ' + (t.description || '');
-      const a = assets.find(x => (x.ticker && new RegExp('\\b' + x.ticker.replace(/[^A-Za-z0-9]/g, '') + '\\b', 'i').test(txt)) || (x.name && txt.toLowerCase().includes(x.name.toLowerCase())));
+      const tick = x => String(x.ticker || '').replace(/[^A-Za-z0-9]/g, '');
+      const a = assets.find(x => (tick(x).length >= 2 && new RegExp('\\b' + tick(x) + '\\b', 'i').test(txt)) || (x.name && txt.toLowerCase().includes(x.name.toLowerCase())));
       const eur = toEUR(+t.amount || 0, t.currency);
       if (!a) { unmatched.total += eur; unmatched.n++; return; }
       const o = out[a.id] = out[a.id] || { name: a.name || a.ticker, ticker: a.ticker, total: 0, n: 0 };

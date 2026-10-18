@@ -7,7 +7,7 @@ When you pay with Apple Pay, an iPhone automation can open Trackr's **Add transa
 ## What the link looks like
 
 ```
-https://8cb9mp99dy-pixel.github.io/Trackr/#add=expense&amount=12.50&merchant=Albert%20Heijn&card=ING
+https://8cb9mp99dy-pixel.github.io/Trackr/#add=expense&amount=12.50&merchant=Albert%20Heijn&card=MyBank
 ```
 
 | Part | Meaning |
@@ -15,7 +15,7 @@ https://8cb9mp99dy-pixel.github.io/Trackr/#add=expense&amount=12.50&merchant=Alb
 | `add=expense` | Spending; `add=income` for money in |
 | `amount=12.50` | `12,50`, `€12.50` and `12.50 EUR` all work too |
 | `merchant=…` | The shop; becomes the transaction's name |
-| `card=…` | Optional; written in the note ("Apple Pay · ING") |
+| `card=…` | Optional; written in the note ("Apple Pay · MyBank") |
 | `currency=GBP` | Optional; EUR, USD, GBP or CHF. Default is your default currency |
 | `date=2026-10-18` | Optional; default is today |
 

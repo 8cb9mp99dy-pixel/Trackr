@@ -60,3 +60,18 @@ test('an old backup without photos still restores', async ({ page }) => {
   expect(r.nw).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });
+
+test('restoring never replaces a full-size photo the device already has', async ({ page }) => {
+  await openApp(page);
+  page.on('dialog', d => d.accept());
+  const id = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 1600; c.height = 1200; c.getContext('2d').fillRect(0, 0, 1600, 1200);
+    const added = await addPhotoFiles([new File([await new Promise(r => c.toBlob(r, 'image/png'))], 'big.png', { type: 'image/png' })]);
+    data.goals[0].photos = added; save(); return added[0].id;
+  });
+  const fs2 = require('fs');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => exportFullBackup())]);
+  const text = fs2.readFileSync(await download.path(), 'utf8');
+  await page.evaluate(async t => { await handleImportBackupFile(new File([t], 'b.json', { type: 'application/json' })); }, text);
+  expect(await page.evaluate(async pid => (await photoGet(pid)).w, id)).toBe(1600);
+});

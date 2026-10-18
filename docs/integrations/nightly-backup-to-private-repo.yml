@@ -7,8 +7,10 @@
 #
 # Repository secrets to add yourself (Settings → Secrets and variables → Actions):
 #   TRACKR_SUPABASE_URL, TRACKR_ANON_KEY, TRACKR_SYNC_SECRET, TRACKR_BACKUP_PASSPHRASE
-# To decrypt on your Mac:
+# To check and decrypt on your Mac:
+#   openssl dgst -sha256 -hmac "$PASS" -r backups/2026-10-18.json.enc   # must equal the .hmac file
 #   openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in backups/2026-10-18.json.enc -out restore.json
+# (For stronger tooling later: `age` with a passphrase gives authenticated encryption in one step.)
 name: Nightly Trackr backup (encrypted)
 on:
   schedule: [{ cron: '30 2 * * *' }]
@@ -35,9 +37,11 @@ jobs:
                -H 'Content-Type: application/json' -d "{\"secret\":\"$SECRET\"}" -o /tmp/trackr.json
           test -s /tmp/trackr.json
           openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:PASS -in /tmp/trackr.json -out "backups/$day.json.enc"
+          # AES-CBC alone doesn't detect a changed file: an HMAC next to it does (checked before decrypting).
+          openssl dgst -sha256 -hmac "$PASS" -r "backups/$day.json.enc" | cut -d' ' -f1 > "backups/$day.json.enc.hmac"
           shred -u /tmp/trackr.json
           # Keep the last 90 nightly files.
-          ls -1 backups/*.json.enc | sort | head -n -90 | xargs -r git rm -q
+          for f in $(ls -1 backups/*.json.enc | sort | head -n -90); do git rm -q --ignore-unmatch "$f" "$f.hmac"; done
       - name: Commit
         run: |
           git config user.name 'trackr-backup'; git config user.email 'actions@users.noreply.github.com'

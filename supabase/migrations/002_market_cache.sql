@@ -15,5 +15,17 @@ returns jsonb language sql security definer set search_path = public as $$
     from trackr_market_cache where key = any(keys);
 $$;
 grant execute on function get_market_cache(text[]) to anon;
--- Writes come only from the scheduled job using the service role (see
--- docs/integrations/price-fx-cache.yml); anon can't write.
+
+-- Writes: only with your Trackr sync secret (same check as every other Trackr function), so the
+-- scheduled job needs the anon key + that secret — never the service-role key.
+create or replace function set_market_cache(secret text, rows jsonb)
+returns void language plpgsql security definer set search_path = public, extensions as $$
+begin
+  if not exists (select 1 from trackr_data where id = encode(digest(secret, 'sha256'), 'hex')) then raise exception 'unknown secret'; end if;
+  insert into trackr_market_cache (key, value, as_of)
+  select r->>'key', (r->>'value')::numeric, now() from jsonb_array_elements(rows) r
+   where r->>'key' ~ '^(fx|coin):[A-Za-z0-9_-]{1,40}$' and (r->>'value')::numeric > 0
+  on conflict (key) do update set value = excluded.value, as_of = excluded.as_of;
+end $$;
+revoke all on function set_market_cache(text, jsonb) from public;
+grant execute on function set_market_cache(text, jsonb) to anon;

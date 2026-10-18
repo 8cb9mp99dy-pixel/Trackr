@@ -36,6 +36,10 @@ Trackr saves one value per day, but only on days you open it, and it never fills
 - It calls only Frankfurter (ECB rates) and CoinGecko (coin prices), both keyless.
 - Stock and ETF prices come from the last price stored in your document. The app keeps those fresh whenever you open it.
 
+**Who can call it:** only the pg_cron job. It sends a private token (`TRACKR_CRON_TOKEN`, header `x-trackr-cron`), stored in Vault and in the function's secrets. Any other caller gets 403, even with the public anon key. Errors return a generic "failed"; the details stay in the function logs.
+
+**Matches the app:** a broker that shares its name with a bank account is counted once, like the app's `brokerCashCountedInBank`. Only accounts set "visible in totals" count.
+
 **Risk if the function secret leaked**
 - The same as if your sync secret leaked from the app: someone could read your document. Treat it with the same care.
 - To shut everything off: rotate the secret and delete the function.
@@ -44,5 +48,5 @@ Trackr saves one value per day, but only on days you open it, and it never fills
 
 1. Run `001_server_snapshots.sql` in the SQL editor.
 2. Deploy the function, e.g. with `supabase functions deploy trackr-daily-snapshot`, and add its three secrets.
-3. Enable `pg_cron` and `pg_net`, store the URL and anon key in Vault, then uncomment the schedule.
+3. Enable `pg_cron` and `pg_net`, store the URL, the anon key and the cron token in Vault, then uncomment the schedule. It already sends the `x-trackr-cron` header.
 4. Ask Claude to build the app side (point 3 above).

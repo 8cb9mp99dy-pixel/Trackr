@@ -38,3 +38,11 @@ test('create a rule, apply it to the past, then it fills new and imported transa
   expect(row.notes.join(' ')).toContain('Rule:');
   expect(errors).toEqual([]);
 });
+
+test('a rule that only renames still lets learned categories work on import', async ({ page }) => {
+  await openApp(page);
+  await page.evaluate(() => { data.txRules = [{ id: 'r2', active: true, when: { op: 'contains', text: 'fresh market', type: '', min: '', max: '', accountId: '' }, then: { categoryId: '', subCategoryId: '', rename: 'Fresh Market', recurring: null } }]; save(); goPage('budget'); setBudgetTab('import'); });
+  await page.evaluate(async () => { await biHandleFile(new File(['Date;Name;Amount\n16-10-2026;FRESH MARKET 77;-9,99\n'], 'bank.csv', { type: 'text/csv' })); });
+  const row = await page.evaluate(() => ({ name: ui.budgetImport.rows[0].name, cat: ui.budgetImport.rows[0].categoryId }));
+  expect(row).toEqual({ name: 'Fresh Market', cat: 'exp_food' });
+});

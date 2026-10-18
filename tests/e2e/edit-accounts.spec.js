@@ -41,3 +41,24 @@ test('rename a crypto exchange everywhere, value unchanged', async ({ page }) =>
   expect(Math.round((after.nw - before.nw) * 100) / 100).toBe(15);
   expect(errors).toEqual([]);
 });
+
+test('renaming an exchange into another one merges coins and cash without losing any', async ({ page }) => {
+  await openApp(page);
+  page.on('dialog', d => d.accept());
+  await page.evaluate(() => {
+    data.cryptoAssets[0].snapshots.push({ id: 'cs_2', broker: 'Second Exchange', quantity: 0.003, price: 50000, currency: 'EUR' });
+    data.cryptoExchangeCash.push({ id: 'cec_2', exchange: 'Second Exchange', amount: 20, currency: 'EUR', interestBearing: false, interestRate: null });
+    save();
+  });
+  const before = await page.evaluate(() => netWorthTotal());
+  await page.evaluate(() => { ui.investAccount = 'exchange:Demo Exchange'; goPage('investAccount'); });
+  await page.getByRole('button', { name: 'Edit' }).click();
+  await page.fill('#ex-name', 'Second Exchange');
+  await page.getByRole('button', { name: 'Save' }).click();
+  const r = await page.evaluate(() => ({ names: cryptoBrokerNames(), cash: cryptoExchangeCashFor('Second Exchange').amount, rows: data.cryptoAssets[0].snapshots.length, qty: data.cryptoAssets[0].snapshots[0].quantity, nw: netWorthTotal() }));
+  expect(r.names).toEqual(['Second Exchange']);
+  expect(r.cash).toBe(55);           // 35 + 20, the field's 35 not applied over the total
+  expect(r.rows).toBe(1);            // one BTC row per exchange
+  expect(r.qty).toBeCloseTo(0.015, 9);
+  expect(Math.round(r.nw * 100)).toBe(Math.round(before * 100));
+});

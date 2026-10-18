@@ -38,18 +38,20 @@ function packDownload(name, text, type) {
 
 /* ---- The printable summary ---- */
 function emergencySummaryHtml() {
+  // With the eye on, quantities are hidden too (quantity × a public price would give the amount).
+  const fmtQty_ = v => (privacyOn() ? '•••' : fmtQty(v));
   const e = escHtml, day = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   const rows = (head, list) => list.length ? `<table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${list.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p class="none">None.</p>';
   const accounts = data.accounts.map(a => [e(a.name), e(a.currency), fmtMoney(a.balance, a.currency), (a.pockets || []).map(p => `${e(p.name)}: ${fmtMoney(p.amountSaved, a.currency)}`).join('<br>') || '—', e(a.description || '')]);
-  const brokers = data.brokers.map(b => [e(b.name), fmtMoney(brokerCash(b), brokerCashCurrency(b)), data.assetEntries.filter(x => x.broker === b.id).map(x => { const a = assetById(x.assetId); return a ? `${e(a.name || a.ticker)}${a.isin ? ` <span class="mono">${e(a.isin)}</span>` : ''} — ${fmtQty(x.quantity)}` : ''; }).filter(Boolean).join('<br>') || '—']);
-  const exchanges = cryptoBrokerNames().map(n => [e(n), (() => { const c = cryptoExchangeCashFor(n); return c ? fmtMoney(c.amount, c.currency) : '—'; })(), (data.cryptoAssets || []).map(c => { const q = cryptoByExchange(c.symbol).find(x => x.exchange === n); return q ? `${e(c.name || c.symbol)} — ${fmtQty(q.quantity)} ${e(c.symbol)}` : ''; }).filter(Boolean).join('<br>') || '—']);
+  const brokers = data.brokers.map(b => [e(b.name), fmtMoney(brokerCash(b), brokerCashCurrency(b)), data.assetEntries.filter(x => x.broker === b.id).map(x => { const a = assetById(x.assetId); return a ? `${e(a.name || a.ticker)}${a.isin ? ` <span class="mono">${e(a.isin)}</span>` : ''} — ${fmtQty_(x.quantity)}` : ''; }).filter(Boolean).join('<br>') || '—']);
+  const exchanges = cryptoBrokerNames().map(n => [e(n), (() => { const c = cryptoExchangeCashFor(n); return c ? fmtMoney(c.amount, c.currency) : '—'; })(), (data.cryptoAssets || []).map(c => { const q = cryptoByExchange(c.symbol).find(x => x.exchange === n); return q ? `${e(c.name || c.symbol)} — ${fmtQty_(q.quantity)} ${e(c.symbol)}` : ''; }).filter(Boolean).join('<br>') || '—']);
   const loans = (typeof loanList === 'function' ? loanList() : []).map(L => [e(L.name || 'Loan'), L.principal ? fmtMoney(+L.principal) : '—', L.startDate ? e(L.startDate) : '—', (L.portfolio && L.portfolio.brokers || []).map(e).join(', ') || '—']);
   const debts = (data.liabilities || []).map(l => [e(l.name), e(l.institution || ''), fmtMoney(+l.amount || 0, l.currency), e(l.note || '')]);
   const goals = (data.goals || []).map(g => [e(g.name), g.target ? fmtMoney(+g.target) : '—', g.pocket ? 'a pocket' : 'linked money']);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Trackr — emergency summary</title><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>@page{size:A4;margin:16mm}body{font:10.5pt/1.45 -apple-system,"Helvetica Neue",Arial,sans-serif;color:#15171f;max-width:820px;margin:24px auto;padding:0 16px}h1{font-size:22pt;margin:0}h2{font-size:13pt;margin:22px 0 6px;border-bottom:2px solid #15171f;padding-bottom:4px}table{width:100%;border-collapse:collapse;font-size:9.5pt}th,td{text-align:left;padding:5px 6px;border-bottom:1px solid #e3e5ea;vertical-align:top}th{font-size:8.5pt;text-transform:uppercase;color:#5c6274}.box{border:1.5px solid #15171f;border-radius:8px;padding:10px 14px;margin:14px 0}.none{opacity:.6}.mono{font-family:Menlo,monospace;font-size:8.5pt}.meta{color:#7a8092}@media print{button{display:none}}</style></head><body>
 <button onclick="print()" style="float:right;padding:8px 14px;border-radius:8px;border:1px solid #ccc;background:#fff;cursor:pointer;">Print / save as PDF</button>
-<h1>Emergency summary</h1><div class="meta">Made with Trackr on ${e(day)}. Figures are as Trackr knew them that day.${privacyOn() ? ' Amounts are hidden because "hide amounts" was on when this was made.' : ''}</div>
+<h1>Emergency summary</h1><div class="meta">Made with Trackr on ${e(day)}. Figures are as Trackr knew them that day.${privacyOn() ? ' Amounts and quantities are hidden because "hide amounts" was on when this was made.' : ''}</div>
 <div class="box"><strong>What this is.</strong> A list of where my money is, to help my family if I can't. It holds no passwords, PINs or codes — the institutions below can give access to my heirs on presentation of the usual documents (death certificate, certificate of inheritance / "verklaring van erfrecht" / "acte de notoriété").<br><br>
 <strong>The full details</strong> are in the encrypted file "trackr-emergency-backup….json" given with this summary. To open it: go to the Trackr web app, Settings → Backup &amp; Restore → restore a JSON backup, choose the file and type the passphrase (given separately).</div>
 <h2>Bank accounts</h2>${rows(['Account', 'Currency', 'Balance', 'Pockets', 'Note'], accounts)}
@@ -67,11 +69,42 @@ function openEmergencySummary() {
   if (w) { w.document.open(); w.document.write(html); w.document.close(); }
   else packDownload('trackr-emergency-summary.html', html, 'text/html');
 }
+/* A passphrase typed in password fields (never shown on screen). Resolves to the text, or null. */
+function passphraseDialog(opts) {
+  return new Promise(resolve => {
+    ui.modal = { type: 'passphrase', payload: Object.assign({ title: 'Passphrase', text: '', confirm: false, min: 1 }, opts, { resolve }) };
+    render();
+    setTimeout(() => { const el = document.getElementById('pp-1'); if (el) el.focus(); }, 60);
+  });
+}
+window.__modalRenderers.passphrase = function (p) {
+  return `
+    <div class="modal-head"><div class="modal-title">${escHtml(p.title)}</div><button class="close-x" onclick="passphraseDone(false)">✕</button></div>
+    <div class="stack-gap-12">
+      ${p.text ? `<div style="font-size:13px;opacity:.7;line-height:1.5;">${escHtml(p.text)}</div>` : ''}
+      <label class="field"><span class="label-text">Passphrase</span><input id="pp-1" type="password" autocomplete="${p.confirm ? 'new-password' : 'current-password'}" onkeydown="if(event.key==='Enter'){event.preventDefault();passphraseDone(true);}"></label>
+      ${p.confirm ? '<label class="field"><span class="label-text">Again</span><input id="pp-2" type="password" autocomplete="new-password" onkeydown="if(event.key===\'Enter\'){event.preventDefault();passphraseDone(true);}"></label>' : ''}
+      <div id="pp-err" style="display:none;color:var(--negative);font-size:12.5px;"></div>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="passphraseDone(false)">Cancel</button><button class="btn primary" onclick="passphraseDone(true)">OK</button></div>`;
+};
+function passphraseDone(ok) {
+  const p = ui.modal && ui.modal.payload;
+  if (!p || !p.resolve) return;
+  let v = null;
+  if (ok) {
+    v = document.getElementById('pp-1').value;
+    const err = document.getElementById('pp-err');
+    if (v.length < p.min) { err.textContent = `Use at least ${p.min} characters.`; err.style.display = 'block'; return; }
+    if (p.confirm && document.getElementById('pp-2').value !== v) { err.textContent = "The two don't match."; err.style.display = 'block'; return; }
+  }
+  const resolve = p.resolve;
+  ui.modal = null; render();
+  resolve(v);
+}
 async function downloadEncryptedBackup() {
-  const pass = prompt('Choose a passphrase for the encrypted backup (at least 10 characters). You need it to open the file — keep it separately, e.g. in a sealed letter.');
+  const pass = await passphraseDialog({ title: 'Encrypted backup', text: 'Choose a passphrase (at least 10 characters). It is needed to open the file — give it separately from the file, e.g. in a sealed letter.', confirm: true, min: 10 });
   if (pass == null) return;
-  if (pass.length < 10) { alert('Please use at least 10 characters.'); return; }
-  if (prompt('Type the passphrase again:') !== pass) { alert("The two passphrases don't match — nothing was saved."); return; }
   const payload = typeof backupPayload === 'function' ? await backupPayload() : data;
   const doc = await encryptJson(JSON.stringify(payload), pass);
   const ts = new Date().toISOString().slice(0, 10);

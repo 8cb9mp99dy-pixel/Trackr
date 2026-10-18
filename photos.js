@@ -139,7 +139,7 @@ setTimeout(() => { photoSyncPending().catch(() => {}); }, 4000);
 /* ---- Photos in backups ----
    Backups (JSON and Excel) carry the goal photos too, so a restore on a new device brings them
    back. To keep files reasonable each photo is re-encoded smaller for the backup (longest side
-   1000 px, JPEG 0.7 — about 60–150 KB each); the copy on this device keeps its full size.
+   1000 px, JPEG 0.7 — about 60–150 KB each); the copy on this device keeps its full size, and a restore only adds photos a device lacks (it never replaces one).
    Only photos a goal uses are included, and only those this device has (a photo added on your
    other device and not opened here yet isn't in this device's backups). */
 const BACKUP_PHOTO_MAX = 1000;
@@ -183,6 +183,10 @@ async function restoreBackupPhotos(doc) {
   let n = 0;
   for (const p of list) {
     if (!p || !p.id || typeof p.data !== 'string' || !/^data:image\//.test(p.data)) continue;
+    // A photo this device already has stays as it is (full size): the backup's copy is smaller,
+    // and it would otherwise replace the original here and in the cloud.
+    const have = await photoGet(p.id).catch(() => null);
+    if (have && have.data) continue;
     const rec = { id: p.id, data: p.data, w: p.w, h: p.h, synced: false, addedAt: new Date().toISOString() };
     try {
       await photoPut(rec);

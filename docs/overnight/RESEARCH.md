@@ -76,7 +76,7 @@ Web content was treated as data. **"unverified"** marks anything the official so
 - **Rule shape.** An array of `{key, defaults, slider, evaluate(ctx, settings) → {ok, text}}`, with per-rule on/off and thresholds saved in settings.
 - **Defaults.** EU-sensible, seeded from the user's own target allocation.
 - **Currency rule.** Look-through by ISIN where the user filled in the splits.
-- **Fees rule.** The main one is TER-weighted cost, since order fees on Trade Republic and Trading 212 are about €0–1.
+- **Fees rule.** The main one is TER-weighted cost, since order fees at low-cost EU brokers are about €0–1.
 - **Loan rule.** "Loan-funded share of the portfolio".
 - **No data.** A rule without data shows "not applicable" rather than failing.
 
