@@ -80,6 +80,12 @@ function actionItems() {
     manual.push(item);
     if (days > STALE_MANUAL_DAYS) attention.push(item);
   }));
+  // X-ray rules that need a look (Analysis), each can be snoozed for 30 days.
+  if (typeof xrayAttention === 'function') {
+    try {
+      xrayAttention().forEach(x => attention.push({ key: 'xray:' + x.rule.key, icon: `<span class="add-ic" style="width:30px;height:30px;">${ic('compass', 16)}</span>`, name: 'X-ray · ' + x.rule.title, detail: escHtml(x.result.text), actions: [{ label: 'See', onclick: "closeModal();goPage('analysis')", primary: true }, { label: 'Snooze 30 days', onclick: `xraySnooze('${x.rule.key}')` }] }));
+    } catch (e) { /* the checks never block the top bar */ }
+  }
   return { attention, manual };
 }
 function confirmAccountBalance(id) {
