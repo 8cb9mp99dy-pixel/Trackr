@@ -1,0 +1,4670 @@
+{
+ "settings": {
+  "defaultCurrency": "EUR",
+  "showCents": true,
+  "showPerformanceIndicators": true,
+  "compactMode": false,
+  "privacyMode": false,
+  "eurUsdRate": 1.09,
+  "eurUsdRateAuto": false,
+  "notifications": {
+   "budgetLimitAlerts": true,
+   "negativeBalanceWarning": true,
+   "weeklySummary": true,
+   "goalAchieved": true
+  },
+  "fxRates": {
+   "USD": 1.09,
+   "GBP": 0.84,
+   "CHF": 0.95
+  }
+ },
+ "categories": {
+  "income": [
+   {
+    "id": "inc_salary",
+    "name": "Salary",
+    "icon": "💼",
+    "subcategories": [
+     {
+      "id": "sci_parttime",
+      "name": "Part-time Job",
+      "icon": "🧑‍🍳"
+     },
+     {
+      "id": "sci_campusjob",
+      "name": "Campus / Student Job",
+      "icon": "🏫"
+     },
+     {
+      "id": "sci_internship",
+      "name": "Internship Pay",
+      "icon": "🧑‍💼"
+     },
+     {
+      "id": "sci_summerjob",
+      "name": "Summer Job",
+      "icon": "☀️"
+     },
+     {
+      "id": "sci_apprentice",
+      "name": "Apprenticeship / Work-study Pay",
+      "icon": "🛠️"
+     },
+     {
+      "id": "sci_bonus",
+      "name": "Bonus & Overtime",
+      "icon": "💶"
+     },
+     {
+      "id": "sci_holidaypay",
+      "name": "Holiday Pay",
+      "icon": "🏖️"
+     }
+    ]
+   },
+   {
+    "id": "inc_freelance",
+    "name": "Freelance",
+    "icon": "🧑‍💻",
+    "subcategories": [
+     {
+      "id": "sci_tutoring",
+      "name": "Tutoring & Private Lessons",
+      "icon": "🧑‍🏫"
+     },
+     {
+      "id": "sci_freelanceprojects",
+      "name": "Freelance Projects",
+      "icon": "💻"
+     },
+     {
+      "id": "sci_gigwork",
+      "name": "Gig Work (Delivery / Rides)",
+      "icon": "🛵"
+     },
+     {
+      "id": "sci_babysitting",
+      "name": "Babysitting",
+      "icon": "🍼"
+     },
+     {
+      "id": "sci_petsitting",
+      "name": "Pet Sitting & Dog Walking",
+      "icon": "🐕"
+     },
+     {
+      "id": "sci_surveys",
+      "name": "Surveys & Paid Studies",
+      "icon": "📝"
+     },
+     {
+      "id": "sci_translation",
+      "name": "Translation & Writing",
+      "icon": "🌐"
+     },
+     {
+      "id": "sci_creative",
+      "name": "Design / Photo / Video",
+      "icon": "🎨"
+     },
+     {
+      "id": "sci_eventwork",
+      "name": "Event & Promo Work",
+      "icon": "🎪"
+     }
+    ]
+   },
+   {
+    "id": "inc_family",
+    "name": "Family Support",
+    "icon": "👪",
+    "subcategories": [
+     {
+      "id": "sci_allowance",
+      "name": "Monthly Allowance",
+      "icon": "💶"
+     },
+     {
+      "id": "sci_familyrent",
+      "name": "Rent Contribution",
+      "icon": "🏠"
+     },
+     {
+      "id": "sci_familytuition",
+      "name": "Tuition Contribution",
+      "icon": "🎓"
+     },
+     {
+      "id": "sci_familyoneoff",
+      "name": "One-off Help",
+      "icon": "🤝"
+     },
+     {
+      "id": "sci_familygroceries",
+      "name": "Groceries / Bills Paid by Family",
+      "icon": "🛒"
+     }
+    ]
+   },
+   {
+    "id": "inc_grants",
+    "name": "Scholarships & Grants",
+    "icon": "🎓",
+    "subcategories": [
+     {
+      "id": "sci_govgrant",
+      "name": "Government Study Grant",
+      "icon": "🏛️"
+     },
+     {
+      "id": "sci_meritschol",
+      "name": "Merit Scholarship",
+      "icon": "🏆"
+     },
+     {
+      "id": "sci_needschol",
+      "name": "Need-based Scholarship",
+      "icon": "🤲"
+     },
+     {
+      "id": "sci_bursary",
+      "name": "University Bursary",
+      "icon": "🏫"
+     },
+     {
+      "id": "sci_erasmus",
+      "name": "Erasmus / Exchange Grant",
+      "icon": "✈️"
+     },
+     {
+      "id": "sci_researchgrant",
+      "name": "Research / Thesis Grant",
+      "icon": "🔬"
+     },
+     {
+      "id": "sci_foundation",
+      "name": "Foundation / Company Scholarship",
+      "icon": "🏢"
+     },
+     {
+      "id": "sci_stipend",
+      "name": "Stipend / Fellowship",
+      "icon": "📜"
+     }
+    ]
+   },
+   {
+    "id": "inc_benefits",
+    "name": "Government Benefits",
+    "icon": "🏛️",
+    "subcategories": [
+     {
+      "id": "sci_housingaid",
+      "name": "Housing Allowance / Rent Aid",
+      "icon": "🏠"
+     },
+     {
+      "id": "sci_familyallowance",
+      "name": "Family / Child Allowance",
+      "icon": "👨‍👩‍👧"
+     },
+     {
+      "id": "sci_transitsubsidy",
+      "name": "Transport Subsidy",
+      "icon": "🚌"
+     },
+     {
+      "id": "sci_mealsubsidy",
+      "name": "Meal Subsidy",
+      "icon": "🍱"
+     },
+     {
+      "id": "sci_healthsubsidy",
+      "name": "Health Insurance Subsidy",
+      "icon": "🩺"
+     },
+     {
+      "id": "sci_jobseeker",
+      "name": "Job-seeker Benefit",
+      "icon": "🔎"
+     }
+    ]
+   },
+   {
+    "id": "inc_loans",
+    "name": "Student Loans & Credit",
+    "icon": "🏦",
+    "subcategories": [
+     {
+      "id": "sci_studentloan",
+      "name": "Student Loan Disbursement",
+      "icon": "🎓"
+     },
+     {
+      "id": "sci_aidrefund",
+      "name": "Financial Aid Refund",
+      "icon": "↩️"
+     },
+     {
+      "id": "sci_emergencyloan",
+      "name": "Emergency / Hardship Loan",
+      "icon": "🆘"
+     },
+     {
+      "id": "sci_familyloan",
+      "name": "Loan from Family / Friends",
+      "icon": "🤝"
+     }
+    ]
+   },
+   {
+    "id": "inc_invret",
+    "name": "Investment Returns",
+    "icon": "📈",
+    "subcategories": [
+     {
+      "id": "sci_dividends",
+      "name": "Dividends",
+      "icon": "💵"
+     },
+     {
+      "id": "sci_interest",
+      "name": "Interest",
+      "icon": "🏦"
+     },
+     {
+      "id": "sci_capgains",
+      "name": "Capital Gains",
+      "icon": "📈"
+     },
+     {
+      "id": "sci_crypto",
+      "name": "Crypto Gains & Staking",
+      "icon": "🪙"
+     }
+    ]
+   },
+   {
+    "id": "inc_rental",
+    "name": "Rental Income",
+    "icon": "🏠",
+    "subcategories": [
+     {
+      "id": "sci_subletting",
+      "name": "Room / Subletting",
+      "icon": "🛏️"
+     },
+     {
+      "id": "sci_shorttermrental",
+      "name": "Short-term Rental",
+      "icon": "🧳"
+     },
+     {
+      "id": "sci_parkingrental",
+      "name": "Parking / Storage Rental",
+      "icon": "🅿️"
+     }
+    ]
+   },
+   {
+    "id": "inc_sales",
+    "name": "Sales & Resale",
+    "icon": "🏷️",
+    "subcategories": [
+     {
+      "id": "sci_sellbooks",
+      "name": "Used Textbooks",
+      "icon": "📚"
+     },
+     {
+      "id": "sci_sellclothes",
+      "name": "Second-hand Clothes",
+      "icon": "👕"
+     },
+     {
+      "id": "sci_sellelectronics",
+      "name": "Electronics",
+      "icon": "📱"
+     },
+     {
+      "id": "sci_sellfurniture",
+      "name": "Furniture & Home",
+      "icon": "🛋️"
+     },
+     {
+      "id": "sci_selltickets",
+      "name": "Tickets & Events",
+      "icon": "🎫"
+     },
+     {
+      "id": "sci_sellbike",
+      "name": "Bike / Vehicle",
+      "icon": "🚲"
+     }
+    ]
+   },
+   {
+    "id": "inc_refunds",
+    "name": "Refunds & Reimbursements",
+    "icon": "↩️",
+    "subcategories": [
+     {
+      "id": "sci_taxrefund",
+      "name": "Tax Refund",
+      "icon": "🧾"
+     },
+     {
+      "id": "sci_depositrefund",
+      "name": "Rental Deposit Refund",
+      "icon": "🔑"
+     },
+     {
+      "id": "sci_cashback",
+      "name": "Cashback & Rewards",
+      "icon": "💳"
+     },
+     {
+      "id": "sci_expensereimb",
+      "name": "Expense Reimbursement",
+      "icon": "🧾"
+     },
+     {
+      "id": "sci_insurancepayout",
+      "name": "Insurance Payout",
+      "icon": "🛡️"
+     },
+     {
+      "id": "sci_friendrepay",
+      "name": "Friends Paying Me Back",
+      "icon": "🍕"
+     },
+     {
+      "id": "sci_healthreimb",
+      "name": "Health Reimbursement",
+      "icon": "🩺"
+     },
+     {
+      "id": "sci_purchaserefund",
+      "name": "Returned Purchase",
+      "icon": "📦"
+     }
+    ]
+   },
+   {
+    "id": "inc_gifts",
+    "name": "Gifts Received",
+    "icon": "🎁",
+    "subcategories": [
+     {
+      "id": "sci_birthday",
+      "name": "Birthday Money",
+      "icon": "🎂"
+     },
+     {
+      "id": "sci_holidaygift",
+      "name": "Holiday Money",
+      "icon": "🎄"
+     },
+     {
+      "id": "sci_graduationgift",
+      "name": "Graduation Gift",
+      "icon": "🎓"
+     },
+     {
+      "id": "sci_giftcards",
+      "name": "Gift Cards",
+      "icon": "💳"
+     }
+    ]
+   },
+   {
+    "id": "inc_other",
+    "name": "Other",
+    "icon": "💰",
+    "subcategories": [
+     {
+      "id": "sci_prizes",
+      "name": "Prizes & Competitions",
+      "icon": "🏆"
+     },
+     {
+      "id": "sci_lostfound",
+      "name": "Found / Returned Money",
+      "icon": "🍀"
+     },
+     {
+      "id": "sci_misc",
+      "name": "Miscellaneous",
+      "icon": "❔"
+     }
+    ]
+   }
+  ],
+  "expense": [
+   {
+    "id": "exp_housing",
+    "name": "Housing",
+    "icon": "🏠",
+    "subcategories": [
+     {
+      "id": "sc_rent",
+      "name": "Rent",
+      "icon": "🏠"
+     },
+     {
+      "id": "sc_mortgage",
+      "name": "Mortgage",
+      "icon": "🏦"
+     },
+     {
+      "id": "sc_utilities",
+      "name": "Utilities",
+      "icon": "💡"
+     },
+     {
+      "id": "sc_homeinsurance",
+      "name": "Home Insurance",
+      "icon": "🛡️"
+     },
+     {
+      "id": "sc_maintenance",
+      "name": "Maintenance",
+      "icon": "🔧"
+     },
+     {
+      "id": "sc_dorm",
+      "name": "Student Residence / Dorm Fees",
+      "icon": "🏘️"
+     },
+     {
+      "id": "sc_deposit",
+      "name": "Rental Deposit",
+      "icon": "🔑"
+     },
+     {
+      "id": "sc_agencyfees",
+      "name": "Agency & Contract Fees",
+      "icon": "📄"
+     },
+     {
+      "id": "sc_electricity",
+      "name": "Electricity",
+      "icon": "⚡"
+     },
+     {
+      "id": "sc_gas",
+      "name": "Gas & Heating",
+      "icon": "🔥"
+     },
+     {
+      "id": "sc_water",
+      "name": "Water",
+      "icon": "💧"
+     },
+     {
+      "id": "sc_householdsupplies",
+      "name": "Household & Cleaning Supplies",
+      "icon": "🧽"
+     },
+     {
+      "id": "sc_laundry",
+      "name": "Laundry",
+      "icon": "🧺"
+     },
+     {
+      "id": "sc_localtax",
+      "name": "Local / Housing Tax",
+      "icon": "🏛️"
+     },
+     {
+      "id": "sc_moving",
+      "name": "Moving Costs",
+      "icon": "📦"
+     },
+     {
+      "id": "sc_furnishing",
+      "name": "Furnishing & Bedding",
+      "icon": "🛏️"
+     },
+     {
+      "id": "sc_utilityparking",
+      "name": "Building Fees & Parking",
+      "icon": "🅿️"
+     }
+    ]
+   },
+   {
+    "id": "exp_food",
+    "name": "Food & Groceries",
+    "icon": "🛒",
+    "subcategories": [
+     {
+      "id": "sc_groceries",
+      "name": "Groceries",
+      "icon": "🛒"
+     },
+     {
+      "id": "sc_coffeesnacks",
+      "name": "Coffee & Snacks",
+      "icon": "☕"
+     },
+     {
+      "id": "sc_delivery",
+      "name": "Delivery",
+      "icon": "🛵"
+     },
+     {
+      "id": "sc_canteen",
+      "name": "Campus Canteen / Cafeteria",
+      "icon": "🍱"
+     },
+     {
+      "id": "sc_mealplan",
+      "name": "Meal Plan",
+      "icon": "🎟️"
+     },
+     {
+      "id": "sc_bakery",
+      "name": "Bakery",
+      "icon": "🥖"
+     },
+     {
+      "id": "sc_drinks",
+      "name": "Drinks & Alcohol (Shop)",
+      "icon": "🍷"
+     },
+     {
+      "id": "sc_mealkits",
+      "name": "Meal Kits",
+      "icon": "📦"
+     },
+     {
+      "id": "sc_lunchoutfood",
+      "name": "Lunch on the Go",
+      "icon": "🥪"
+     },
+     {
+      "id": "sc_specialtyfood",
+      "name": "Specialty / Organic / Ethnic Food",
+      "icon": "🥑"
+     }
+    ]
+   },
+   {
+    "id": "exp_transport",
+    "name": "Transport",
+    "icon": "🚗",
+    "subcategories": [
+     {
+      "id": "sc_fuel",
+      "name": "Fuel",
+      "icon": "⛽"
+     },
+     {
+      "id": "sc_publictransport",
+      "name": "Public Transport",
+      "icon": "🚌"
+     },
+     {
+      "id": "sc_parking",
+      "name": "Parking",
+      "icon": "🅿️"
+     },
+     {
+      "id": "sc_carmaintenance",
+      "name": "Car Maintenance",
+      "icon": "🔧"
+     },
+     {
+      "id": "sc_ridehailing",
+      "name": "Ride-hailing",
+      "icon": "🚕"
+     },
+     {
+      "id": "sc_transitpass",
+      "name": "Student Transit Pass",
+      "icon": "🎫"
+     },
+     {
+      "id": "sc_train",
+      "name": "Train",
+      "icon": "🚆"
+     },
+     {
+      "id": "sc_longbus",
+      "name": "Long-distance Bus",
+      "icon": "🚍"
+     },
+     {
+      "id": "sc_bike",
+      "name": "Bike Purchase & Repairs",
+      "icon": "🚲"
+     },
+     {
+      "id": "sc_scooter",
+      "name": "Bike / Scooter Sharing",
+      "icon": "🛴"
+     },
+     {
+      "id": "sc_carinsurance",
+      "name": "Car Insurance",
+      "icon": "🛡️"
+     },
+     {
+      "id": "sc_roadtax",
+      "name": "Road Tax & Registration",
+      "icon": "📋"
+     },
+     {
+      "id": "sc_drivinglessons",
+      "name": "Driving Lessons & Licence",
+      "icon": "🚦"
+     },
+     {
+      "id": "sc_tolls",
+      "name": "Tolls & Vignettes",
+      "icon": "🛣️"
+     },
+     {
+      "id": "sc_carrental",
+      "name": "Car Rental / Sharing",
+      "icon": "🚙"
+     }
+    ]
+   },
+   {
+    "id": "exp_restaurants",
+    "name": "Restaurants",
+    "icon": "🍽️",
+    "subcategories": [
+     {
+      "id": "sc_diningout",
+      "name": "Dining Out",
+      "icon": "🍽️"
+     },
+     {
+      "id": "sc_takeaway",
+      "name": "Takeaway",
+      "icon": "🥡"
+     },
+     {
+      "id": "sc_bars",
+      "name": "Bars",
+      "icon": "🍹"
+     },
+     {
+      "id": "sc_fastfood",
+      "name": "Fast Food",
+      "icon": "🍔"
+     },
+     {
+      "id": "sc_cafes",
+      "name": "Cafés",
+      "icon": "☕"
+     },
+     {
+      "id": "sc_brunch",
+      "name": "Brunch & Bakery Cafés",
+      "icon": "🥐"
+     }
+    ]
+   },
+   {
+    "id": "exp_subscriptions",
+    "name": "Subscriptions",
+    "icon": "📱",
+    "subcategories": [
+     {
+      "id": "sc_streaming",
+      "name": "Streaming",
+      "icon": "📺"
+     },
+     {
+      "id": "sc_software",
+      "name": "Software",
+      "icon": "💻"
+     },
+     {
+      "id": "sc_memberships",
+      "name": "Memberships",
+      "icon": "🎫"
+     },
+     {
+      "id": "sc_news",
+      "name": "News",
+      "icon": "📰"
+     },
+     {
+      "id": "sc_music",
+      "name": "Music",
+      "icon": "🎧"
+     },
+     {
+      "id": "sc_cloud",
+      "name": "Cloud Storage",
+      "icon": "☁️"
+     },
+     {
+      "id": "sc_aitools",
+      "name": "AI Tools",
+      "icon": "🤖"
+     },
+     {
+      "id": "sc_gamingsub",
+      "name": "Gaming Subscriptions",
+      "icon": "🎮"
+     },
+     {
+      "id": "sc_studyapps",
+      "name": "Study & Language Apps",
+      "icon": "📖"
+     },
+     {
+      "id": "sc_vpn",
+      "name": "VPN & Security",
+      "icon": "🔒"
+     },
+     {
+      "id": "sc_shoppingmember",
+      "name": "Shopping / Delivery Membership",
+      "icon": "📦"
+     },
+     {
+      "id": "sc_audiobooks",
+      "name": "Audiobooks & E-books",
+      "icon": "🎙️"
+     }
+    ]
+   },
+   {
+    "id": "exp_leisure",
+    "name": "Entertainment",
+    "icon": "🎬",
+    "subcategories": [
+     {
+      "id": "sc_movies",
+      "name": "Movies",
+      "icon": "🎬"
+     },
+     {
+      "id": "sc_concerts",
+      "name": "Concerts",
+      "icon": "🎵"
+     },
+     {
+      "id": "sc_games",
+      "name": "Games",
+      "icon": "🎮"
+     },
+     {
+      "id": "sc_hobbies",
+      "name": "Hobbies",
+      "icon": "🎨"
+     },
+     {
+      "id": "sc_nightlife",
+      "name": "Nightlife & Clubs",
+      "icon": "🪩"
+     },
+     {
+      "id": "sc_festivals",
+      "name": "Festivals",
+      "icon": "🎪"
+     },
+     {
+      "id": "sc_studentevents",
+      "name": "Student Association Events & Parties",
+      "icon": "🎉"
+     },
+     {
+      "id": "sc_sportsevents",
+      "name": "Sports Events",
+      "icon": "⚽"
+     },
+     {
+      "id": "sc_museums",
+      "name": "Museums & Culture",
+      "icon": "🏛️"
+     },
+     {
+      "id": "sc_clubsports",
+      "name": "Sports Activities & Clubs",
+      "icon": "🏐"
+     },
+     {
+      "id": "sc_boardgames",
+      "name": "Board Games & Hobbies Gear",
+      "icon": "🎲"
+     },
+     {
+      "id": "sc_leisurebooks",
+      "name": "Books, Comics & Magazines",
+      "icon": "📖"
+     },
+     {
+      "id": "sc_theatre",
+      "name": "Theatre & Shows",
+      "icon": "🎭"
+     }
+    ]
+   },
+   {
+    "id": "exp_shopping",
+    "name": "Shopping",
+    "icon": "🛍️",
+    "subcategories": [
+     {
+      "id": "sc_clothing",
+      "name": "Clothing",
+      "icon": "👕"
+     },
+     {
+      "id": "sc_electronics",
+      "name": "Electronics",
+      "icon": "🔌"
+     },
+     {
+      "id": "sc_homegoods",
+      "name": "Home Goods",
+      "icon": "🛋️"
+     },
+     {
+      "id": "sc_shoes",
+      "name": "Shoes",
+      "icon": "👟"
+     },
+     {
+      "id": "sc_accessories",
+      "name": "Accessories & Jewelry",
+      "icon": "💍"
+     },
+     {
+      "id": "sc_sportswear",
+      "name": "Sportswear & Gear",
+      "icon": "🎽"
+     },
+     {
+      "id": "sc_phones",
+      "name": "Phones & Accessories",
+      "icon": "📱"
+     },
+     {
+      "id": "sc_computers",
+      "name": "Computers & Tablets",
+      "icon": "💻"
+     },
+     {
+      "id": "sc_techrepair",
+      "name": "Repairs & Replacements",
+      "icon": "🛠️"
+     },
+     {
+      "id": "sc_secondhand",
+      "name": "Second-hand Purchases",
+      "icon": "♻️"
+     },
+     {
+      "id": "sc_onlineshopping",
+      "name": "Online Shopping",
+      "icon": "📦"
+     },
+     {
+      "id": "sc_bags",
+      "name": "Bags & Luggage",
+      "icon": "🎒"
+     },
+     {
+      "id": "sc_headphones",
+      "name": "Audio & Headphones",
+      "icon": "🎧"
+     }
+    ]
+   },
+   {
+    "id": "exp_health",
+    "name": "Health",
+    "icon": "💊",
+    "subcategories": [
+     {
+      "id": "sc_doctor",
+      "name": "Doctor",
+      "icon": "🩺"
+     },
+     {
+      "id": "sc_pharmacy",
+      "name": "Pharmacy",
+      "icon": "💊"
+     },
+     {
+      "id": "sc_healthinsurance",
+      "name": "Insurance",
+      "icon": "🛡️"
+     },
+     {
+      "id": "sc_fitness",
+      "name": "Fitness",
+      "icon": "🏋️"
+     },
+     {
+      "id": "sc_dentist",
+      "name": "Dentist",
+      "icon": "🦷"
+     },
+     {
+      "id": "sc_optician",
+      "name": "Optician & Glasses",
+      "icon": "👓"
+     },
+     {
+      "id": "sc_mentalhealth",
+      "name": "Mental Health & Therapy",
+      "icon": "🧠"
+     },
+     {
+      "id": "sc_vaccines",
+      "name": "Vaccines",
+      "icon": "💉"
+     },
+     {
+      "id": "sc_sexualhealth",
+      "name": "Sexual Health & Contraception",
+      "icon": "❤️‍🩹"
+     },
+     {
+      "id": "sc_hospital",
+      "name": "Hospital & Emergency",
+      "icon": "🏥"
+     },
+     {
+      "id": "sc_physio",
+      "name": "Physiotherapy",
+      "icon": "💆"
+     },
+     {
+      "id": "sc_supplements",
+      "name": "Vitamins & Supplements",
+      "icon": "💊"
+     },
+     {
+      "id": "sc_gym",
+      "name": "Gym Membership",
+      "icon": "🏋️"
+     },
+     {
+      "id": "sc_specialist",
+      "name": "Specialist Consultations",
+      "icon": "👩‍⚕️"
+     }
+    ]
+   },
+   {
+    "id": "exp_bills",
+    "name": "Bills",
+    "icon": "🧾",
+    "subcategories": [
+     {
+      "id": "sc_phone",
+      "name": "Phone",
+      "icon": "📱"
+     },
+     {
+      "id": "sc_internet",
+      "name": "Internet",
+      "icon": "📶"
+     },
+     {
+      "id": "sc_mobiledata",
+      "name": "Mobile Data & SIM",
+      "icon": "📡"
+     },
+     {
+      "id": "sc_tvlicence",
+      "name": "TV / Media Licence",
+      "icon": "📺"
+     },
+     {
+      "id": "sc_postage",
+      "name": "Postage & Shipping",
+      "icon": "📮"
+     },
+     {
+      "id": "sc_billsother",
+      "name": "Other Recurring Bills",
+      "icon": "🧾"
+     }
+    ]
+   },
+   {
+    "id": "exp_fees",
+    "name": "Taxes & Fees",
+    "icon": "🏛️",
+    "subcategories": [
+     {
+      "id": "sc_bankfees",
+      "name": "Bank & Card Fees",
+      "icon": "🏦"
+     },
+     {
+      "id": "sc_fxfees",
+      "name": "Currency Exchange & Transfer Fees",
+      "icon": "💱"
+     },
+     {
+      "id": "sc_atmfees",
+      "name": "ATM Withdrawal Fees",
+      "icon": "🏧"
+     },
+     {
+      "id": "sc_fines",
+      "name": "Fines & Penalties",
+      "icon": "⚠️"
+     },
+     {
+      "id": "sc_visa",
+      "name": "Visa & Residence Permit",
+      "icon": "🛂"
+     },
+     {
+      "id": "sc_adminfees",
+      "name": "Administrative & Legal Fees",
+      "icon": "📄"
+     },
+     {
+      "id": "sc_incometax",
+      "name": "Income Tax",
+      "icon": "🧾"
+     },
+     {
+      "id": "sc_latefees",
+      "name": "Late Payment Fees",
+      "icon": "⏰"
+     },
+     {
+      "id": "sc_notary",
+      "name": "Documents, Translations & Notary",
+      "icon": "📜"
+     }
+    ]
+   },
+   {
+    "id": "exp_savings",
+    "name": "Savings",
+    "icon": "💵",
+    "subcategories": [
+     {
+      "id": "sc_emergencyfund",
+      "name": "Emergency Fund",
+      "icon": "🛟"
+     },
+     {
+      "id": "sc_investmentcontrib",
+      "name": "Investment Contribution",
+      "icon": "📈"
+     },
+     {
+      "id": "sc_travelfund",
+      "name": "Travel Fund",
+      "icon": "🧳"
+     },
+     {
+      "id": "sc_goalsavings",
+      "name": "Goal Savings (Laptop, Deposit…)",
+      "icon": "🎯"
+     },
+     {
+      "id": "sc_cryptobuy",
+      "name": "Crypto Purchases",
+      "icon": "🪙"
+     },
+     {
+      "id": "sc_pocketsavings",
+      "name": "Transfer to Savings Account",
+      "icon": "🏦"
+     },
+     {
+      "id": "sc_retirement",
+      "name": "Retirement / Pension",
+      "icon": "👴"
+     }
+    ]
+   },
+   {
+    "id": "exp_travel",
+    "name": "Travel",
+    "icon": "✈️",
+    "subcategories": [
+     {
+      "id": "sc_flights",
+      "name": "Flights",
+      "icon": "✈️"
+     },
+     {
+      "id": "sc_hotels",
+      "name": "Hotels",
+      "icon": "🏨"
+     },
+     {
+      "id": "sc_activities",
+      "name": "Activities",
+      "icon": "🗺️"
+     },
+     {
+      "id": "sc_traintravel",
+      "name": "Trains & Buses",
+      "icon": "🚆"
+     },
+     {
+      "id": "sc_hostels",
+      "name": "Hostels & Airbnb",
+      "icon": "🛏️"
+     },
+     {
+      "id": "sc_travelinsurance",
+      "name": "Travel Insurance",
+      "icon": "🛡️"
+     },
+     {
+      "id": "sc_exchangecosts",
+      "name": "Erasmus / Exchange Costs",
+      "icon": "🎒"
+     },
+     {
+      "id": "sc_luggage",
+      "name": "Luggage & Travel Gear",
+      "icon": "🧳"
+     },
+     {
+      "id": "sc_roaming",
+      "name": "Roaming & Travel SIM",
+      "icon": "📶"
+     },
+     {
+      "id": "sc_triptransport",
+      "name": "Local Transport on Trips",
+      "icon": "🚇"
+     },
+     {
+      "id": "sc_tripfood",
+      "name": "Food on Trips",
+      "icon": "🍽️"
+     },
+     {
+      "id": "sc_gohome",
+      "name": "Trips Home to Family",
+      "icon": "🏡"
+     },
+     {
+      "id": "sc_travelvisa",
+      "name": "Visas & Entry Fees",
+      "icon": "🛂"
+     }
+    ]
+   },
+   {
+    "id": "exp_education",
+    "name": "Education",
+    "icon": "📚",
+    "subcategories": [
+     {
+      "id": "sc_tuition",
+      "name": "Tuition",
+      "icon": "🎓"
+     },
+     {
+      "id": "sc_books",
+      "name": "Books",
+      "icon": "📚"
+     },
+     {
+      "id": "sc_courses",
+      "name": "Courses",
+      "icon": "🧑‍🏫"
+     },
+     {
+      "id": "sc_enrollment",
+      "name": "Registration & Enrollment Fees",
+      "icon": "📝"
+     },
+     {
+      "id": "sc_examfees",
+      "name": "Exam & Resit Fees",
+      "icon": "✏️"
+     },
+     {
+      "id": "sc_labmaterials",
+      "name": "Lab & Course Materials",
+      "icon": "🔬"
+     },
+     {
+      "id": "sc_stationery",
+      "name": "Stationery & Supplies",
+      "icon": "🖊️"
+     },
+     {
+      "id": "sc_printing",
+      "name": "Printing & Copies",
+      "icon": "🖨️"
+     },
+     {
+      "id": "sc_studysoftware",
+      "name": "Software & Licences",
+      "icon": "💻"
+     },
+     {
+      "id": "sc_studyequipment",
+      "name": "Laptop & Study Equipment",
+      "icon": "🖥️"
+     },
+     {
+      "id": "sc_languagecourses",
+      "name": "Language Courses",
+      "icon": "🌍"
+     },
+     {
+      "id": "sc_languagetests",
+      "name": "Language Tests (IELTS, TOEFL…)",
+      "icon": "✅"
+     },
+     {
+      "id": "sc_studentassoc",
+      "name": "Student Association Membership",
+      "icon": "🤝"
+     },
+     {
+      "id": "sc_fieldtrips",
+      "name": "Field Trips & Excursions",
+      "icon": "🚌"
+     },
+     {
+      "id": "sc_thesis",
+      "name": "Thesis Printing & Binding",
+      "icon": "📕"
+     },
+     {
+      "id": "sc_onlinecourses",
+      "name": "Online Course Platforms",
+      "icon": "🎓"
+     },
+     {
+      "id": "sc_studytutoring",
+      "name": "Tutoring & Study Help",
+      "icon": "🧑‍🏫"
+     },
+     {
+      "id": "sc_conferences",
+      "name": "Conferences & Workshops",
+      "icon": "🎤"
+     },
+     {
+      "id": "sc_graduation",
+      "name": "Graduation Fees & Ceremony",
+      "icon": "🎓"
+     },
+     {
+      "id": "sc_textbookrental",
+      "name": "Textbook Rental",
+      "icon": "📖"
+     },
+     {
+      "id": "sc_libraryfines",
+      "name": "Library Fees & Fines",
+      "icon": "🏛️"
+     }
+    ]
+   },
+   {
+    "id": "exp_career",
+    "name": "Work & Career",
+    "icon": "💼",
+    "subcategories": [
+     {
+      "id": "sc_profclothes",
+      "name": "Professional Clothing",
+      "icon": "👔"
+     },
+     {
+      "id": "sc_networking",
+      "name": "Networking Events",
+      "icon": "🤝"
+     },
+     {
+      "id": "sc_certifications",
+      "name": "Certifications & Training",
+      "icon": "🏅"
+     },
+     {
+      "id": "sc_portfolio",
+      "name": "CV, Portfolio & Website",
+      "icon": "🌐"
+     },
+     {
+      "id": "sc_worktools",
+      "name": "Work Tools & Equipment",
+      "icon": "🧰"
+     },
+     {
+      "id": "sc_interviewtravel",
+      "name": "Interview & Job-hunt Travel",
+      "icon": "🚆"
+     },
+     {
+      "id": "sc_careerpremium",
+      "name": "Career Platform Subscriptions",
+      "icon": "🔗"
+     }
+    ]
+   },
+   {
+    "id": "exp_insurance",
+    "name": "Insurance",
+    "icon": "🛡️",
+    "subcategories": [
+     {
+      "id": "sc_liability",
+      "name": "Liability Insurance",
+      "icon": "🛡️"
+     },
+     {
+      "id": "sc_deviceinsurance",
+      "name": "Phone & Device Insurance",
+      "icon": "📱"
+     },
+     {
+      "id": "sc_bikeinsurance",
+      "name": "Bike Insurance",
+      "icon": "🚲"
+     },
+     {
+      "id": "sc_legalprotection",
+      "name": "Legal Protection",
+      "icon": "⚖️"
+     },
+     {
+      "id": "sc_accidentlife",
+      "name": "Accident / Life Insurance",
+      "icon": "🩹"
+     },
+     {
+      "id": "sc_studentinsurance",
+      "name": "Student Insurance Package",
+      "icon": "🎓"
+     }
+    ]
+   },
+   {
+    "id": "exp_debt",
+    "name": "Debt & Loans",
+    "icon": "💳",
+    "subcategories": [
+     {
+      "id": "sc_studentloanrepay",
+      "name": "Student Loan Repayment",
+      "icon": "🎓"
+     },
+     {
+      "id": "sc_creditcard",
+      "name": "Credit Card Payment",
+      "icon": "💳"
+     },
+     {
+      "id": "sc_personalloan",
+      "name": "Personal Loan Repayment",
+      "icon": "🏦"
+     },
+     {
+      "id": "sc_interestcharges",
+      "name": "Interest & Finance Charges",
+      "icon": "📉"
+     },
+     {
+      "id": "sc_overdraft",
+      "name": "Overdraft Costs",
+      "icon": "🔻"
+     },
+     {
+      "id": "sc_bnpl",
+      "name": "Buy Now, Pay Later",
+      "icon": "🛒"
+     },
+     {
+      "id": "sc_familyrepay",
+      "name": "Repaying Family / Friends",
+      "icon": "🤝"
+     }
+    ]
+   },
+   {
+    "id": "exp_personalcare",
+    "name": "Personal Care",
+    "icon": "💅",
+    "subcategories": [
+     {
+      "id": "sc_haircare",
+      "name": "Haircare",
+      "icon": "💇"
+     },
+     {
+      "id": "sc_cosmetics",
+      "name": "Cosmetics",
+      "icon": "💄"
+     },
+     {
+      "id": "sc_spa",
+      "name": "Spa",
+      "icon": "💆"
+     },
+     {
+      "id": "sc_toiletries",
+      "name": "Toiletries & Hygiene",
+      "icon": "🧴"
+     },
+     {
+      "id": "sc_barber",
+      "name": "Barber",
+      "icon": "💈"
+     },
+     {
+      "id": "sc_nails",
+      "name": "Nails & Beauty Treatments",
+      "icon": "💅"
+     },
+     {
+      "id": "sc_skincare",
+      "name": "Skincare",
+      "icon": "🧼"
+     },
+     {
+      "id": "sc_drycleaning",
+      "name": "Dry Cleaning & Tailoring",
+      "icon": "🧵"
+     }
+    ]
+   },
+   {
+    "id": "exp_social",
+    "name": "Family & Social",
+    "icon": "🤝",
+    "subcategories": [
+     {
+      "id": "sc_splitbills",
+      "name": "Shared Costs with Friends / Flatmates",
+      "icon": "🍕"
+     },
+     {
+      "id": "sc_lentfriends",
+      "name": "Money Lent to Friends",
+      "icon": "💸"
+     },
+     {
+      "id": "sc_familygiven",
+      "name": "Support Given to Family",
+      "icon": "👪"
+     },
+     {
+      "id": "sc_clubdues",
+      "name": "Club & Society Dues",
+      "icon": "🎽"
+     },
+     {
+      "id": "sc_pets",
+      "name": "Pets",
+      "icon": "🐾"
+     },
+     {
+      "id": "sc_partner",
+      "name": "Partner / Dates",
+      "icon": "💞"
+     },
+     {
+      "id": "sc_grouptrips",
+      "name": "Group Events & Outings",
+      "icon": "🎈"
+     }
+    ]
+   },
+   {
+    "id": "exp_gifts",
+    "name": "Gifts & Donations",
+    "icon": "🎁",
+    "subcategories": [
+     {
+      "id": "sc_gifts",
+      "name": "Gifts",
+      "icon": "🎁"
+     },
+     {
+      "id": "sc_charity",
+      "name": "Charity",
+      "icon": "❤️"
+     },
+     {
+      "id": "sc_birthdaygifts",
+      "name": "Birthday & Party Contributions",
+      "icon": "🎂"
+     },
+     {
+      "id": "sc_holidaygifts",
+      "name": "Holiday Gifts",
+      "icon": "🎄"
+     },
+     {
+      "id": "sc_crowdfunding",
+      "name": "Crowdfunding & Fundraisers",
+      "icon": "🙌"
+     },
+     {
+      "id": "sc_tipping",
+      "name": "Tips",
+      "icon": "💁"
+     }
+    ]
+   },
+   {
+    "id": "exp_other",
+    "name": "Other",
+    "icon": "📦",
+    "subcategories": [
+     {
+      "id": "sc_misc",
+      "name": "Miscellaneous",
+      "icon": "❔"
+     },
+     {
+      "id": "sc_unexpected",
+      "name": "Unexpected / Emergency",
+      "icon": "🚨"
+     },
+     {
+      "id": "sc_lostitems",
+      "name": "Lost, Stolen or Damaged Items",
+      "icon": "🔍"
+     }
+    ]
+   }
+  ],
+  "asset": [
+   {
+    "id": "at_stocks",
+    "name": "Stocks"
+   },
+   {
+    "id": "at_etfs",
+    "name": "ETFs"
+   },
+   {
+    "id": "at_crypto",
+    "name": "Crypto"
+   },
+   {
+    "id": "at_pe",
+    "name": "Private Equity"
+   },
+   {
+    "id": "at_gold",
+    "name": "Gold"
+   },
+   {
+    "id": "at_re",
+    "name": "Real Estate"
+   },
+   {
+    "id": "at_other",
+    "name": "Other"
+   }
+  ]
+ },
+ "paymentMethods": [
+  {
+   "id": "pm_card",
+   "name": "Card",
+   "icon": "💳"
+  },
+  {
+   "id": "pm_transfer",
+   "name": "Transfer",
+   "icon": "🏦"
+  },
+  {
+   "id": "pm_cash",
+   "name": "Cash",
+   "icon": "💵"
+  },
+  {
+   "id": "pm_dd",
+   "name": "Direct Debit",
+   "icon": "📝"
+  }
+ ],
+ "accounts": [
+  {
+   "id": "acc_demo1",
+   "icon": "🏦",
+   "name": "Demo Bank Current",
+   "currency": "EUR",
+   "balance": 1834.25,
+   "description": "Invented account",
+   "logo": "",
+   "logoKind": "emoji",
+   "color": "#3B5BDB",
+   "visibleInTotals": true,
+   "balanceCheckedAt": "2026-10-15T10:00:00.000Z",
+   "pockets": [
+    {
+     "id": "pk_demo1",
+     "icon": "✈️",
+     "name": "Trip fund",
+     "amountSaved": 420,
+     "targetAmount": 1200,
+     "color": "#E8963C"
+    }
+   ]
+  },
+  {
+   "id": "acc_demo2",
+   "icon": "💰",
+   "name": "Demo Savings",
+   "currency": "EUR",
+   "balance": 3150,
+   "description": "",
+   "logo": "",
+   "logoKind": "emoji",
+   "color": "#4FA6D9",
+   "visibleInTotals": true,
+   "balanceCheckedAt": "2026-09-03T10:00:00.000Z",
+   "pockets": [
+    {
+     "id": "pk_demo2",
+     "icon": "🛟",
+     "name": "Rainy day",
+     "amountSaved": 900,
+     "targetAmount": 2000,
+     "color": "#22B573"
+    }
+   ]
+  },
+  {
+   "id": "acc_demo3",
+   "icon": "💳",
+   "name": "Travel Card (GBP)",
+   "currency": "GBP",
+   "balance": 85.4,
+   "description": "",
+   "logo": "",
+   "logoKind": "emoji",
+   "color": "#8E6CEF",
+   "visibleInTotals": true,
+   "balanceCheckedAt": "2026-10-08T10:00:00.000Z",
+   "pockets": []
+  }
+ ],
+ "budgetTransactions": [
+  {
+   "id": "tx_1",
+   "type": "income",
+   "amount": 950,
+   "currency": "EUR",
+   "date": "2026-10-16",
+   "categoryId": "inc_salary",
+   "subCategoryId": "sci_campusjob",
+   "comment": "Campus Cafe Job",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_campuscafejob"
+  },
+  {
+   "id": "tx_2",
+   "type": "income",
+   "amount": 300,
+   "currency": "EUR",
+   "date": "2026-10-14",
+   "categoryId": "inc_family",
+   "subCategoryId": "sci_allowance",
+   "comment": "Family allowance",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_familyallowance"
+  },
+  {
+   "id": "tx_3",
+   "type": "expense",
+   "amount": 520,
+   "currency": "EUR",
+   "date": "2026-10-15",
+   "categoryId": "exp_housing",
+   "subCategoryId": "sc_rent",
+   "comment": "Student Room Rent",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_dd",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_studentroomrent"
+  },
+  {
+   "id": "tx_4",
+   "type": "expense",
+   "amount": 11.99,
+   "currency": "EUR",
+   "date": "2026-10-12",
+   "categoryId": "exp_subscriptions",
+   "subCategoryId": "sc_streaming",
+   "comment": "StreamBox",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_streambox"
+  },
+  {
+   "id": "tx_5",
+   "type": "expense",
+   "amount": 64,
+   "currency": "EUR",
+   "date": "2026-10-10",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_6",
+   "type": "expense",
+   "amount": 38,
+   "currency": "EUR",
+   "date": "2026-10-03",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_7",
+   "type": "expense",
+   "amount": 27.5,
+   "currency": "EUR",
+   "date": "2026-10-07",
+   "categoryId": "exp_transport",
+   "subCategoryId": "sc_publictransport",
+   "comment": "Rail Pass Top-up",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_8",
+   "type": "expense",
+   "amount": 18,
+   "currency": "EUR",
+   "date": "2026-09-29",
+   "categoryId": "exp_restaurants",
+   "subCategoryId": "sc_diningout",
+   "comment": "Corner Bistro",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_9",
+   "type": "expense",
+   "amount": 45,
+   "currency": "EUR",
+   "date": "2026-09-26",
+   "categoryId": "exp_gifts",
+   "subCategoryId": "sc_gifts",
+   "comment": "Gift Shop",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_10",
+   "type": "transfer",
+   "amount": 50,
+   "currency": "EUR",
+   "date": "2026-10-13",
+   "categoryId": null,
+   "subCategoryId": null,
+   "comment": "To Trip fund",
+   "accountId": null,
+   "nature": "Variable",
+   "paymentMethodId": null,
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "from": "acc:acc_demo1",
+   "to": "pk:acc_demo1:pk_demo1",
+   "fromLabel": "Demo Bank Current",
+   "toLabel": "Demo Bank Current › Trip fund"
+  },
+  {
+   "id": "tx_11",
+   "type": "transfer",
+   "amount": 100,
+   "currency": "EUR",
+   "date": "2026-10-09",
+   "categoryId": null,
+   "subCategoryId": null,
+   "comment": "Monthly ETF money",
+   "accountId": null,
+   "nature": "Variable",
+   "paymentMethodId": null,
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "from": "acc:acc_demo1",
+   "to": "brk:brk_demo1",
+   "fromLabel": "Demo Bank Current",
+   "toLabel": "Sample Broker (cash)"
+  },
+  {
+   "id": "tx_12",
+   "type": "income",
+   "amount": 950,
+   "currency": "EUR",
+   "date": "2026-09-16",
+   "categoryId": "inc_salary",
+   "subCategoryId": "sci_campusjob",
+   "comment": "Campus Cafe Job",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_campuscafejob"
+  },
+  {
+   "id": "tx_13",
+   "type": "income",
+   "amount": 300,
+   "currency": "EUR",
+   "date": "2026-09-14",
+   "categoryId": "inc_family",
+   "subCategoryId": "sci_allowance",
+   "comment": "Family allowance",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_familyallowance"
+  },
+  {
+   "id": "tx_14",
+   "type": "expense",
+   "amount": 520,
+   "currency": "EUR",
+   "date": "2026-09-15",
+   "categoryId": "exp_housing",
+   "subCategoryId": "sc_rent",
+   "comment": "Student Room Rent",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_dd",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_studentroomrent"
+  },
+  {
+   "id": "tx_15",
+   "type": "expense",
+   "amount": 11.99,
+   "currency": "EUR",
+   "date": "2026-09-12",
+   "categoryId": "exp_subscriptions",
+   "subCategoryId": "sc_streaming",
+   "comment": "StreamBox",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_streambox"
+  },
+  {
+   "id": "tx_16",
+   "type": "expense",
+   "amount": 71,
+   "currency": "EUR",
+   "date": "2026-09-10",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_17",
+   "type": "expense",
+   "amount": 49,
+   "currency": "EUR",
+   "date": "2026-09-03",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_18",
+   "type": "expense",
+   "amount": 27.5,
+   "currency": "EUR",
+   "date": "2026-09-07",
+   "categoryId": "exp_transport",
+   "subCategoryId": "sc_publictransport",
+   "comment": "Rail Pass Top-up",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_19",
+   "type": "expense",
+   "amount": 20,
+   "currency": "EUR",
+   "date": "2026-08-30",
+   "categoryId": "exp_restaurants",
+   "subCategoryId": "sc_diningout",
+   "comment": "Corner Bistro",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_20",
+   "type": "transfer",
+   "amount": 50,
+   "currency": "EUR",
+   "date": "2026-09-13",
+   "categoryId": null,
+   "subCategoryId": null,
+   "comment": "To Trip fund",
+   "accountId": null,
+   "nature": "Variable",
+   "paymentMethodId": null,
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "from": "acc:acc_demo1",
+   "to": "pk:acc_demo1:pk_demo1",
+   "fromLabel": "Demo Bank Current",
+   "toLabel": "Demo Bank Current › Trip fund"
+  },
+  {
+   "id": "tx_21",
+   "type": "transfer",
+   "amount": 100,
+   "currency": "EUR",
+   "date": "2026-09-09",
+   "categoryId": null,
+   "subCategoryId": null,
+   "comment": "Monthly ETF money",
+   "accountId": null,
+   "nature": "Variable",
+   "paymentMethodId": null,
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "from": "acc:acc_demo1",
+   "to": "brk:brk_demo1",
+   "fromLabel": "Demo Bank Current",
+   "toLabel": "Sample Broker (cash)"
+  },
+  {
+   "id": "tx_22",
+   "type": "income",
+   "amount": 950,
+   "currency": "EUR",
+   "date": "2026-08-17",
+   "categoryId": "inc_salary",
+   "subCategoryId": "sci_campusjob",
+   "comment": "Campus Cafe Job",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_campuscafejob"
+  },
+  {
+   "id": "tx_23",
+   "type": "income",
+   "amount": 300,
+   "currency": "EUR",
+   "date": "2026-08-15",
+   "categoryId": "inc_family",
+   "subCategoryId": "sci_allowance",
+   "comment": "Family allowance",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_familyallowance"
+  },
+  {
+   "id": "tx_24",
+   "type": "expense",
+   "amount": 520,
+   "currency": "EUR",
+   "date": "2026-08-16",
+   "categoryId": "exp_housing",
+   "subCategoryId": "sc_rent",
+   "comment": "Student Room Rent",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_dd",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_studentroomrent"
+  },
+  {
+   "id": "tx_25",
+   "type": "expense",
+   "amount": 9.99,
+   "currency": "EUR",
+   "date": "2026-08-13",
+   "categoryId": "exp_subscriptions",
+   "subCategoryId": "sc_streaming",
+   "comment": "StreamBox",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_streambox"
+  },
+  {
+   "id": "tx_26",
+   "type": "expense",
+   "amount": 78,
+   "currency": "EUR",
+   "date": "2026-08-11",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_27",
+   "type": "expense",
+   "amount": 60,
+   "currency": "EUR",
+   "date": "2026-08-04",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_28",
+   "type": "expense",
+   "amount": 27.5,
+   "currency": "EUR",
+   "date": "2026-08-08",
+   "categoryId": "exp_transport",
+   "subCategoryId": "sc_publictransport",
+   "comment": "Rail Pass Top-up",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_29",
+   "type": "expense",
+   "amount": 22,
+   "currency": "EUR",
+   "date": "2026-07-31",
+   "categoryId": "exp_restaurants",
+   "subCategoryId": "sc_diningout",
+   "comment": "Corner Bistro",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_30",
+   "type": "expense",
+   "amount": 45,
+   "currency": "EUR",
+   "date": "2026-07-28",
+   "categoryId": "exp_gifts",
+   "subCategoryId": "sc_gifts",
+   "comment": "Gift Shop",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_31",
+   "type": "transfer",
+   "amount": 50,
+   "currency": "EUR",
+   "date": "2026-08-14",
+   "categoryId": null,
+   "subCategoryId": null,
+   "comment": "To Trip fund",
+   "accountId": null,
+   "nature": "Variable",
+   "paymentMethodId": null,
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "from": "acc:acc_demo1",
+   "to": "pk:acc_demo1:pk_demo1",
+   "fromLabel": "Demo Bank Current",
+   "toLabel": "Demo Bank Current › Trip fund"
+  },
+  {
+   "id": "tx_32",
+   "type": "transfer",
+   "amount": 100,
+   "currency": "EUR",
+   "date": "2026-08-10",
+   "categoryId": null,
+   "subCategoryId": null,
+   "comment": "Monthly ETF money",
+   "accountId": null,
+   "nature": "Variable",
+   "paymentMethodId": null,
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "from": "acc:acc_demo1",
+   "to": "brk:brk_demo1",
+   "fromLabel": "Demo Bank Current",
+   "toLabel": "Sample Broker (cash)"
+  },
+  {
+   "id": "tx_33",
+   "type": "income",
+   "amount": 950,
+   "currency": "EUR",
+   "date": "2026-07-18",
+   "categoryId": "inc_salary",
+   "subCategoryId": "sci_campusjob",
+   "comment": "Campus Cafe Job",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_campuscafejob"
+  },
+  {
+   "id": "tx_34",
+   "type": "income",
+   "amount": 300,
+   "currency": "EUR",
+   "date": "2026-07-16",
+   "categoryId": "inc_family",
+   "subCategoryId": "sci_allowance",
+   "comment": "Family allowance",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_familyallowance"
+  },
+  {
+   "id": "tx_35",
+   "type": "expense",
+   "amount": 520,
+   "currency": "EUR",
+   "date": "2026-07-17",
+   "categoryId": "exp_housing",
+   "subCategoryId": "sc_rent",
+   "comment": "Student Room Rent",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_dd",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_studentroomrent"
+  },
+  {
+   "id": "tx_36",
+   "type": "expense",
+   "amount": 9.99,
+   "currency": "EUR",
+   "date": "2026-07-14",
+   "categoryId": "exp_subscriptions",
+   "subCategoryId": "sc_streaming",
+   "comment": "StreamBox",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_streambox"
+  },
+  {
+   "id": "tx_37",
+   "type": "expense",
+   "amount": 85,
+   "currency": "EUR",
+   "date": "2026-07-12",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_38",
+   "type": "expense",
+   "amount": 38,
+   "currency": "EUR",
+   "date": "2026-07-05",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_39",
+   "type": "expense",
+   "amount": 27.5,
+   "currency": "EUR",
+   "date": "2026-07-09",
+   "categoryId": "exp_transport",
+   "subCategoryId": "sc_publictransport",
+   "comment": "Rail Pass Top-up",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_40",
+   "type": "expense",
+   "amount": 24,
+   "currency": "EUR",
+   "date": "2026-07-01",
+   "categoryId": "exp_restaurants",
+   "subCategoryId": "sc_diningout",
+   "comment": "Corner Bistro",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_41",
+   "type": "transfer",
+   "amount": 50,
+   "currency": "EUR",
+   "date": "2026-07-15",
+   "categoryId": null,
+   "subCategoryId": null,
+   "comment": "To Trip fund",
+   "accountId": null,
+   "nature": "Variable",
+   "paymentMethodId": null,
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "from": "acc:acc_demo1",
+   "to": "pk:acc_demo1:pk_demo1",
+   "fromLabel": "Demo Bank Current",
+   "toLabel": "Demo Bank Current › Trip fund"
+  },
+  {
+   "id": "tx_42",
+   "type": "income",
+   "amount": 950,
+   "currency": "EUR",
+   "date": "2026-06-18",
+   "categoryId": "inc_salary",
+   "subCategoryId": "sci_campusjob",
+   "comment": "Campus Cafe Job",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_campuscafejob"
+  },
+  {
+   "id": "tx_43",
+   "type": "income",
+   "amount": 300,
+   "currency": "EUR",
+   "date": "2026-06-16",
+   "categoryId": "inc_family",
+   "subCategoryId": "sci_allowance",
+   "comment": "Family allowance",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_familyallowance"
+  },
+  {
+   "id": "tx_44",
+   "type": "expense",
+   "amount": 520,
+   "currency": "EUR",
+   "date": "2026-06-17",
+   "categoryId": "exp_housing",
+   "subCategoryId": "sc_rent",
+   "comment": "Student Room Rent",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_dd",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_studentroomrent"
+  },
+  {
+   "id": "tx_45",
+   "type": "expense",
+   "amount": 9.99,
+   "currency": "EUR",
+   "date": "2026-06-14",
+   "categoryId": "exp_subscriptions",
+   "subCategoryId": "sc_streaming",
+   "comment": "StreamBox",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_streambox"
+  },
+  {
+   "id": "tx_46",
+   "type": "expense",
+   "amount": 92,
+   "currency": "EUR",
+   "date": "2026-06-12",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_47",
+   "type": "expense",
+   "amount": 49,
+   "currency": "EUR",
+   "date": "2026-06-05",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_48",
+   "type": "expense",
+   "amount": 27.5,
+   "currency": "EUR",
+   "date": "2026-06-09",
+   "categoryId": "exp_transport",
+   "subCategoryId": "sc_publictransport",
+   "comment": "Rail Pass Top-up",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_49",
+   "type": "expense",
+   "amount": 26,
+   "currency": "EUR",
+   "date": "2026-06-01",
+   "categoryId": "exp_restaurants",
+   "subCategoryId": "sc_diningout",
+   "comment": "Corner Bistro",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_50",
+   "type": "expense",
+   "amount": 45,
+   "currency": "EUR",
+   "date": "2026-05-29",
+   "categoryId": "exp_gifts",
+   "subCategoryId": "sc_gifts",
+   "comment": "Gift Shop",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_51",
+   "type": "transfer",
+   "amount": 50,
+   "currency": "EUR",
+   "date": "2026-06-15",
+   "categoryId": null,
+   "subCategoryId": null,
+   "comment": "To Trip fund",
+   "accountId": null,
+   "nature": "Variable",
+   "paymentMethodId": null,
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "from": "acc:acc_demo1",
+   "to": "pk:acc_demo1:pk_demo1",
+   "fromLabel": "Demo Bank Current",
+   "toLabel": "Demo Bank Current › Trip fund"
+  },
+  {
+   "id": "tx_52",
+   "type": "income",
+   "amount": 950,
+   "currency": "EUR",
+   "date": "2026-05-19",
+   "categoryId": "inc_salary",
+   "subCategoryId": "sci_campusjob",
+   "comment": "Campus Cafe Job",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_campuscafejob"
+  },
+  {
+   "id": "tx_53",
+   "type": "income",
+   "amount": 300,
+   "currency": "EUR",
+   "date": "2026-05-17",
+   "categoryId": "inc_family",
+   "subCategoryId": "sci_allowance",
+   "comment": "Family allowance",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_income_familyallowance"
+  },
+  {
+   "id": "tx_54",
+   "type": "expense",
+   "amount": 520,
+   "currency": "EUR",
+   "date": "2026-05-18",
+   "categoryId": "exp_housing",
+   "subCategoryId": "sc_rent",
+   "comment": "Student Room Rent",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_dd",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_studentroomrent"
+  },
+  {
+   "id": "tx_55",
+   "type": "expense",
+   "amount": 9.99,
+   "currency": "EUR",
+   "date": "2026-05-15",
+   "categoryId": "exp_subscriptions",
+   "subCategoryId": "sc_streaming",
+   "comment": "StreamBox",
+   "accountId": "acc_demo1",
+   "nature": "Fixed",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "recurringId": "rs_expense_streambox"
+  },
+  {
+   "id": "tx_56",
+   "type": "expense",
+   "amount": 99,
+   "currency": "EUR",
+   "date": "2026-05-13",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_57",
+   "type": "expense",
+   "amount": 60,
+   "currency": "EUR",
+   "date": "2026-05-06",
+   "categoryId": "exp_food",
+   "subCategoryId": "sc_groceries",
+   "comment": "Fresh Market",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_58",
+   "type": "expense",
+   "amount": 27.5,
+   "currency": "EUR",
+   "date": "2026-05-10",
+   "categoryId": "exp_transport",
+   "subCategoryId": "sc_publictransport",
+   "comment": "Rail Pass Top-up",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_59",
+   "type": "expense",
+   "amount": 28,
+   "currency": "EUR",
+   "date": "2026-05-02",
+   "categoryId": "exp_restaurants",
+   "subCategoryId": "sc_diningout",
+   "comment": "Corner Bistro",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_60",
+   "type": "transfer",
+   "amount": 50,
+   "currency": "EUR",
+   "date": "2026-05-16",
+   "categoryId": null,
+   "subCategoryId": null,
+   "comment": "To Trip fund",
+   "accountId": null,
+   "nature": "Variable",
+   "paymentMethodId": null,
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": "",
+   "from": "acc:acc_demo1",
+   "to": "pk:acc_demo1:pk_demo1",
+   "fromLabel": "Demo Bank Current",
+   "toLabel": "Demo Bank Current › Trip fund"
+  },
+  {
+   "id": "tx_61",
+   "type": "income",
+   "amount": 6.4,
+   "currency": "EUR",
+   "date": "2026-09-08",
+   "categoryId": "inc_invret",
+   "subCategoryId": "sci_dividends",
+   "comment": "Demo World Equity ETF dividend",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_transfer",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  },
+  {
+   "id": "tx_62",
+   "type": "expense",
+   "amount": 189,
+   "currency": "EUR",
+   "date": "2026-08-09",
+   "categoryId": "exp_travel",
+   "subCategoryId": "sc_flights",
+   "comment": "Budget Airline",
+   "accountId": "acc_demo1",
+   "nature": "Variable",
+   "paymentMethodId": "pm_card",
+   "location": "",
+   "description": "",
+   "logo": "",
+   "impact": ""
+  }
+ ],
+ "brokers": [
+  {
+   "id": "brk_demo1",
+   "name": "Sample Broker",
+   "cashBalance": 140.5,
+   "cashCurrency": "EUR",
+   "logo": "",
+   "cashInterestRate": 2,
+   "yearlyFee": 0
+  },
+  {
+   "id": "brk_demo2",
+   "name": "Example Invest",
+   "cashBalance": 12,
+   "cashCurrency": "EUR",
+   "logo": "",
+   "yearlyFee": 0
+  }
+ ],
+ "assets": [
+  {
+   "id": "as_world",
+   "ticker": "WRLD",
+   "name": "Demo World Equity ETF",
+   "assetType": "ETFs",
+   "isin": "IE00B4L5Y983",
+   "priceCurrency": "EUR",
+   "currentPrice": 104.2,
+   "manualPrice": null,
+   "priceUpdatedAt": "2026-10-17T10:00:00.000Z",
+   "logo": "",
+   "feePct": 0.2
+  },
+  {
+   "id": "as_sp",
+   "ticker": "DSP5",
+   "name": "Demo S&P 500 ETF",
+   "assetType": "ETFs",
+   "isin": "IE00B5BMR087",
+   "priceCurrency": "EUR",
+   "currentPrice": 612.4,
+   "manualPrice": null,
+   "priceUpdatedAt": "2026-10-17T10:00:00.000Z",
+   "logo": "",
+   "feePct": 0.07
+  },
+  {
+   "id": "as_gold",
+   "ticker": "DGLD",
+   "name": "Demo Gold ETC",
+   "assetType": "Gold",
+   "isin": "DE000A0S9GB0",
+   "priceCurrency": "EUR",
+   "currentPrice": 118.9,
+   "manualPrice": null,
+   "priceUpdatedAt": "2026-10-17T10:00:00.000Z",
+   "logo": "",
+   "feePct": 0
+  },
+  {
+   "id": "as_stock",
+   "ticker": "DEMO",
+   "name": "Demo Tech Corp",
+   "assetType": "Stocks",
+   "isin": "US0000000001",
+   "priceCurrency": "USD",
+   "currentPrice": 212.5,
+   "manualPrice": null,
+   "priceUpdatedAt": "2026-10-17T10:00:00.000Z",
+   "logo": ""
+  },
+  {
+   "id": "as_pe",
+   "ticker": "DPE",
+   "name": "Demo Private Equity Fund",
+   "assetType": "Private Equity",
+   "isin": "",
+   "priceCurrency": "EUR",
+   "currentPrice": null,
+   "manualPrice": 1050,
+   "priceUpdatedAt": "2026-09-08T10:00:00.000Z",
+   "logo": ""
+  }
+ ],
+ "assetEntries": [
+  {
+   "id": "en_1",
+   "assetId": "as_world",
+   "broker": "brk_demo1",
+   "quantity": 24,
+   "price": 92.1,
+   "currency": "EUR"
+  },
+  {
+   "id": "en_2",
+   "assetId": "as_world",
+   "broker": "brk_demo2",
+   "quantity": 6,
+   "price": 98.4,
+   "currency": "EUR"
+  },
+  {
+   "id": "en_3",
+   "assetId": "as_sp",
+   "broker": "brk_demo1",
+   "quantity": 1.5,
+   "price": 540,
+   "currency": "EUR"
+  },
+  {
+   "id": "en_4",
+   "assetId": "as_gold",
+   "broker": "brk_demo1",
+   "quantity": 4,
+   "price": 101.3,
+   "currency": "EUR"
+  },
+  {
+   "id": "en_5",
+   "assetId": "as_stock",
+   "broker": "brk_demo2",
+   "quantity": 2,
+   "price": 180,
+   "currency": "USD"
+  },
+  {
+   "id": "en_6",
+   "assetId": "as_pe",
+   "broker": "brk_demo1",
+   "quantity": 1,
+   "price": 1000,
+   "currency": "EUR"
+  }
+ ],
+ "investmentTransactions": [
+  {
+   "id": "it_1",
+   "date": "2026-09-28",
+   "action": "Buy",
+   "ticker": "WRLD",
+   "quantity": 2,
+   "unitPrice": 101.5,
+   "currency": "EUR",
+   "accountKey": "broker:brk_demo1"
+  }
+ ],
+ "cryptoAssets": [
+  {
+   "symbol": "BTC",
+   "name": "Bitcoin",
+   "coingeckoId": "bitcoin",
+   "mode": "snapshot",
+   "logo": "",
+   "snapshots": [
+    {
+     "id": "cs_1",
+     "broker": "Demo Exchange",
+     "quantity": 0.012,
+     "price": 52000,
+     "currency": "EUR"
+    }
+   ],
+   "currentPriceEUR": 61000,
+   "currentPriceUSD": 66500,
+   "manualPrice": null,
+   "priceAuto": true,
+   "priceUpdatedAt": "2026-10-17T10:00:00.000Z",
+   "stakes": []
+  },
+  {
+   "symbol": "ETH",
+   "name": "Ethereum",
+   "coingeckoId": "ethereum",
+   "mode": "lots",
+   "logo": "",
+   "snapshots": [],
+   "currentPriceEUR": 2300,
+   "currentPriceUSD": 2510,
+   "manualPrice": null,
+   "priceAuto": true,
+   "priceUpdatedAt": "2026-10-17T10:00:00.000Z",
+   "stakes": [
+    {
+     "id": "st_1",
+     "exchange": "Demo Exchange",
+     "amount": 0.4,
+     "apy": 3.5,
+     "compounding": true,
+     "since": "2026-06-20",
+     "lockedUntil": "",
+     "unbondingDays": 2,
+     "rewardsReceived": null,
+     "note": ""
+    }
+   ]
+  }
+ ],
+ "cryptoLots": [
+  {
+   "id": "cl_1",
+   "symbol": "ETH",
+   "broker": "Demo Exchange",
+   "date": "2025-12-22",
+   "quantity": 0.5,
+   "amountPaid": 900,
+   "currency": "EUR"
+  },
+  {
+   "id": "cl_2",
+   "symbol": "ETH",
+   "broker": "Demo Exchange",
+   "date": "2026-07-20",
+   "quantity": 0.2,
+   "amountPaid": 420,
+   "currency": "EUR"
+  }
+ ],
+ "trades": [
+  {
+   "id": "tr_1",
+   "instrument": "DEMO-PERP",
+   "tradeType": "Perpetual Swap",
+   "direction": "Long",
+   "platform": "Demo Exchange",
+   "currency": "USD",
+   "quantity": 0.5,
+   "entryPrice": 100,
+   "currentPrice": 104,
+   "leverage": 5,
+   "collateral": 10,
+   "stopLoss": 95,
+   "takeProfit": 120,
+   "status": "open",
+   "openDate": "2026-10-12",
+   "closeDate": null,
+   "closePrice": null,
+   "notes": ""
+  }
+ ],
+ "cryptoExchangeCash": [
+  {
+   "id": "cec_1",
+   "exchange": "Demo Exchange",
+   "amount": 35,
+   "currency": "EUR",
+   "interestBearing": false,
+   "interestRate": null
+  }
+ ],
+ "loans": [
+  {
+   "id": "loan_demo",
+   "name": "Demo study loan",
+   "principal": 4000,
+   "rate": 2.5,
+   "myRate": 1.5,
+   "startDate": "2026-01-15",
+   "deferralType": "total",
+   "deferralEndDate": "2030-12-31",
+   "deferralMonths": "",
+   "capitalization": "semiannual",
+   "repayMonths": 96,
+   "spent": 300,
+   "spentAs": "spent",
+   "investedAmount": 3700,
+   "investDate": "2026-01-20",
+   "scenarios": "3, 5, 7",
+   "holdings": [],
+   "statements": [
+    {
+     "id": "ls_1",
+     "date": "2026-07-01",
+     "capitalDue": 4000,
+     "interest": 49.5,
+     "note": "Invented statement"
+    }
+   ],
+   "history": [
+    {
+     "date": "2026-09-18",
+     "value": 3790,
+     "cost": 3700
+    },
+    {
+     "date": "2026-10-17",
+     "value": 3862,
+     "cost": 3700
+    }
+   ],
+   "portfolio": {
+    "brokers": [
+     "Loan Broker Demo"
+    ],
+    "positions": [
+     {
+      "id": "lp_1",
+      "broker": "Loan Broker Demo",
+      "name": "Demo Global Bond ETF",
+      "isin": "IE00BDBRDM35",
+      "group": "Bonds",
+      "invested": 1200,
+      "value": 1185,
+      "target": 30,
+      "expectedReturn": 3,
+      "quantity": "",
+      "price": "",
+      "priceAt": "",
+      "valueDate": "2026-10-16"
+     },
+     {
+      "id": "lp_2",
+      "broker": "Loan Broker Demo",
+      "name": "Demo World Equity ETF",
+      "isin": "IE00B4L5Y983",
+      "group": "World equities",
+      "invested": 2500,
+      "value": 2677,
+      "target": 70,
+      "expectedReturn": 7,
+      "quantity": "",
+      "price": "",
+      "priceAt": "",
+      "valueDate": "2026-10-16"
+     }
+    ]
+   }
+  }
+ ],
+ "budgetLimits": {
+  "exp_food": 220,
+  "exp_restaurants": 60
+ },
+ "liabilities": [
+  {
+   "id": "li_1",
+   "name": "Demo credit card",
+   "institution": "Demo Bank",
+   "kind": "Credit card",
+   "amount": 120,
+   "currency": "EUR",
+   "rate": 0,
+   "note": "Invented"
+  }
+ ],
+ "targetAllocation": {
+  "ETFs": 60,
+  "Gold": 10,
+  "Stocks": 10,
+  "Crypto": 10,
+  "Private Equity": 10
+ },
+ "goals": [
+  {
+   "id": "g_demo1",
+   "name": "Summer trip",
+   "icon": "✈️",
+   "target": 1200,
+   "targetDate": "2027-06-30",
+   "links": [
+    "pk:acc_demo1:pk_demo1"
+   ],
+   "pocket": "pk:acc_demo1:pk_demo1",
+   "photos": [],
+   "description": "Invented goal",
+   "details": "Where: Somewhere sunny",
+   "link": "",
+   "createdAt": "2026-06-20T10:00:00.000Z"
+  },
+  {
+   "id": "g_demo2",
+   "name": "First 20k",
+   "icon": "🎯",
+   "target": 20000,
+   "targetDate": "2029-12-31",
+   "links": [],
+   "monthly": 250,
+   "photos": [],
+   "createdAt": "2026-04-01T10:00:00.000Z"
+  }
+ ],
+ "emergencyFund": {
+  "enabled": true,
+  "months": 4,
+  "links": [
+   "acc:acc_demo2",
+   "pk:acc_demo2:pk_demo2"
+  ],
+  "excludeCats": [
+   "exp_gifts",
+   "exp_travel"
+  ]
+ },
+ "investPlans": [
+  {
+   "id": "plan_1",
+   "accountKey": "broker:brk_demo1",
+   "asset": "a:as_world",
+   "amount": 100,
+   "day": 9,
+   "startMonth": "2026-08",
+   "lastMonth": "2026-09"
+  }
+ ],
+ "recurring": {
+  "rs_income_campuscafejob": {
+   "day": 16,
+   "lastMonth": "2026-10",
+   "stopped": false
+  },
+  "rs_income_familyallowance": {
+   "day": 14,
+   "lastMonth": "2026-10",
+   "stopped": false
+  },
+  "rs_expense_studentroomrent": {
+   "day": 15,
+   "lastMonth": "2026-10",
+   "stopped": false
+  },
+  "rs_expense_streambox": {
+   "day": 12,
+   "lastMonth": "2026-10",
+   "stopped": false
+  }
+ },
+ "history": [
+  {
+   "date": "2026-08-04",
+   "netWorth": 9791,
+   "portfolioValue": 5200,
+   "byType": {
+    "ETFs": 3900,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2300,
+    "e:en_3": 880,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 718
+   }
+  },
+  {
+   "date": "2026-08-05",
+   "netWorth": 9783,
+   "portfolioValue": 5208,
+   "byType": {
+    "ETFs": 3906,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2304,
+    "e:en_3": 881,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 712
+   }
+  },
+  {
+   "date": "2026-08-06",
+   "netWorth": 9777,
+   "portfolioValue": 5216,
+   "byType": {
+    "ETFs": 3912,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2308,
+    "e:en_3": 882,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 706
+   }
+  },
+  {
+   "date": "2026-08-07",
+   "netWorth": 9774,
+   "portfolioValue": 5224,
+   "byType": {
+    "ETFs": 3918,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2312,
+    "e:en_3": 883,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 700
+   }
+  },
+  {
+   "date": "2026-08-08",
+   "netWorth": 9776,
+   "portfolioValue": 5232,
+   "byType": {
+    "ETFs": 3924,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2316,
+    "e:en_3": 884,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 748
+   }
+  },
+  {
+   "date": "2026-08-09",
+   "netWorth": 9782,
+   "portfolioValue": 5240,
+   "byType": {
+    "ETFs": 3930,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2320,
+    "e:en_3": 885,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 742
+   }
+  },
+  {
+   "date": "2026-08-10",
+   "netWorth": 9794,
+   "portfolioValue": 5248,
+   "byType": {
+    "ETFs": 3936,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2324,
+    "e:en_3": 886,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 736
+   }
+  },
+  {
+   "date": "2026-08-11",
+   "netWorth": 9811,
+   "portfolioValue": 5256,
+   "byType": {
+    "ETFs": 3942,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2328,
+    "e:en_3": 887,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 730
+   }
+  },
+  {
+   "date": "2026-08-12",
+   "netWorth": 9834,
+   "portfolioValue": 5264,
+   "byType": {
+    "ETFs": 3948,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2332,
+    "e:en_3": 888,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 724
+   }
+  },
+  {
+   "date": "2026-08-13",
+   "netWorth": 9862,
+   "portfolioValue": 5272,
+   "byType": {
+    "ETFs": 3954,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2336,
+    "e:en_3": 889,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 718
+   }
+  },
+  {
+   "date": "2026-08-14",
+   "netWorth": 9894,
+   "portfolioValue": 5280,
+   "byType": {
+    "ETFs": 3960,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2340,
+    "e:en_3": 890,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 712
+   }
+  },
+  {
+   "date": "2026-08-15",
+   "netWorth": 9928,
+   "portfolioValue": 5288,
+   "byType": {
+    "ETFs": 3966,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2344,
+    "e:en_3": 891,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 706
+   }
+  },
+  {
+   "date": "2026-08-16",
+   "netWorth": 9964,
+   "portfolioValue": 5296,
+   "byType": {
+    "ETFs": 3972,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2348,
+    "e:en_3": 892,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 700
+   }
+  },
+  {
+   "date": "2026-08-17",
+   "netWorth": 10001,
+   "portfolioValue": 5304,
+   "byType": {
+    "ETFs": 3978,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2352,
+    "e:en_3": 893,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 748
+   }
+  },
+  {
+   "date": "2026-08-18",
+   "netWorth": 10036,
+   "portfolioValue": 5312,
+   "byType": {
+    "ETFs": 3984,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2356,
+    "e:en_3": 894,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 742
+   }
+  },
+  {
+   "date": "2026-08-19",
+   "netWorth": 10069,
+   "portfolioValue": 5320,
+   "byType": {
+    "ETFs": 3990,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2360,
+    "e:en_3": 895,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 736
+   }
+  },
+  {
+   "date": "2026-08-20",
+   "netWorth": 10098,
+   "portfolioValue": 5328,
+   "byType": {
+    "ETFs": 3996,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2364,
+    "e:en_3": 896,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 730
+   }
+  },
+  {
+   "date": "2026-08-21",
+   "netWorth": 10122,
+   "portfolioValue": 5336,
+   "byType": {
+    "ETFs": 4002,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2368,
+    "e:en_3": 897,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 724
+   }
+  },
+  {
+   "date": "2026-08-22",
+   "netWorth": 10141,
+   "portfolioValue": 5344,
+   "byType": {
+    "ETFs": 4008,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2372,
+    "e:en_3": 898,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 718
+   }
+  },
+  {
+   "date": "2026-08-23",
+   "netWorth": 10155,
+   "portfolioValue": 5352,
+   "byType": {
+    "ETFs": 4014,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2376,
+    "e:en_3": 899,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 712
+   }
+  },
+  {
+   "date": "2026-08-24",
+   "netWorth": 10163,
+   "portfolioValue": 5360,
+   "byType": {
+    "ETFs": 4020,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2380,
+    "e:en_3": 900,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 706
+   }
+  },
+  {
+   "date": "2026-08-25",
+   "netWorth": 10166,
+   "portfolioValue": 5368,
+   "byType": {
+    "ETFs": 4026,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2384,
+    "e:en_3": 901,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 700
+   }
+  },
+  {
+   "date": "2026-08-26",
+   "netWorth": 10165,
+   "portfolioValue": 5376,
+   "byType": {
+    "ETFs": 4032,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2388,
+    "e:en_3": 902,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 748
+   }
+  },
+  {
+   "date": "2026-08-27",
+   "netWorth": 10160,
+   "portfolioValue": 5384,
+   "byType": {
+    "ETFs": 4038,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2392,
+    "e:en_3": 903,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 742
+   }
+  },
+  {
+   "date": "2026-08-28",
+   "netWorth": 10152,
+   "portfolioValue": 5392,
+   "byType": {
+    "ETFs": 4044,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2396,
+    "e:en_3": 904,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 736
+   }
+  },
+  {
+   "date": "2026-08-29",
+   "netWorth": 10144,
+   "portfolioValue": 5400,
+   "byType": {
+    "ETFs": 4050,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2400,
+    "e:en_3": 905,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 730
+   }
+  },
+  {
+   "date": "2026-08-30",
+   "netWorth": 10136,
+   "portfolioValue": 5408,
+   "byType": {
+    "ETFs": 4056,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2404,
+    "e:en_3": 906,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 724
+   }
+  },
+  {
+   "date": "2026-08-31",
+   "netWorth": 10130,
+   "portfolioValue": 5416,
+   "byType": {
+    "ETFs": 4062,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2408,
+    "e:en_3": 907,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 718
+   }
+  },
+  {
+   "date": "2026-09-01",
+   "netWorth": 10126,
+   "portfolioValue": 5424,
+   "byType": {
+    "ETFs": 4068,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2412,
+    "e:en_3": 908,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 712
+   }
+  },
+  {
+   "date": "2026-09-02",
+   "netWorth": 10127,
+   "portfolioValue": 5432,
+   "byType": {
+    "ETFs": 4074,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2416,
+    "e:en_3": 909,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 706
+   }
+  },
+  {
+   "date": "2026-09-03",
+   "netWorth": 10133,
+   "portfolioValue": 5440,
+   "byType": {
+    "ETFs": 4080,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2420,
+    "e:en_3": 910,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 700
+   }
+  },
+  {
+   "date": "2026-09-04",
+   "netWorth": 10144,
+   "portfolioValue": 5448,
+   "byType": {
+    "ETFs": 4086,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2424,
+    "e:en_3": 911,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 748
+   }
+  },
+  {
+   "date": "2026-09-05",
+   "netWorth": 10161,
+   "portfolioValue": 5456,
+   "byType": {
+    "ETFs": 4092,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2428,
+    "e:en_3": 912,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 742
+   }
+  },
+  {
+   "date": "2026-09-06",
+   "netWorth": 10183,
+   "portfolioValue": 5464,
+   "byType": {
+    "ETFs": 4098,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2432,
+    "e:en_3": 913,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 736
+   }
+  },
+  {
+   "date": "2026-09-07",
+   "netWorth": 10210,
+   "portfolioValue": 5472,
+   "byType": {
+    "ETFs": 4104,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2436,
+    "e:en_3": 914,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 730
+   }
+  },
+  {
+   "date": "2026-09-08",
+   "netWorth": 10241,
+   "portfolioValue": 5480,
+   "byType": {
+    "ETFs": 4110,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2440,
+    "e:en_3": 915,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 724
+   }
+  },
+  {
+   "date": "2026-09-09",
+   "netWorth": 10275,
+   "portfolioValue": 5488,
+   "byType": {
+    "ETFs": 4116,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2444,
+    "e:en_3": 916,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 718
+   }
+  },
+  {
+   "date": "2026-09-10",
+   "netWorth": 10311,
+   "portfolioValue": 5496,
+   "byType": {
+    "ETFs": 4122,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2448,
+    "e:en_3": 917,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 712
+   }
+  },
+  {
+   "date": "2026-09-11",
+   "netWorth": 10348,
+   "portfolioValue": 5504,
+   "byType": {
+    "ETFs": 4128,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2452,
+    "e:en_3": 918,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 706
+   }
+  },
+  {
+   "date": "2026-09-12",
+   "netWorth": 10383,
+   "portfolioValue": 5512,
+   "byType": {
+    "ETFs": 4134,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2456,
+    "e:en_3": 919,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 700
+   }
+  },
+  {
+   "date": "2026-09-13",
+   "netWorth": 10416,
+   "portfolioValue": 5520,
+   "byType": {
+    "ETFs": 4140,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2460,
+    "e:en_3": 920,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 748
+   }
+  },
+  {
+   "date": "2026-09-14",
+   "netWorth": 10446,
+   "portfolioValue": 5528,
+   "byType": {
+    "ETFs": 4146,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2464,
+    "e:en_3": 921,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 742
+   }
+  },
+  {
+   "date": "2026-09-15",
+   "netWorth": 10471,
+   "portfolioValue": 5536,
+   "byType": {
+    "ETFs": 4152,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2468,
+    "e:en_3": 922,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 736
+   }
+  },
+  {
+   "date": "2026-09-16",
+   "netWorth": 10491,
+   "portfolioValue": 5544,
+   "byType": {
+    "ETFs": 4158,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2472,
+    "e:en_3": 923,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 730
+   }
+  },
+  {
+   "date": "2026-09-17",
+   "netWorth": 10506,
+   "portfolioValue": 5552,
+   "byType": {
+    "ETFs": 4164,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2476,
+    "e:en_3": 924,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 724
+   }
+  },
+  {
+   "date": "2026-09-18",
+   "netWorth": 10514,
+   "portfolioValue": 5560,
+   "byType": {
+    "ETFs": 4170,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2480,
+    "e:en_3": 925,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 718
+   }
+  },
+  {
+   "date": "2026-09-19",
+   "netWorth": 10518,
+   "portfolioValue": 5568,
+   "byType": {
+    "ETFs": 4176,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2484,
+    "e:en_3": 926,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 712
+   }
+  },
+  {
+   "date": "2026-09-20",
+   "netWorth": 10517,
+   "portfolioValue": 5576,
+   "byType": {
+    "ETFs": 4182,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2488,
+    "e:en_3": 927,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 706
+   }
+  },
+  {
+   "date": "2026-09-21",
+   "netWorth": 10513,
+   "portfolioValue": 5584,
+   "byType": {
+    "ETFs": 4188,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2492,
+    "e:en_3": 928,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 700
+   }
+  },
+  {
+   "date": "2026-09-22",
+   "netWorth": 10505,
+   "portfolioValue": 5592,
+   "byType": {
+    "ETFs": 4194,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2496,
+    "e:en_3": 929,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 748
+   }
+  },
+  {
+   "date": "2026-09-23",
+   "netWorth": 10497,
+   "portfolioValue": 5600,
+   "byType": {
+    "ETFs": 4200,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2500,
+    "e:en_3": 930,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 742
+   }
+  },
+  {
+   "date": "2026-09-24",
+   "netWorth": 10489,
+   "portfolioValue": 5608,
+   "byType": {
+    "ETFs": 4206,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2504,
+    "e:en_3": 931,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 736
+   }
+  },
+  {
+   "date": "2026-09-25",
+   "netWorth": 10482,
+   "portfolioValue": 5616,
+   "byType": {
+    "ETFs": 4212,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2508,
+    "e:en_3": 932,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 730
+   }
+  },
+  {
+   "date": "2026-09-26",
+   "netWorth": 10479,
+   "portfolioValue": 5624,
+   "byType": {
+    "ETFs": 4218,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2512,
+    "e:en_3": 933,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 724
+   }
+  },
+  {
+   "date": "2026-09-27",
+   "netWorth": 10479,
+   "portfolioValue": 5632,
+   "byType": {
+    "ETFs": 4224,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2516,
+    "e:en_3": 934,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 718
+   }
+  },
+  {
+   "date": "2026-09-28",
+   "netWorth": 10484,
+   "portfolioValue": 5640,
+   "byType": {
+    "ETFs": 4230,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2520,
+    "e:en_3": 935,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 712
+   }
+  },
+  {
+   "date": "2026-09-29",
+   "netWorth": 10494,
+   "portfolioValue": 5648,
+   "byType": {
+    "ETFs": 4236,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2524,
+    "e:en_3": 936,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 706
+   }
+  },
+  {
+   "date": "2026-09-30",
+   "netWorth": 10510,
+   "portfolioValue": 5656,
+   "byType": {
+    "ETFs": 4242,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2528,
+    "e:en_3": 937,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 700
+   }
+  },
+  {
+   "date": "2026-10-01",
+   "netWorth": 10531,
+   "portfolioValue": 5664,
+   "byType": {
+    "ETFs": 4248,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2532,
+    "e:en_3": 938,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 748
+   }
+  },
+  {
+   "date": "2026-10-02",
+   "netWorth": 10558,
+   "portfolioValue": 5672,
+   "byType": {
+    "ETFs": 4254,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2536,
+    "e:en_3": 939,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 742
+   }
+  },
+  {
+   "date": "2026-10-03",
+   "netWorth": 10589,
+   "portfolioValue": 5680,
+   "byType": {
+    "ETFs": 4260,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2540,
+    "e:en_3": 940,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 736
+   }
+  },
+  {
+   "date": "2026-10-04",
+   "netWorth": 10622,
+   "portfolioValue": 5688,
+   "byType": {
+    "ETFs": 4266,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2544,
+    "e:en_3": 941,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 730
+   }
+  },
+  {
+   "date": "2026-10-05",
+   "netWorth": 10658,
+   "portfolioValue": 5696,
+   "byType": {
+    "ETFs": 4272,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2548,
+    "e:en_3": 942,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 724
+   }
+  },
+  {
+   "date": "2026-10-06",
+   "netWorth": 10695,
+   "portfolioValue": 5704,
+   "byType": {
+    "ETFs": 4278,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2552,
+    "e:en_3": 943,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 718
+   }
+  },
+  {
+   "date": "2026-10-07",
+   "netWorth": 10730,
+   "portfolioValue": 5712,
+   "byType": {
+    "ETFs": 4284,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2556,
+    "e:en_3": 944,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 712
+   }
+  },
+  {
+   "date": "2026-10-08",
+   "netWorth": 10764,
+   "portfolioValue": 5720,
+   "byType": {
+    "ETFs": 4290,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2560,
+    "e:en_3": 945,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 706
+   }
+  },
+  {
+   "date": "2026-10-09",
+   "netWorth": 10794,
+   "portfolioValue": 5728,
+   "byType": {
+    "ETFs": 4296,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2564,
+    "e:en_3": 946,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 700
+   }
+  },
+  {
+   "date": "2026-10-10",
+   "netWorth": 10820,
+   "portfolioValue": 5736,
+   "byType": {
+    "ETFs": 4302,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2568,
+    "e:en_3": 947,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 748
+   }
+  },
+  {
+   "date": "2026-10-11",
+   "netWorth": 10841,
+   "portfolioValue": 5744,
+   "byType": {
+    "ETFs": 4308,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2572,
+    "e:en_3": 948,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 742
+   }
+  },
+  {
+   "date": "2026-10-12",
+   "netWorth": 10856,
+   "portfolioValue": 5752,
+   "byType": {
+    "ETFs": 4314,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2576,
+    "e:en_3": 949,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 736
+   }
+  },
+  {
+   "date": "2026-10-13",
+   "netWorth": 10865,
+   "portfolioValue": 5760,
+   "byType": {
+    "ETFs": 4320,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2580,
+    "e:en_3": 950,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 730
+   }
+  },
+  {
+   "date": "2026-10-14",
+   "netWorth": 10870,
+   "portfolioValue": 5768,
+   "byType": {
+    "ETFs": 4326,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2584,
+    "e:en_3": 951,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 724
+   }
+  },
+  {
+   "date": "2026-10-15",
+   "netWorth": 10869,
+   "portfolioValue": 5776,
+   "byType": {
+    "ETFs": 4332,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2588,
+    "e:en_3": 952,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 718
+   }
+  },
+  {
+   "date": "2026-10-16",
+   "netWorth": 10865,
+   "portfolioValue": 5784,
+   "byType": {
+    "ETFs": 4338,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2592,
+    "e:en_3": 953,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 712
+   }
+  },
+  {
+   "date": "2026-10-17",
+   "netWorth": 10858,
+   "portfolioValue": 5792,
+   "byType": {
+    "ETFs": 4344,
+    "Gold": 470,
+    "Stocks": 380,
+    "Private Equity": 1050,
+    "Crypto": 1650,
+    "Cash": 5400
+   },
+   "pos": {
+    "e:en_1": 2596,
+    "e:en_3": 954,
+    "acc:acc_demo1": 1700,
+    "c:BTC@Demo Exchange": 706
+   }
+  }
+ ],
+ "updatedAt": "2026-10-18T10:00:00.000Z"
+}
