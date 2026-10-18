@@ -342,8 +342,8 @@ window.__modalRenderers.exchange = function (p) {
     <div class="modal-head"><div class="modal-title">Edit exchange</div><button class="close-x" onclick="closeModal()">✕</button></div>
     <div class="stack-gap-12">
       <label class="field"><span class="label-text">Name</span><input id="ex-name" value="${escHtml(p.name)}" autocomplete="off"></label>
-      <label class="field"><span class="label-text">Logo URL (optional)</span>
-        <div style="display:flex;gap:6px;align-items:center;"><input id="ex-logo" style="flex:1;" placeholder="https://… (empty = the built-in logo)" value="${escHtml(logo)}">${logoPickerButtonHtml('ex-logo')}</div>
+      <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(optional: a link, or a file from your folders)</span></span>
+        <div style="display:flex;gap:6px;align-items:center;"><input id="ex-logo" style="flex:1;" placeholder="Paste a link, or pick a file (empty = the built-in logo)" value="${escHtml(logo)}">${logoPickerButtonHtml('ex-logo')}</div>
         ${logoPickerPopoverHtml('ex-logo')}
       </label>
       <div class="form-grid">

@@ -110,6 +110,7 @@ const ICON_PATHS = {
   sort: '<path d="M3 9l4 -4l4 4m-4 -4v14"/><path d="M21 15l-4 4l-4 -4m4 4v-14"/>',
   maximize: '<path d="M4 8v-2a2 2 0 0 1 2 -2h2"/><path d="M4 16v2a2 2 0 0 0 2 2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M16 20h2a2 2 0 0 0 2 -2v-2"/>',
   swap: '<path d="M7 10h14l-4 -4"/><path d="M17 14h-14l4 4"/>',
+  folder: '<path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/>',
   x: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
   check: '<path d="M5 12l5 5l10 -10"/>',
   refresh: '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>',
@@ -2502,7 +2503,8 @@ function allLogoItems() {
    DOM directly (no render()), so it never disturbs unsaved values in any other field on
    whatever form/modal it's attached to. */
 function logoPickerButtonHtml(inputId) {
-  return `<button type="button" class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;flex:none;" title="Choose from logos already used in Trackr" onclick="toggleLogoPicker('${inputId}')">${ic('photo')}</button>`;
+  return `<button type="button" class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;flex:none;" title="Choose an image from your files" aria-label="Choose a logo from your files" onclick="this.nextElementSibling.click()">${ic('folder')}</button><input type="file" accept="image/*,.svg" style="display:none;" onchange="logoFromFile('${inputId}', this)">` +
+    `<button type="button" class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;flex:none;" title="Choose from logos already used in Trackr" aria-label="Choose from logos already used" onclick="toggleLogoPicker('${inputId}')">${ic('photo')}</button>`;
 }
 function logoPickerPopoverHtml(inputId) {
   const items = allLogoItems();
@@ -2520,6 +2522,39 @@ function pickLogoInto(inputId, url) {
   if (el) { el.value = url; el.dispatchEvent(new Event('change')); el.dispatchEvent(new Event('input')); }
   const pop = document.getElementById('logo-picker-' + inputId);
   if (pop) pop.style.display = 'none';
+}
+/* A logo chosen from your own files (Finder, the Files app, your Logos folder…). It's shrunk to
+   at most 128 px and kept inside your data as an image "data:" link, so it works offline, syncs
+   like everything else and never depends on another website. Small SVGs are kept as they are. */
+const LOGO_FILE_MAX = 128;
+function logoFromFile(inputId, fileInput) {
+  const file = fileInput.files && fileInput.files[0];
+  fileInput.value = '';
+  if (!file) return;
+  const bad = "This image can't be read here. Use a PNG, JPG, WebP or SVG file.";
+  if (!/^image\//.test(file.type) && !/\.(png|jpe?g|webp|gif|svg|avif|bmp|ico)$/i.test(file.name)) { alert(bad); return; }
+  const reader = new FileReader();
+  reader.onerror = () => alert(bad);
+  reader.onload = () => {
+    const src = reader.result;
+    if (/svg/i.test(file.type || file.name) && file.size < 40000) { pickLogoInto(inputId, src); return; }
+    const img = new Image();
+    img.onerror = () => alert(bad);
+    img.onload = () => {
+      const w0 = img.naturalWidth || LOGO_FILE_MAX, h0 = img.naturalHeight || LOGO_FILE_MAX;
+      const k = Math.min(1, LOGO_FILE_MAX / Math.max(w0, h0));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w0 * k)); c.height = Math.max(1, Math.round(h0 * k));
+      const g = c.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(img, 0, 0, c.width, c.height);
+      let out = c.toDataURL('image/webp', 0.9);
+      if (!out.startsWith('data:image/webp')) out = c.toDataURL('image/png'); // browsers that can't write WebP
+      pickLogoInto(inputId, out);
+    };
+    img.src = src;
+  };
+  reader.readAsDataURL(file);
 }
 
 /* Logo for an individual asset (position or crypto coin) — falls back to an asset-type emoji
@@ -2680,8 +2715,8 @@ window.__modalRenderers.account = function (payload) {
       </div>
       ${acc && linkedBrokerForAccount(acc) ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">This balance is also the cash at your <strong>${escHtml(linkedBrokerForAccount(acc).name)}</strong> broker (Investments) — they always stay the same.</div>` : ''}
       <label class="field"><span class="label-text">Description / note</span><input id="af-desc" value="${escHtml(acc ? acc.description || '' : '')}"></label>
-      <label class="field"><span class="label-text">Logo / image URL</span>
-        <div style="display:flex;gap:6px;align-items:center;"><input id="af-logo" style="flex:1;" value="${escHtml(acc ? (acc.logoKind === 'image' ? acc.logo : '') : '')}" placeholder="https://…">${logoPickerButtonHtml('af-logo')}</div>
+      <label class="field"><span class="label-text">Logo / image <span style="opacity:.6;">(a link, or a file from your folders)</span></span>
+        <div style="display:flex;gap:6px;align-items:center;"><input id="af-logo" style="flex:1;" value="${escHtml(acc ? (acc.logoKind === 'image' ? acc.logo : '') : '')}" placeholder="Paste a link, or pick a file">${logoPickerButtonHtml('af-logo')}</div>
         ${logoPickerPopoverHtml('af-logo')}
       </label>
       <div>
@@ -4193,7 +4228,7 @@ window.__modalRenderers.tx = function (p) {
           ${chip(p.impact === 'negative', `updateTxField('impact','negative')`, 'Negative')}
         </div>
         <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(reused next time you log this name)</span></span>
-          <div style="display:flex;gap:6px;align-items:center;"><input id="tf-logo" style="flex:1;" value="${escHtml(p.logo || '')}" placeholder="https://…" onchange="updateTxField('logo',this.value)">${logoPickerButtonHtml('tf-logo')}</div>
+          <div style="display:flex;gap:6px;align-items:center;"><input id="tf-logo" style="flex:1;" value="${escHtml(p.logo || '')}" placeholder="Paste a link, or pick a file" onchange="updateTxField('logo',this.value)">${logoPickerButtonHtml('tf-logo')}</div>
           ${logoPickerPopoverHtml('tf-logo')}
         </label>`}` : ''}`;
   }
@@ -4701,8 +4736,8 @@ window.__modalRenderers.position = function (payload) {
       <label class="field span-2"><span class="label-text">ISIN <span style="opacity:.6;">(for the live price)</span></span><input id="pf-isin" value="${escHtml(a.isin || '')}" placeholder="e.g. IE00B4L5Y983" autocapitalize="characters" spellcheck="false"></label>
       <label class="field"><span class="label-text">Investment type</span><input id="pf-group" list="pf-group-list" value="${escHtml(a.group || '')}" placeholder="${escHtml(guessAssetGroup(a) || a.assetType)}"><datalist id="pf-group-list">${Array.from(new Set(ASSET_GROUP_SUGGESTIONS.concat(data.assets.map(x => x.group).filter(Boolean)))).map(g => `<option value="${escHtml(g)}">`).join('')}</datalist></label>
       <label class="field"><span class="label-text">Average return over 5 years (% per year)</span><input id="pf-return5y" inputmode="decimal" value="${escHtml(a.return5y != null ? String(a.return5y) : '')}" placeholder="e.g. 11.2"></label>
-      <label class="field span-2"><span class="label-text">Logo URL <span style="opacity:.6;">(optional)</span></span>
-        <div style="display:flex;gap:6px;align-items:center;"><input id="pf-logo" style="flex:1;" value="${escHtml(a.logo || '')}" placeholder="https://…">${logoPickerButtonHtml('pf-logo')}</div>
+      <label class="field span-2"><span class="label-text">Logo <span style="opacity:.6;">(optional: a link, or a file from your folders)</span></span>
+        <div style="display:flex;gap:6px;align-items:center;"><input id="pf-logo" style="flex:1;" value="${escHtml(a.logo || '')}" placeholder="Paste a link, or pick a file">${logoPickerButtonHtml('pf-logo')}</div>
         ${logoPickerPopoverHtml('pf-logo')}
       </label>
       ${a.logo ? `<div style="display:flex;align-items:center;gap:8px;">${assetLogoHtml(a.logo, a.assetType, 32)}<span style="font-size:12px;opacity:.6;">Current logo</span></div>` : ''}
@@ -4988,8 +5023,8 @@ window.__modalRenderers.cryptoAssetEdit = function (payload) {
     <div class="form-grid" style="margin-bottom:16px;">
       <label class="field"><span class="label-text">Symbol</span><input id="ca-edit-symbol" value="${escHtml(sym)}"></label>
       <label class="field"><span class="label-text">Full name</span><input id="ca-edit-name" value="${escHtml(asset.name)}"></label>
-      <label class="field span-2"><span class="label-text">Logo URL <span style="opacity:.6;">(optional)</span></span>
-        <div style="display:flex;gap:6px;align-items:center;"><input id="ca-edit-logo" style="flex:1;" value="${escHtml(asset.logo || '')}" placeholder="https://…">${logoPickerButtonHtml('ca-edit-logo')}</div>
+      <label class="field span-2"><span class="label-text">Logo <span style="opacity:.6;">(optional: a link, or a file from your folders)</span></span>
+        <div style="display:flex;gap:6px;align-items:center;"><input id="ca-edit-logo" style="flex:1;" value="${escHtml(asset.logo || '')}" placeholder="Paste a link, or pick a file">${logoPickerButtonHtml('ca-edit-logo')}</div>
         ${logoPickerPopoverHtml('ca-edit-logo')}
       </label>
       ${asset.logo ? `<div style="display:flex;align-items:center;gap:8px;">${assetLogoHtml(asset.logo, 'Crypto', 32)}<span style="font-size:12px;opacity:.6;">Current logo</span></div>` : ''}
@@ -5226,7 +5261,7 @@ function cryptoPriceRowHtml(symbol) {
       <div style="margin-top:4px;font-size:11px;opacity:.5;">
         ${ui.cryptoLogoEditOpen === symbol ? `
           <span style="display:inline-flex;gap:6px;align-items:center;">
-            Logo URL: <input id="crypto-logo-${symbol}" value="${escHtml(asset.logo || '')}" placeholder="https://…" style="width:180px;padding:4px 8px;font-size:11px;">
+            Logo: <input id="crypto-logo-${symbol}" value="${escHtml(asset.logo || '')}" placeholder="https://…" style="width:180px;padding:4px 8px;font-size:11px;">
             ${logoPickerButtonHtml('crypto-logo-' + symbol)}
             <button class="btn small" style="padding:3px 8px;" onclick="saveCryptoLogo('${symbol}')">Save</button>
           </span>
@@ -5366,8 +5401,8 @@ window.__modalRenderers.cryptoAsset = function (payload) {
       <label class="field"><span class="label-text">Quantity owned</span><input id="ca-qty" type="number" step="any"></label>
       <label class="field"><span class="label-text">Price</span><input id="ca-price" type="number" step="any"></label>
       <label class="field"><span class="label-text">Currency</span><select id="ca-currency"><option value="EUR" selected>EUR</option><option value="USD">USD</option></select></label>
-      <label class="field"><span class="label-text">Logo URL <span style="opacity:.6;">(optional)</span></span>
-        <div style="display:flex;gap:6px;align-items:center;"><input id="ca-logo" style="flex:1;" placeholder="https://…">${logoPickerButtonHtml('ca-logo')}</div>
+      <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(optional: a link, or a file from your folders)</span></span>
+        <div style="display:flex;gap:6px;align-items:center;"><input id="ca-logo" style="flex:1;" placeholder="Paste a link, or pick a file">${logoPickerButtonHtml('ca-logo')}</div>
         ${logoPickerPopoverHtml('ca-logo')}
       </label>
     </div>
@@ -5436,8 +5471,8 @@ window.__modalRenderers.broker = function (payload) {
     <div class="modal-head"><div class="modal-title">${b ? 'Edit broker' : 'Add broker'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
     <div class="stack-gap-12">
       <label class="field"><span class="label-text">Broker name</span><input id="bf-name" placeholder="e.g. Interactive Brokers" value="${escHtml(b ? b.name : '')}"></label>
-      <label class="field"><span class="label-text">Logo URL (optional)</span>
-        <div style="display:flex;gap:6px;align-items:center;"><input id="bf-logo" style="flex:1;" placeholder="https://…" value="${escHtml(b ? (b.logo || '') : '')}">${logoPickerButtonHtml('bf-logo')}</div>
+      <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(optional: a link, or a file from your folders)</span></span>
+        <div style="display:flex;gap:6px;align-items:center;"><input id="bf-logo" style="flex:1;" placeholder="Paste a link, or pick a file" value="${escHtml(b ? (b.logo || '') : '')}">${logoPickerButtonHtml('bf-logo')}</div>
         ${logoPickerPopoverHtml('bf-logo')}
       </label>
       ${b && b.logo ? `<div style="display:flex;align-items:center;gap:8px;">${logoImg(b.logo, 32)}<span style="font-size:12px;opacity:.6;">Current logo</span></div>` : ''}
@@ -5516,8 +5551,8 @@ window.__modalRenderers.txn = function (payload) {
       <label class="field"><span class="label-text">Quantity owned</span><input id="tn-qty" type="number" step="any"></label>
       <label class="field"><span class="label-text">Price</span><input id="tn-price" type="number" step="any"></label>
       <label class="field"><span class="label-text">Currency</span><select id="tn-currency">${CURRENCIES.map(c => `<option ${c === 'EUR' ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-      <label class="field"><span class="label-text">Logo URL <span style="opacity:.6;">(optional)</span></span>
-        <div style="display:flex;gap:6px;align-items:center;"><input id="tn-logo" style="flex:1;" placeholder="https://…">${logoPickerButtonHtml('tn-logo')}</div>
+      <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(optional: a link, or a file from your folders)</span></span>
+        <div style="display:flex;gap:6px;align-items:center;"><input id="tn-logo" style="flex:1;" placeholder="Paste a link, or pick a file">${logoPickerButtonHtml('tn-logo')}</div>
         ${logoPickerPopoverHtml('tn-logo')}
       </label>
     </div>
