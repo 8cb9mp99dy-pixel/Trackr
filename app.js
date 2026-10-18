@@ -6136,7 +6136,8 @@ function settingsBackupRestoreHtml() {
     <div style="font-size:11.5px;opacity:.55;margin-bottom:14px;">The Excel backup has one readable sheet per part of the app, plus a "Restore" sheet with everything, checked by a fingerprint before any restore. Keep it private: it holds all your financial data.</div>
     <input type="file" id="import-backup-file" accept="application/json,.json" style="display:none;" onchange="handleImportBackupFile(this.files[0])">
     <input type="file" id="import-excel-backup" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none;" onchange="restoreExcelBackup(this.files[0]);this.value=''">
-    <div style="font-size:11.5px;opacity:.55;">Restoring replaces everything currently in this browser. You'll see exactly what's in the file — and what it would overwrite — and have to confirm, before anything changes.</div>`;
+    <div style="font-size:11.5px;opacity:.55;">Restoring replaces everything currently in this browser. You'll see exactly what's in the file — and what it would overwrite — and have to confirm, before anything changes.</div>    ${typeof emergencyPackHtml === 'function' ? emergencyPackHtml() : ''}
+  `;
 }
 async function exportFullBackup() {
   const ts = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
@@ -6217,6 +6218,13 @@ async function handleImportBackupFile(file) {
     let parsed;
     try { parsed = JSON.parse(text); }
     catch (e) { throw new Error("This file isn't valid JSON."); }
+    // An encrypted backup (Settings → Emergency pack): ask for its passphrase, then carry on.
+    if (parsed && parsed.format === 'trackr-encrypted-v1' && typeof decryptJson === 'function') {
+      const pass = prompt('This backup is encrypted. Type its passphrase:');
+      if (pass == null) return;
+      try { parsed = JSON.parse(await decryptJson(parsed, pass)); }
+      catch (e) { throw new Error('Wrong passphrase, or the file was changed — nothing was restored.'); }
+    }
     // Deliberately not exhaustive — just enough that a random unrelated JSON file (or a CSV/Excel
     // export mistakenly picked here) gets rejected clearly, rather than partially "succeeding"
     // into something broken. Genuinely old/differently-shaped real backups are still accepted;
