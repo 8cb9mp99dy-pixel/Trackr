@@ -1181,3 +1181,7 @@ html.compact .tab-row { margin-bottom: 12px; }
 .rule-match .rm-d, .rule-match .rm-c { opacity: .65; }
 .rule-match .rm-a { font-weight: 600; text-align: right; }
 @media (max-width: 640px) { .rule-match { grid-template-columns: auto minmax(0, 1fr) auto; } .rule-match .rm-d, .rule-match .rm-c { display: none; } }
+/* Action required → Kept by hand: data quality */
+.dq { display: flex; flex-direction: column; gap: 6px; font-size: 13px; margin-bottom: 12px; }
+.dq-bar { height: 6px; border-radius: 3px; background: var(--light-border); overflow: hidden; }
+.dq-bar span { display: block; height: 100%; background: var(--positive); }

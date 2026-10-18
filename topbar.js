@@ -41,7 +41,7 @@ function actionItems() {
   }
   (data.accounts || []).forEach(a => {
     const last = accountLastChecked(a), days = daysSince(last);
-    const item = { key: 'acc:' + a.id, icon: accountIconHtml(a, 22), name: a.name, detail: `Balance ${fmtMoney(accountTotal(a), a.currency)} · checked ${last ? timeAgo(last) : 'never'}`, actions: [{ label: 'Update', onclick: `closeModal();openAccountForm('${a.id}')`, primary: days > STALE_BALANCE_DAYS }, { label: 'Still correct', onclick: `confirmAccountBalance('${a.id}')` }] };
+    const item = { key: 'acc:' + a.id, days, icon: accountIconHtml(a, 22), name: a.name, detail: `Balance ${fmtMoney(accountTotal(a), a.currency)} · checked ${last ? timeAgo(last) : 'never'}`, actions: [{ label: 'Update', onclick: `closeModal();openAccountForm('${a.id}')`, primary: days > STALE_BALANCE_DAYS }, { label: 'Still correct', onclick: `confirmAccountBalance('${a.id}')` }] };
     manual.push(item);
     if (days > STALE_BALANCE_DAYS) attention.push(Object.assign({}, item, { detail: `Balance not checked for ${Math.floor(days)} days — is ${fmtMoney(accountTotal(a), a.currency)} still right?` }));
   });
@@ -51,7 +51,7 @@ function actionItems() {
     const days = daysSince(a.priceUpdatedAt);
     const limit = manualPrice ? STALE_MANUAL_DAYS : STALE_PRICE_DAYS;
     const priceTxt = assetHasPrice(a) ? fmtMoney(assetPrice(a), a.priceCurrency) : 'no price';
-    const item = { key: 'a:' + a.id, icon: assetLogoHtml(a.logo, a.assetType, 22), name: a.name || a.ticker, detail: `${manualPrice ? 'Price typed by you' : 'Live price'}: ${priceTxt} · ${a.priceUpdatedAt ? timeAgo(a.priceUpdatedAt) : 'never updated'}`, actions: [
+    const item = { key: 'a:' + a.id, days, icon: assetLogoHtml(a.logo, a.assetType, 22), name: a.name || a.ticker, detail: `${manualPrice ? 'Price typed by you' : 'Live price'}: ${priceTxt} · ${a.priceUpdatedAt ? timeAgo(a.priceUpdatedAt) : 'never updated'}`, actions: [
       ...(a.isin ? [{ label: 'Refresh', onclick: `refreshAssetPriceNow('${a.id}')`, primary: true }] : []),
       { label: 'Set price', onclick: `closeModal();openPositionForm('${a.id}')` },
     ] };
@@ -76,7 +76,7 @@ function actionItems() {
   if (typeof loanList === 'function') loanList().forEach(L => (typeof loanPositions === 'function' ? loanPositions(L) : []).forEach(p => {
     if (typeof loanPosLive === 'function' && loanPosLive(p)) return;
     const days = daysSince(p.valueDate);
-    const item = { key: 'lp:' + p.id, icon: ic('bank', 18), name: p.name + ' (loan)', detail: `Value ${fmtMoney(+p.value || 0)} typed ${p.valueDate ? timeAgo(p.valueDate) : '—'}`, actions: [{ label: 'Update', onclick: `closeModal();openLoanValuesForm('${L.id}')` }] };
+    const item = { key: 'lp:' + p.id, days, icon: ic('bank', 18), name: p.name + ' (loan)', detail: `Value ${fmtMoney(+p.value || 0)} typed ${p.valueDate ? timeAgo(p.valueDate) : '—'}`, actions: [{ label: 'Update', onclick: `closeModal();openLoanValuesForm('${L.id}')` }] };
     manual.push(item);
     if (days > STALE_MANUAL_DAYS) attention.push(item);
   }));
@@ -113,6 +113,14 @@ function topbarHtml() {
     </div>`;
 }
 
+/* Data quality: of the values kept by hand that carry a "last checked" date (bank balances, typed
+   prices, the loan's typed values), the share checked in the last 30 days. */
+function dataQuality(manual) {
+  const dated = (manual || actionItems().manual).filter(it => it.days != null);
+  if (!dated.length) return null;
+  const fresh = dated.filter(it => it.days <= STALE_MANUAL_DAYS).length;
+  return { pct: Math.round(fresh / dated.length * 100), fresh, total: dated.length };
+}
 function openActionRequired(tab) { ui.actionTab = tab || ui.actionTab || 'attention'; ui.modal = { type: 'actionRequired' }; render(); }
 function actionRowHtml(it) {
   return `<div class="ar-row">
@@ -139,6 +147,7 @@ window.__modalRenderers.actionRequired = function () {
     ${tab === 'notes' ? `
     <div class="row-flex" style="font-size:12.5px;margin-bottom:10px;gap:10px;"><span style="opacity:.6;">Alerts from Settings → Notifications, kept on this device (the last 100).</span>${notes.length ? '<button class="link-btn" style="font-size:12.5px;" onclick="notifyClearAll()">Clear all</button>' : ''}</div>
     <div class="stack-gap-8">${notes.map(notifyEntryHtml).join('') || '<div class="empty-state"><div class="title">No notifications yet</div><div class="sub">Turn alerts on in Settings → Notifications.</div></div>'}</div>` : `
+    ${tab === 'manual' && dataQuality(manual) ? (q => `<div class="dq"><div class="dq-bar"><span style="width:${q.pct}%;"></span></div><div><strong>Data quality ${q.pct}%</strong> <span style="opacity:.6;">· ${q.fresh} of ${q.total} values kept by hand were checked in the last ${STALE_MANUAL_DAYS} days</span></div></div>`)(dataQuality(manual)) : ''}
     <div style="font-size:12.5px;opacity:.6;margin-bottom:10px;">${tab === 'manual'
       ? 'Trackr isn\'t connected to your banks: these numbers only change when you update them.'
       : `Shown when a balance wasn't checked for ${STALE_BALANCE_DAYS} days, a live price is older than ${STALE_PRICE_DAYS} days, a price you typed is older than ${STALE_MANUAL_DAYS} days, or sync fails.`}</div>
