@@ -5,8 +5,9 @@
 const http = require('http'), fs = require('fs'), path = require('path');
 const root = path.resolve(__dirname, '..', '..'), port = +(process.argv[2] || process.env.PORT || 8080);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.pdf': 'application/pdf', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
-// Never served: personal data and backups that may sit in the working folder.
-const blocked = /(^|\/)(Backups\.nosync|Backups|Content|Logos|Save|MAJ|node_modules|\.git)(\/|$)|\.(xls|csv|nosync)$/i;
+// Never served: personal data and backups that may sit in the working folder. The private folders
+// are matched at the top level only, so the app's own assets/logos/ is still served.
+const blocked = /^(Backups\.nosync|Backups|Content|Logos|Save|MAJ)(\/|$)|(^|\/)(node_modules|\.git)(\/|$)|\.(xls|csv|nosync)$/i;
 http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split('?')[0]);
   if (p.endsWith('/')) p += 'index.html';
