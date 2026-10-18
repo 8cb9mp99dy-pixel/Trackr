@@ -3493,7 +3493,7 @@ function txRowDisplayHtml(t) {
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
         <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);">${fmtMoney(Math.abs(t.amount), t.currency)}</div>
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" aria-label="Delete this transaction" title="Delete" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>
       </div>
     </div>`;
   }
@@ -3515,7 +3515,7 @@ function txRowDisplayHtml(t) {
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
         <div class="${t.type === 'income' ? 'positive' : 'negative'}" style="font-weight:700;font-size:14.5px;">${t.type === 'income' ? '+' : '-'}${fmtMoney(Math.abs(t.amount), t.currency)}</div>
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>
+        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" aria-label="Delete this transaction" title="Delete" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>
       </div>
     </div>`;
 }
@@ -4475,13 +4475,13 @@ function brokersCardHtml(opts) {
               <div style="display:flex;align-items:center;gap:8px;">
                 <div style="font-weight:700;font-size:13.5px;">${fmtMoney(val)}</div>
                 <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" title="${expanded ? 'Hide' : 'Show'} holdings" onclick="toggleBrokerExpand('${b.id}')">${expanded ? '⌃' : '⌄'}</button>
-                ${showAddBroker ? `<button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>
-                <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="deleteBroker('${b.id}')">${ic('trash')}</button>` : ''}
+                ${showAddBroker ? `<button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" aria-label="Edit broker" title="Edit" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>
+                <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" aria-label="Delete broker" title="Delete" onclick="deleteBroker('${b.id}')">${ic('trash')}</button>` : ''}
               </div>
             </div>
             ${expanded ? `
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">
-                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div><div style="font-weight:600;font-size:13px;">Cash</div>${linkedAccountForBroker(b) ? `<div style="font-size:11px;opacity:.55;">Same as your ${escHtml(linkedAccountForBroker(b).name)} bank account</div>` : ''}</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(brokerCash(b), brokerCashCurrency(b))}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>` : ''}</div></div></div>` : ''}
+                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div><div style="font-weight:600;font-size:13px;">Cash</div>${linkedAccountForBroker(b) ? `<div style="font-size:11px;opacity:.55;">Same as your ${escHtml(linkedAccountForBroker(b).name)} bank account</div>` : ''}</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(brokerCash(b), brokerCashCurrency(b))}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" aria-label="Edit broker" title="Edit" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>` : ''}</div></div></div>` : ''}
                 <div class="stack-gap-8">
                   ${positions.map(p => positionRowHtml(p)).join('') || '<div style="opacity:.5;font-size:13px;">No positions here yet.</div>'}
                 </div>

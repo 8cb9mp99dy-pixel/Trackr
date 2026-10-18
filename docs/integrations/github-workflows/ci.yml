@@ -1,0 +1,59 @@
+# Checks on every pull request and on pushes to overnight/** branches. Nothing here needs a
+# secret, deploys anything or touches data: GitHub Pages keeps serving the main branch as it is.
+name: CI
+on:
+  pull_request:
+  push:
+    branches: ['overnight/**']
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    name: Syntax, lint, HTML, unit tests, cache version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: node --check on every script
+        run: node tools/dev/check-syntax.js
+      - name: ESLint
+        run: npx eslint .
+      - name: HTML validation
+        run: npx html-validate index.html
+      - name: Unit tests (returns, forecast, rules, X-ray, box 3, quick-add, insights)
+        run: npm test
+      - name: Service-worker cache version bumped when app files change
+        run: node tools/dev/check-sw-version.js origin/${{ github.base_ref || 'main' }}
+
+  e2e:
+    name: Playwright (desktop + phone, a11y, offline) on the invented fixture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+        env: { CI: '1' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+  lighthouse:
+    name: Lighthouse budgets (performance, accessibility, best practices)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npx --yes @lhci/cli@0.14.x autorun
