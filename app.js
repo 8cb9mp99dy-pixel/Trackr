@@ -2393,6 +2393,7 @@ function renderDashboard() {
     ${typeof liveTickerHtml === 'function' ? liveTickerHtml() : ''}
     ${recapBannerHtml()}
     ${typeof weekSummaryBannerHtml === 'function' ? weekSummaryBannerHtml() : ''}
+    ${typeof insightsHtml === 'function' ? insightsHtml() : ''}
     <div class="card stack-gap-16" style="margin-bottom:20px;">
       <div>
         <div class="eyebrow">Total net worth</div>
