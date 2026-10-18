@@ -1145,3 +1145,8 @@ html.compact .tab-row { margin-bottom: 12px; }
 .ret-row .nm { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) { .ret-grid { grid-template-columns: 1fr; } .ret-row { grid-template-columns: minmax(0, 1.6fr) 1fr 0.8fr; } .ret-row > span:nth-child(4) { display: none; } }
 .ret-row.ret-head { font-size: 11.5px; font-weight: 600; opacity: .55; padding: 4px 0; }
+
+/* Budget → Forecast (forecast.js) */
+.fc-warn { border-color: var(--negative) !important; box-shadow: inset 3px 0 0 var(--negative); }
+.fc-opts { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin-top: 12px; font-size: 13px; }
+.mini-input { width: 90px; padding: 6px 8px; border-radius: 9px; border: 1px solid var(--light-border); font: inherit; font-size: 13px; }

@@ -474,6 +474,8 @@ function defaultData() {
     investPlans: [],
     // Logos chosen for crypto exchanges (Investments → an exchange → Edit): { 'name in lower case': url }.
     exchangeLogos: {},
+    // Budget → Forecast: what-if scenarios [{ id, name, amount, direction 'in'|'out', date, repeat 'once'|'monthly', active, accountId }].
+    forecastScenarios: [],
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
     // (today's entry is updated in place every time something changes; past days are frozen).
     // Starts empty — no fabricated history — and grows for real as you use the app.
@@ -2782,6 +2784,7 @@ function renderBudget() {
   const tabs = [
     { id: 'transactions', label: 'Transactions' },
     { id: 'recurring', label: 'Recurring' },
+    ...(typeof budgetForecastTab === 'function' ? [{ id: 'forecast', label: 'Forecast' }] : []),
     { id: 'totals', label: 'Totals' },
     ...(budgetLimitsOn() ? [{ id: 'budgets', label: 'Budgets' }] : []),
     { id: 'categories', label: 'Categories' },
@@ -2797,6 +2800,7 @@ function renderBudget() {
     </div>
     ${ui.budgetTab === 'transactions' ? budgetTransactionsTab() : ''}
     ${ui.budgetTab === 'recurring' ? budgetRecurringTab() : ''}
+    ${ui.budgetTab === 'forecast' && typeof budgetForecastTab === 'function' ? budgetForecastTab() : ''}
     ${ui.budgetTab === 'totals' ? budgetTotalsTab() : ''}
     ${ui.budgetTab === 'budgets' && budgetLimitsOn() ? budgetLimitsTab() : ''}
     ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>` : ''}
