@@ -92,7 +92,7 @@ General AC for every item:
 
 ## Tier C
 
-- [x] **C New navigation (beta)** on branch `overnight/navigation`. Commit 12d30a8.
+- [x] **C New navigation (beta)** on branch `overnight/navigation`. Commit 0273a60 (rebased onto the full overnight branch).
   - AC: setting off by default.
   - AC: Home · Money · Wealth (Overview/Cash/Investments/Debts) · Plan (Goals/Emergency/Insights) · More.
   - AC: old `goPage()` ids still work.

@@ -40,7 +40,8 @@ node tools/dev/serve.js 8080         # then open http://127.0.0.1:8080
 | Tests: old-format migration, every page, eye, loan never in net worth, offline | 49adf99 |
 | Data-quality score · Dutch box 3 estimate (off) · emergency pack · Cmd+K · Overview insights | 3658a43 · c99f087 · 13bd815 · bf30329 · 39e8727 |
 | CI, CodeQL, Dependabot, issue and PR templates · integration templates (not active) · CLAUDE.md | a6fdac2 · 25e6095 · f83ec95 |
-| **New navigation (beta)**: Home · Money · Wealth · Plan + More (branch `overnight/navigation`) | 12d30a8 |
+| Fixes from the independent review, with regression tests | b6cff13 |
+| **New navigation (beta)**: Home · Money · Wealth · Plan + More (branch `overnight/navigation`, rebased on everything above; 72 e2e tests pass there) | 0273a60 |
 
 **Tests:** 37 unit tests and 70 end-to-end tests, at desktop and phone width, all passing. There are no console errors on any page.
 

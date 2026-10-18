@@ -42,7 +42,7 @@ Each entry is a judgement call made while working alone. The more important ones
 22. **"Apply to holdings."**
     - Off by default, and it always asks first, showing exact before → after values.
     - The realised gain uses the average buy price, because Trackr's holdings are averaged snapshots. The Returns card's FIFO gains come from the recorded trades instead.
-23. **Navigation beta on its own branch.** It is built on top of the Tier B work and doesn't include the later Tier D commits. It keeps every page id, so nothing else had to change.
+23. **Navigation beta on its own branch.** After the review, it was rebased onto the tip of `overnight/2026-10-18`, so it contains everything plus `nav.js` (cache v29). It keeps every page id, so nothing else had to change.
 24. **Box 3.**
     - The 2026 rates are those verified on belastingdienst.nl on 18 Oct 2026; the bank and debt percentages there are provisional.
     - The invested loan is included as an asset plus a debt, for the tax only and switchable, because legally both are yours. It never enters net worth.
