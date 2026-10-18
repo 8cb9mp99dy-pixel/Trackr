@@ -5,9 +5,9 @@
    in the background, store it for next time, and tell the open app when something changed so
    it can offer to reload. Only this site's own files are handled; Supabase, prices and fonts
    always go straight to the network. */
-const CACHE = 'trackr-app-v22';
+const CACHE = 'trackr-app-v23';
 const SHELL = [
-  './', './index.html', './styles.css', './app.js', './excel-import.js', './rules.js', './budget-import.js', './trade-import.js', './notify.js', './loan.js', './topbar.js', './overview.js', './wealth.js', './photos.js', './goals.js', './cashflow.js', './forecast.js', './analysis.js', './returns.js', './xray.js', './invest.js', './staking.js', './report.js', './motion.js', './backup-excel.js', './ticker.js', './quickadd.js', './safety.js',
+  './', './index.html', './styles.css', './app.js', './excel-import.js', './rules.js', './budget-import.js', './trade-import.js', './notify.js', './loan.js', './topbar.js', './overview.js', './wealth.js', './photos.js', './goals.js', './cashflow.js', './forecast.js', './analysis.js', './returns.js', './xray.js', './box3.js', './invest.js', './staking.js', './report.js', './motion.js', './backup-excel.js', './ticker.js', './quickadd.js', './safety.js',
   './assets/logos/logos.js', './assets/vendor/xlsx.full.min.js', './assets/vendor/jspdf.umd.min.js', './assets/vendor/html2canvas.min.js', './manifest.webmanifest',
   './assets/icons/apple-touch-icon.png', './assets/icons/icon-32.png', './assets/icons/icon-48.png', './assets/icons/icon-192.png',
 ];

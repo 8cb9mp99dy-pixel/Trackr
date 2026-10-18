@@ -136,6 +136,7 @@ function renderAnalysis() {
     ${typeof xrayCardHtml === 'function' ? xrayCardHtml() : ''}
     ${typeof returnsCardHtml === 'function' ? returnsCardHtml() : ''}
     ${simulatorCardHtml()}
+    ${typeof box3CardHtml === 'function' ? box3CardHtml() : ''}
     ${profileCardHtml()}
   </div>`;
 }
