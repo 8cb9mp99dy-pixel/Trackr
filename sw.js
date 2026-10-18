@@ -5,7 +5,7 @@
    in the background, store it for next time, and tell the open app when something changed so
    it can offer to reload. Only this site's own files are handled; Supabase, prices and fonts
    always go straight to the network. */
-const CACHE = 'trackr-app-v13';
+const CACHE = 'trackr-app-v14';
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './excel-import.js', './budget-import.js', './trade-import.js', './notify.js', './loan.js', './topbar.js', './overview.js', './wealth.js', './photos.js', './goals.js', './cashflow.js', './analysis.js', './invest.js', './staking.js', './report.js', './motion.js', './backup-excel.js', './ticker.js', './safety.js',
   './assets/logos/logos.js', './assets/vendor/xlsx.full.min.js', './assets/vendor/jspdf.umd.min.js', './assets/vendor/html2canvas.min.js', './manifest.webmanifest',

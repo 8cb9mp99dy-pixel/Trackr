@@ -90,11 +90,13 @@ function confirmAccountBalance(id) {
 
 function topbarHtml() {
   const n = actionItems().attention.length;
+  const unread = typeof notifyUnreadCount === 'function' ? notifyUnreadCount() : 0;
   const hidden = privacyOn();
   return `
     <div class="topbar">
       <div class="topbar-left">
-        ${n ? `<button class="tb-action" onclick="openActionRequired()" title="Things that need a manual update">${ic('alert', 16)}<span>Action required</span><b>${n}</b></button>` : ''}
+        ${n ? `<button class="tb-action" onclick="openActionRequired()" title="Things that need a manual update">${ic('alert', 16)}<span>Action required</span><b>${n}</b>${unread ? '<i class="tb-dot" title="New notifications"></i>' : ''}</button>`
+          : unread ? `<button class="tb-action tb-notes" onclick="openActionRequired('notes')" title="New notifications">${ic('bell', 16)}<span>Notifications</span><b>${unread}</b></button>` : ''}
       </div>
       <div class="topbar-right">
         <button class="tb-btn" onclick="shareReport()" title="Share a PDF report" aria-label="Share">${ic('share', 18)}</button>
@@ -115,18 +117,26 @@ function actionRowHtml(it) {
 }
 window.__modalRenderers.actionRequired = function () {
   const { attention, manual } = actionItems();
-  const tab = ui.actionTab === 'manual' ? 'manual' : 'attention';
+  const tab = ['manual', 'notes'].includes(ui.actionTab) ? ui.actionTab : 'attention';
   const list = tab === 'manual' ? manual : attention;
+  const notes = typeof notifyLogAll === 'function' ? notifyLogAll() : [];
+  const unread = notes.filter(x => !x.read).length;
+  // Opening the Notifications tab marks them read (after this draw, so they still show as new now).
+  if (tab === 'notes' && unread) setTimeout(() => { notifyMarkAllRead(); const b = document.querySelector('.tb-dot, .tb-notes'); if (b) renderWhenIdle(); }, 1500);
   return `
     <div class="modal-head"><div class="modal-title">Action required</div><button class="close-x" onclick="closeModal()">✕</button></div>
     <div class="tab-row" style="margin-bottom:14px;">
       <button class="tab-btn ${tab === 'attention' ? 'active' : ''}" onclick="openActionRequired('attention')">Needs a look (${attention.length})</button>
+      <button class="tab-btn ${tab === 'notes' ? 'active' : ''}" onclick="openActionRequired('notes')">Notifications${unread ? ` (${unread} new)` : ''}</button>
       <button class="tab-btn ${tab === 'manual' ? 'active' : ''}" onclick="openActionRequired('manual')">Kept by hand (${manual.length})</button>
     </div>
+    ${tab === 'notes' ? `
+    <div class="row-flex" style="font-size:12.5px;margin-bottom:10px;gap:10px;"><span style="opacity:.6;">Alerts from Settings → Notifications, kept on this device (the last 100).</span>${notes.length ? '<button class="link-btn" style="font-size:12.5px;" onclick="notifyClearAll()">Clear all</button>' : ''}</div>
+    <div class="stack-gap-8">${notes.map(notifyEntryHtml).join('') || '<div class="empty-state"><div class="title">No notifications yet</div><div class="sub">Turn alerts on in Settings → Notifications.</div></div>'}</div>` : `
     <div style="font-size:12.5px;opacity:.6;margin-bottom:10px;">${tab === 'manual'
       ? 'Trackr isn\'t connected to your banks: these numbers only change when you update them.'
       : `Shown when a balance wasn't checked for ${STALE_BALANCE_DAYS} days, a live price is older than ${STALE_PRICE_DAYS} days, a price you typed is older than ${STALE_MANUAL_DAYS} days, or sync fails.`}</div>
-    <div class="stack-gap-8">${list.map(actionRowHtml).join('') || `<div class="empty-state"><div class="title">${tab === 'manual' ? 'Nothing kept by hand yet' : 'Nothing needs a look'}</div><div class="sub">${tab === 'manual' ? 'Add a bank account to see it here.' : 'Everything is up to date.'}</div></div>`}</div>`;
+    <div class="stack-gap-8">${list.map(actionRowHtml).join('') || `<div class="empty-state"><div class="title">${tab === 'manual' ? 'Nothing kept by hand yet' : 'Nothing needs a look'}</div><div class="sub">${tab === 'manual' ? 'Add a bank account to see it here.' : 'Everything is up to date.'}</div></div>`}</div>`}`;
 };
 
 /* + Add: one menu for every kind of thing you can add. */

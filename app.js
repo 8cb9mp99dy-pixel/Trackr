@@ -103,6 +103,7 @@ const ICON_PATHS = {
   alert: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
   info: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/>',
   download: '<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 11l5 5l5 -5"/><path d="M12 4l0 12"/>',
+  bell: '<path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/>',
   calendar: '<path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M4 11h16"/>',
   list: '<path d="M9 6l11 0"/><path d="M9 12l11 0"/><path d="M9 18l11 0"/><path d="M5 6l0 .01"/><path d="M5 12l0 .01"/><path d="M5 18l0 .01"/>',
   table: '<path d="M3 5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-14z"/><path d="M3 10h18"/><path d="M10 3v18"/>',
@@ -3006,6 +3007,11 @@ function budgetCheckAfterSave(record, before) {
   if (!st) return;
   const prevPct = st.limit ? (st.spent - (before || 0)) / st.limit * 100 : 0;
   const c = categoryById('expense', record.categoryId);
+  const ym = String(record.date).slice(0, 7);
+  if (typeof notifyLog === 'function') {
+    if (st.pct >= 100 && prevPct < 100) notifyLog({ key: `budget:${record.categoryId}:${ym}:100`, kind: 'budget', category: c ? c.name : 'Budget', spent: st.spent, limit: st.limit, pct: st.pct, over: true });
+    else if (st.pct >= 80 && prevPct < 80) notifyLog({ key: `budget:${record.categoryId}:${ym}:80`, kind: 'budget', category: c ? c.name : 'Budget', spent: st.spent, limit: st.limit, pct: st.pct, over: false });
+  }
   if (st.pct >= 100 && prevPct < 100) safetyToast(`<span>${escHtml(c ? c.name : 'Budget')}: ${fmtMoney(st.spent)} of ${fmtMoney(st.limit)} — over budget this month.</span>`, { ms: 6000 });
   else if (st.pct >= 80 && prevPct < 80) safetyToast(`<span>${escHtml(c ? c.name : 'Budget')}: ${Math.round(st.pct)}% of your ${fmtMoney(st.limit)} budget used — ${fmtMoney(st.left)} left.</span>`, { ms: 6000 });
 }

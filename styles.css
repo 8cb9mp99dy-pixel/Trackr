@@ -1124,3 +1124,11 @@ html.compact .tab-row { margin-bottom: 12px; }
 .bi-table tr.bi-need td:first-child { box-shadow: inset 3px 0 0 var(--light-accent-1); }
 .tx-list-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 -4px; }
 .tx-list-tools .switch-row { font-size: 13px; }
+
+/* Notification centre (notify.js) */
+.tb-action { position: relative; }
+.tb-notes .ic { color: var(--light-accent-1); }
+.tb-notes b { background: var(--light-accent-1); }
+.tb-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--light-accent-1); box-shadow: 0 0 0 2px var(--light-card); }
+.ar-row.unread { background: rgba(59,91,219,.06); border-radius: 12px; }
+.ar-row.unread .ar-name::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--light-accent-1); margin-left: 6px; vertical-align: 1px; }
