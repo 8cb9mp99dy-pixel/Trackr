@@ -160,7 +160,8 @@ function tradePanelHtml(acc) {
       ${target && price ? `<div class="dim">1 ${escHtml(target.ticker)} ≈ ${fmtMoney(price)} · live price</div>` : ''}
     </div>
     <button class="btn primary full" id="tr-confirm" ${ready ? '' : 'disabled'} onclick="confirmTrade()">${label}</button>
-    <div class="dim" style="margin-top:8px;line-height:1.45;">Only recorded in Trackr — no real order is placed, and your quantities and cash don't change.</div>`}`;
+    <div class="dim" style="margin-top:8px;line-height:1.45;">Only recorded in Trackr — no real order is placed. ${data.settings.applyTradesToHoldings ? 'You\'ll then see how your quantities and cash would change, and choose to apply it.' : 'Your quantities and cash don\'t change.'}</div>
+    <label class="switch-row" style="margin-top:10px;font-size:12.5px;"><button class="toggle ${data.settings.applyTradesToHoldings ? 'on' : ''}" onclick="data.settings.applyTradesToHoldings=!data.settings.applyTradesToHoldings;save();render()" aria-label="Also update holdings and cash"></button><span>Also update my holdings and cash (asks first)</span></label>`}`;
 }
 /* Typing only updates the "I get" line and the button (no redraw), so the cursor never moves.
    The % buttons redraw, which also fills the field. */
@@ -198,17 +199,21 @@ function confirmTrade() {
     ticker: from ? from.ticker : '', quantity: fromPrice ? +(amt / fromPrice).toFixed(8) : null, unitPrice: fromPrice || null,
   };
   if (to) Object.assign(rec, { toTicker: to.ticker, toQuantity: +(amt / to.price).toFixed(8), toUnitPrice: to.price });
+  rec.assetKey = from ? from.key : ''; if (to) rec.toKey = to.key;
   if (!Array.isArray(data.investmentTransactions)) data.investmentTransactions = [];
   data.investmentTransactions.push(rec);
   ui.trade.amount = '';
   ui.investTab = 'txns';
   save(); render();
+  // Settings: "Update holdings when I record a trade" — show what would change, apply on confirm.
+  if (data.settings.applyTradesToHoldings) openApplyTrade(rec.id);
 }
 function txnsTabHtml(acc) {
   const list = (data.investmentTransactions || []).filter(x => x.accountKey === acc.kind + ':' + acc.id || (!x.accountKey && x.account && txNameKey(x.account) === txNameKey(acc.name))).slice().sort((a, b) => (b.recordedAt || b.date || '').localeCompare(a.recordedAt || a.date || ''));
   return `<div class="card">${list.length ? `<div class="stack-gap-8">${list.map(x => `<div class="inv-row">
       <span class="txn-badge ${x.action.toLowerCase()}">${x.action}</span>
-      <div class="nm"><div class="nm-1">${escHtml(x.ticker || '')}${x.toTicker ? ` → ${escHtml(x.toTicker)}` : ''}</div><div class="nm-2">${escHtml(shortDay(x.date))}${x.quantity ? ` · ${fmtQty(x.quantity)} ${escHtml(x.ticker)}` : ''}${x.unitPrice ? ` at ${fmtMoney(x.unitPrice)}` : ''}${x.toQuantity ? ` → ${fmtQty(x.toQuantity)} ${escHtml(x.toTicker)}` : ''}${x.plan ? ' · plan' : ''}</div></div>
+      <div class="nm"><div class="nm-1">${escHtml(x.ticker || '')}${x.toTicker ? ` → ${escHtml(x.toTicker)}` : ''}</div><div class="nm-2">${escHtml(shortDay(x.date))}${x.quantity ? ` · ${fmtQty(x.quantity)} ${escHtml(x.ticker)}` : ''}${x.unitPrice ? ` at ${fmtMoney(x.unitPrice)}` : ''}${x.toQuantity ? ` → ${fmtQty(x.toQuantity)} ${escHtml(x.toTicker)}` : ''}${x.plan ? ' · plan' : ''}${x.applied ? ' · applied to holdings' : ''}${x.realisedGain != null ? ` · <span class="${x.realisedGain >= 0 ? 'positive' : 'negative'}">${x.realisedGain >= 0 ? '+' : '−'}${fmtMoney(Math.abs(x.realisedGain))} realised</span>` : ''}</div></div>
+      ${!x.applied && data.settings.applyTradesToHoldings ? `<button class="btn small" onclick="openApplyTrade('${x.id}')">Apply</button>` : ''}
       <div class="inv-val"><b>${fmtMoney(x.amount || 0)}</b></div>
       <button class="dots-btn" title="Delete" onclick="deleteInvestTxn('${x.id}')">${ic('trash', 16)}</button>
     </div>`).join('')}</div>` : `<div class="empty-state"><div class="title">No transactions yet</div><div class="sub">What you record with Buy, Sell, Convert or a plan shows up here.</div></div>`}</div>`;
@@ -267,7 +272,9 @@ function recordPlanNow(id) {
   const a = tradeableAssets(acc).find(x => x.key === p.asset);
   if (!a || !(a.price > 0)) { if (typeof refreshToast === 'function') refreshToast(`No live price for ${escHtml(planLabel(p))} right now — try again later.`, false); return; }
   if (!Array.isArray(data.investmentTransactions)) data.investmentTransactions = [];
-  data.investmentTransactions.push({ id: uid('itx'), date: todayYmd(), recordedAt: new Date().toISOString(), account: acc.name, accountKey: p.accountKey, action: 'Buy', amount: p.amount, currency: 'EUR', ticker: a.ticker, quantity: +(p.amount / a.price).toFixed(8), unitPrice: a.price, plan: p.id });
+  const planRec = { id: uid('itx'), date: todayYmd(), recordedAt: new Date().toISOString(), account: acc.name, accountKey: p.accountKey, action: 'Buy', amount: p.amount, currency: 'EUR', ticker: a.ticker, quantity: +(p.amount / a.price).toFixed(8), unitPrice: a.price, plan: p.id, assetKey: p.asset };
+  data.investmentTransactions.push(planRec);
+  if (data.settings.applyTradesToHoldings) setTimeout(() => openApplyTrade(planRec.id), 0);
   p.lastMonth = ymOf(todayYmd());
   save(); render();
 }
@@ -413,5 +420,134 @@ function saveExchangeForm() {
     cash.amount = amt; cash.currency = ccy;
   } else if (cash) cash.currency = ccy;
   ui.investAccount = 'exchange:' + name;
+  save(); closeModal();
+}
+
+/* ---- Apply a recorded trade to your holdings (optional) ----
+   Settings: "Also update my holdings and cash" (off by default). After Buy / Sell / Convert or a
+   plan is recorded, a sheet shows exactly what would change — quantity, average buy price, the
+   account's cash, and for a sale the realised gain (sold at the price recorded minus your
+   average buy price) — and nothing changes until you press Apply (undo for 10 s after).
+   Still no real order: it only updates Trackr after you've traded at your broker.
+   Holdings at a broker: the holding line for that broker (created on a first buy, removed when
+   fully sold). Coins: the exchange's line (snapshot mode) or a dated purchase (purchases mode;
+   a sale takes from the oldest purchases first). */
+function tradeEffects(rec) {
+  const acc = investAccountByKey(rec.accountKey);
+  if (!acc) return { ops: [], problems: ['This account no longer exists.'] };
+  const ops = [], problems = [];
+  const leg = (key, side, qty, priceEUR, amtEUR) => {
+    if (!key || !(qty > 0)) { problems.push('Missing quantity or price.'); return 0; }
+    const [k, ref] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+    if (k === 'a') {
+      if (acc.kind !== 'broker') { problems.push('Stocks and funds are held at a broker.'); return 0; }
+      const a = assetById(ref); if (!a) { problems.push('Unknown asset.'); return 0; }
+      const e = data.assetEntries.find(x => x.assetId === ref && x.broker === acc.id);
+      const ccy = e ? e.currency || 'EUR' : a.priceCurrency || 'EUR';
+      const q0 = e ? +e.quantity || 0 : 0, p0 = e ? +e.price || 0 : 0;
+      const px = convertCurrency(priceEUR, 'EUR', ccy);
+      if (side === 'buy') { const q1 = q0 + qty; ops.push({ type: 'entry', label: a.name || a.ticker, assetId: ref, brokerId: acc.id, ccy, q0, q1, p0, p1: (q0 * p0 + qty * px) / q1 }); return 0; }
+      const sold = Math.min(qty, q0);
+      if (sold < qty - 1e-9) problems.push(`You hold ${fmtQty(q0)} ${a.ticker} here — only that much can be sold.`);
+      ops.push({ type: 'entry', label: a.name || a.ticker, assetId: ref, brokerId: acc.id, ccy, q0, q1: q0 - sold, p0, p1: p0 });
+      return toEUR(sold * (px - p0), ccy);
+    }
+    if (k === 'c') {
+      const c = cryptoAssetBySymbol(ref); if (!c) { problems.push('Unknown coin.'); return 0; }
+      const ex = acc.name;
+      if (c.mode === 'snapshot') {
+        const r = (c.snapshots || []).find(x => (x.broker || '').trim().toLowerCase() === ex.trim().toLowerCase());
+        const ccy = r ? r.currency || 'EUR' : 'EUR', q0 = r ? +r.quantity || 0 : 0, p0 = r ? +r.price || 0 : 0, px = convertCurrency(priceEUR, 'EUR', ccy);
+        if (side === 'buy') { const q1 = q0 + qty; ops.push({ type: 'snap', label: c.name || c.symbol, symbol: c.symbol, exchange: ex, ccy, q0, q1, p0, p1: (q0 * p0 + qty * px) / q1 }); return 0; }
+        const sold = Math.min(qty, q0);
+        if (sold < qty - 1e-9) problems.push(`You hold ${fmtQty(q0)} ${c.symbol} here.`);
+        ops.push({ type: 'snap', label: c.name || c.symbol, symbol: c.symbol, exchange: ex, ccy, q0, q1: q0 - sold, p0, p1: p0 });
+        return toEUR(sold * (px - p0), ccy);
+      }
+      const lots = lotsFor(c.symbol).filter(l => (l.broker || '').trim().toLowerCase() === ex.trim().toLowerCase()).sort((x, y) => ((x.date || '') < (y.date || '') ? -1 : 1));
+      const q0 = lots.reduce((s2, l) => s2 + (+l.quantity || 0), 0);
+      if (side === 'buy') { ops.push({ type: 'lotAdd', label: c.name || c.symbol, symbol: c.symbol, exchange: ex, q0, q1: q0 + qty, qty, paid: amtEUR }); return 0; }
+      let left = Math.min(qty, q0), cost = 0; const takes = [];
+      lots.forEach(l => { if (left <= 1e-12) return; const q = +l.quantity || 0, take = Math.min(q, left); const part = q ? take / q : 0; cost += toEUR((+l.amountPaid || 0) * part, l.currency); takes.push({ id: l.id, take, part }); left -= take; });
+      if (qty > q0 + 1e-9) problems.push(`You hold ${fmtQty(q0)} ${c.symbol} here.`);
+      const sold = Math.min(qty, q0);
+      ops.push({ type: 'lotTake', label: c.name || c.symbol, symbol: c.symbol, exchange: ex, q0, q1: q0 - sold, takes });
+      return sold * priceEUR - cost;
+    }
+    problems.push('Unknown holding.'); return 0;
+  };
+  let realised = 0;
+  const qty = +rec.quantity || 0, px = +rec.unitPrice || 0, amt = +rec.amount || 0;
+  if (rec.action === 'Buy') leg(rec.assetKey, 'buy', qty, px, amt);
+  else if (rec.action === 'Sell') realised = leg(rec.assetKey, 'sell', qty, px, amt);
+  else if (rec.action === 'Convert') { realised = leg(rec.assetKey, 'sell', qty, px, amt); leg(rec.toKey, 'buy', +rec.toQuantity || 0, +rec.toUnitPrice || 0, amt); }
+  // Cash: a buy takes it, a sale adds it; a convert doesn't touch it.
+  if (rec.action !== 'Convert') {
+    const sign = rec.action === 'Buy' ? -1 : 1;
+    if (acc.kind === 'broker') {
+      const b = brokerById(acc.id), ccy = brokerCashCurrency(b), c0 = brokerCash(b), c1 = c0 + sign * convertCurrency(amt, 'EUR', ccy);
+      if (c1 < -0.005) problems.push(`${b.name} only has ${fmtMoney(c0, ccy)} in cash — the cash would go below zero.`);
+      ops.push({ type: 'cash', label: `${b.name} cash`, brokerId: b.id, ccy, c0, c1 });
+    } else {
+      const ce = cryptoExchangeCashFor(acc.name), ccy = ce ? ce.currency : 'EUR', c0 = ce ? +ce.amount || 0 : 0, c1 = c0 + sign * convertCurrency(amt, 'EUR', ccy);
+      if (c1 < -0.005) problems.push(`${acc.name} only has ${fmtMoney(c0, ccy)} in cash.`);
+      ops.push({ type: 'xcash', label: `${acc.name} cash`, exchange: acc.name, ccy, c0, c1 });
+    }
+  }
+  return { ops, problems, realised: rec.action === 'Buy' ? null : realised };
+}
+function openApplyTrade(id) { ui.modal = { type: 'applyTrade', payload: { id } }; render(); }
+window.__modalRenderers.applyTrade = function (p) {
+  const rec = (data.investmentTransactions || []).find(x => x.id === p.id);
+  if (!rec) return '<div class="modal-head"><div class="modal-title">Trade not found</div><button class="close-x" onclick="closeModal()">✕</button></div>';
+  const E = tradeEffects(rec);
+  const row = (l, a, b) => `<div class="row-flex" style="font-size:13.5px;padding:6px 0;border-bottom:1px solid var(--light-border);"><span>${l}</span><span><span style="opacity:.55;">${a}</span> → <strong>${b}</strong></span></div>`;
+  return `
+    <div class="modal-head"><div class="modal-title">Update your holdings?</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div style="font-size:13px;opacity:.7;margin-bottom:10px;">${escHtml(rec.action)} ${escHtml(rec.ticker)}${rec.toTicker ? ' → ' + escHtml(rec.toTicker) : ''} · ${fmtMoney(rec.amount)} — recorded. Apply it to Trackr only once it's done at your ${escHtml(rec.account)} account.</div>
+    <div>${E.ops.map(o => o.type === 'cash' || o.type === 'xcash' ? row(escHtml(o.label), fmtMoney(o.c0, o.ccy), fmtMoney(o.c1, o.ccy))
+      : row(escHtml(o.label), `${fmtQty(o.q0)}${o.p0 != null && o.type !== 'lotAdd' && o.type !== 'lotTake' ? ` @ ${fmtMoney(o.p0, o.ccy)}` : ''}`, `${fmtQty(o.q1)}${o.p1 != null && o.type !== 'lotAdd' && o.type !== 'lotTake' ? ` @ ${fmtMoney(o.p1, o.ccy)}` : ''}${o.type === 'lotAdd' ? ' (new dated purchase)' : ''}`)).join('')}</div>
+    ${E.realised != null ? `<div style="margin-top:10px;font-size:13.5px;">Realised ${E.realised >= 0 ? 'gain' : 'loss'}: <strong class="${E.realised >= 0 ? 'positive' : 'negative'}">${E.realised >= 0 ? '+' : '−'}${fmtMoney(Math.abs(E.realised))}</strong> <span style="opacity:.55;">(price recorded vs your average buy price)</span></div>` : ''}
+    ${E.problems.length ? `<div class="info-box" style="margin-top:10px;color:var(--negative);">${E.problems.map(escHtml).join('<br>')}</div>` : ''}
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">Only record it</button>
+      <button class="btn primary" ${E.ops.length && !E.problems.length ? '' : 'disabled'} onclick="applyTradeToHoldings('${rec.id}')">Apply</button>
+    </div>`;
+};
+function applyTradeToHoldings(id) {
+  const rec = (data.investmentTransactions || []).find(x => x.id === id);
+  if (!rec || rec.applied) { closeModal(); return; }
+  const E = tradeEffects(rec);
+  if (E.problems.length || !E.ops.length) return;
+  E.ops.forEach(o => {
+    if (o.type === 'entry') {
+      let e = data.assetEntries.find(x => x.assetId === o.assetId && x.broker === o.brokerId);
+      if (!e && o.q1 > 0) { e = { id: uid('ae'), assetId: o.assetId, broker: o.brokerId, quantity: 0, price: 0, currency: o.ccy }; data.assetEntries.push(e); }
+      if (e && o.q1 <= 1e-9) data.assetEntries = data.assetEntries.filter(x => x !== e);
+      else if (e) { e.quantity = +o.q1.toFixed(8); e.price = +o.p1.toFixed(6); }
+    } else if (o.type === 'snap') {
+      const c = cryptoAssetBySymbol(o.symbol); c.snapshots = c.snapshots || [];
+      let r = c.snapshots.find(x => (x.broker || '').trim().toLowerCase() === o.exchange.trim().toLowerCase());
+      if (!r && o.q1 > 0) { r = { id: uid('snap'), broker: o.exchange, quantity: 0, price: 0, currency: o.ccy }; c.snapshots.push(r); }
+      if (r && o.q1 <= 1e-12) c.snapshots = c.snapshots.filter(x => x !== r);
+      else if (r) { r.quantity = +o.q1.toFixed(10); r.price = +o.p1.toFixed(6); }
+    } else if (o.type === 'lotAdd') {
+      data.cryptoLots.push({ id: uid('lot'), symbol: o.symbol, broker: o.exchange, date: todayYmd(), quantity: +o.qty.toFixed(10), amountPaid: +o.paid.toFixed(2), currency: 'EUR' });
+    } else if (o.type === 'lotTake') {
+      o.takes.forEach(t => {
+        const l = data.cryptoLots.find(x => x.id === t.id); if (!l) return;
+        const keep = 1 - t.part;
+        if (keep <= 1e-9) data.cryptoLots = data.cryptoLots.filter(x => x !== l);
+        else { l.quantity = +((+l.quantity) * keep).toFixed(10); l.amountPaid = +((+l.amountPaid) * keep).toFixed(2); }
+      });
+    } else if (o.type === 'cash') setBrokerCash(brokerById(o.brokerId), Math.round(o.c1 * 100) / 100);
+    else if (o.type === 'xcash') {
+      let c = cryptoExchangeCashFor(o.exchange);
+      if (!c) { c = { id: uid('cec'), exchange: o.exchange, amount: 0, currency: o.ccy, interestBearing: false, interestRate: null }; data.cryptoExchangeCash.push(c); }
+      c.amount = Math.round(o.c1 * 100) / 100;
+    }
+  });
+  rec.applied = true;
+  if (E.realised != null) rec.realisedGain = Math.round(E.realised * 100) / 100;
   save(); closeModal();
 }

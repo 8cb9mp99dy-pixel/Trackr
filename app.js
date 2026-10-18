@@ -389,6 +389,7 @@ function defaultData() {
       showPerformanceIndicators: true,
       compactMode: false,
       budgetLimitsBeta: false, // Settings → Display → "Category budgets (beta)"
+      applyTradesToHoldings: false, // Investments → an account → Buy: "Also update my holdings and cash"
       privacyMode: false,
       eurUsdRate: 1.08, // used to blend USD crypto purchases into one EUR average price
       eurUsdRateAuto: true, // true = kept in sync from a live FX rate; false = manually overridden
@@ -6005,6 +6006,7 @@ function settingsDisplayHtml() {
       ${boolSettingRow('Show cents (decimals)', 'showCents')}
       ${boolSettingRow('Show performance indicators', 'showPerformanceIndicators', 'Gains and losses on your investments (P&amp;L, ▲ ▼ %, the Performance card). Off: only what things are worth.')}
       ${boolSettingRow('Compact mode', 'compactMode', 'Tighter spacing and smaller headline numbers, so more fits on the screen.')}
+      ${boolSettingRow('Update holdings when I record a trade', 'applyTradesToHoldings', 'After Buy / Sell / Convert (or a plan) on an account page, show how quantities, average price and cash would change, and apply it if you confirm. Never places a real order.')}
       ${boolSettingRow('Category budgets (beta)', 'budgetLimitsBeta', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}
       <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.55;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
       <label class="field"><span class="label-text">Twelve Data API key <span style="opacity:.6;">(ticker search &amp; live prices)</span></span>
