@@ -165,16 +165,16 @@ function overviewBrokersCardHtml() {
     </div>`;
 }
 /* ---- Wealth allocation: everything you own by type (bank, savings, ETFs, crypto…). ---- */
-function overviewAllocationCardHtml() {
-  const rows = typeof wealthAssetRows === 'function' ? wealthAssetRows().filter(r => !r.loan && r.value > 0) : [];
-  const byType = {};
-  rows.forEach(r => { byType[r.type] = (byType[r.type] || 0) + r.value; });
-  const segs = Object.keys(byType).map(t => ({ label: t, value: byType[t], color: typeColor(t) })).sort((a, b) => b.value - a.value);
+/* One allocation card for every page that shows "how is it split": the Overview (everything you
+   own), Investments (only what's invested) — same donut, legend and colours as Wealth, whose page
+   adds grouping and the target comparison on top. Hovering or tapping a line highlights it. */
+function allocationCardHtml(opts) {
+  const segs = opts.segs.filter(s => s.value > 0).sort((a, b) => b.value - a.value);
   const total = segs.reduce((s, x) => s + x.value, 0);
   const focus = ui.wealthFocus != null ? segs[ui.wealthFocus] : null;
   return `
-    <div class="card">
-      <div class="row-flex" style="margin-bottom:12px;"><div class="eyebrow">Wealth allocation</div><button class="link-btn" onclick="goPage('wealth')">Details ${ic('chevronRight', 14)}</button></div>
+    <div class="card ${opts.cls || ''}" style="${opts.style || ''}">
+      <div class="row-flex" style="margin-bottom:12px;"><div class="eyebrow">${escHtml(opts.title)}</div>${opts.link ? `<button class="link-btn" onclick="${opts.link}">Details ${ic('chevronRight', 14)}</button>` : ''}</div>
       ${segs.length ? `<div class="alloc-body">
         <div class="donut-wrap" onpointerleave="wealthDonutFocus(null)">${wealthDonutSvg(segs)}
           <div class="donut-center"><b>${fmtMoney(focus ? focus.value : total)}</b><span>${focus ? `${escHtml(focus.label)} · ${(focus.value / total * 100).toFixed(1)}%` : 'Total'}</span></div></div>
@@ -182,6 +182,12 @@ function overviewAllocationCardHtml() {
           <span class="alloc-name"><span class="donut-swatch" style="background:${s.color};"></span>${escHtml(s.label)}</span>
           <span class="alloc-amt">${fmtMoney(s.value)}</span>
           <span class="alloc-pct">${(s.value / total * 100).toFixed(1)}%</span></div>`).join('')}</div>
-      </div>` : `<div class="empty-state" style="padding:20px 10px;"><div class="title">No data yet</div><div class="sub">Add a bank account or a position.</div></div>`}
+      </div>` : `<div class="empty-state" style="padding:20px 10px;"><div class="title">No data yet</div><div class="sub">${escHtml(opts.empty || 'Add a bank account or a position.')}</div></div>`}
     </div>`;
+}
+function overviewAllocationCardHtml() {
+  const rows = typeof wealthAssetRows === 'function' ? wealthAssetRows().filter(r => !r.loan && r.value > 0) : [];
+  const byType = {};
+  rows.forEach(r => { byType[r.type] = (byType[r.type] || 0) + r.value; });
+  return allocationCardHtml({ title: 'Wealth allocation', link: "goPage('wealth')", segs: Object.keys(byType).map(t => ({ label: t, value: byType[t], color: typeColor(t) })) });
 }

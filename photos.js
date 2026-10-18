@@ -135,3 +135,62 @@ async function photoCleanup() {
   for (const id of await photoAllKeys().catch(() => [])) if (!used.has(id)) await removePhoto(id);
 }
 setTimeout(() => { photoSyncPending().catch(() => {}); }, 4000);
+
+/* ---- Photos in backups ----
+   Backups (JSON and Excel) carry the goal photos too, so a restore on a new device brings them
+   back. To keep files reasonable each photo is re-encoded smaller for the backup (longest side
+   1000 px, JPEG 0.7 — about 60–150 KB each); the copy on this device keeps its full size.
+   Only photos a goal uses are included, and only those this device has (a photo added on your
+   other device and not opened here yet isn't in this device's backups). */
+const BACKUP_PHOTO_MAX = 1000;
+function shrinkDataUrl(dataUrl, max, quality) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      if (k === 1 && dataUrl.length < 200000) { resolve({ data: dataUrl, w: img.naturalWidth, h: img.naturalHeight }); return; }
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      resolve({ data: c.toDataURL('image/jpeg', quality), w: c.width, h: c.height });
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+async function photosForBackup() {
+  const ids = Array.from(new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id))));
+  const out = [];
+  for (const id of ids) {
+    const rec = await photoGet(id).catch(() => null);
+    if (!rec || !rec.data) continue;
+    const small = await shrinkDataUrl(rec.data, BACKUP_PHOTO_MAX, 0.7);
+    if (small) out.push({ id, data: small.data, w: small.w, h: small.h });
+  }
+  return out;
+}
+/* The data a backup file holds: everything, plus `_photos` (never part of the data itself). */
+async function backupPayload() {
+  let photos = [];
+  try { photos = await photosForBackup(); } catch (e) { console.warn('Photos left out of the backup', e); }
+  return photos.length ? Object.assign({}, data, { _photos: photos }) : data;
+}
+/* On restore: takes `_photos` off the restored document and puts them back on this device (and
+   in the cloud photo table when it's set up). Returns how many came back. */
+async function restoreBackupPhotos(doc) {
+  const list = doc && Array.isArray(doc._photos) ? doc._photos : [];
+  if (doc) delete doc._photos;
+  let n = 0;
+  for (const p of list) {
+    if (!p || !p.id || typeof p.data !== 'string' || !/^data:image\//.test(p.data)) continue;
+    const rec = { id: p.id, data: p.data, w: p.w, h: p.h, synced: false, addedAt: new Date().toISOString() };
+    try {
+      await photoPut(rec);
+      const u = photoUrls.get(p.id); if (u) URL.revokeObjectURL(u);
+      photoUrls.delete(p.id);
+      photoUpload(rec);
+      n++;
+    } catch (e) { console.warn('Photo not restored', e); }
+  }
+  return n;
+}

@@ -387,6 +387,7 @@ function defaultData() {
       showCents: true,
       showPerformanceIndicators: true,
       compactMode: false,
+      budgetLimitsBeta: false, // Settings → Display → "Category budgets (beta)"
       privacyMode: false,
       eurUsdRate: 1.08, // used to blend USD crypto purchases into one EUR average price
       eurUsdRateAuto: true, // true = kept in sync from a live FX rate; false = manually overridden
@@ -2776,11 +2777,12 @@ function savePocketForm(accId, pkId) {
 }
 /* ===================== Budget ===================== */
 function renderBudget() {
+  if (ui.budgetTab === 'budgets' && !budgetLimitsOn()) ui.budgetTab = 'transactions';
   const tabs = [
     { id: 'transactions', label: 'Transactions' },
     { id: 'recurring', label: 'Recurring' },
     { id: 'totals', label: 'Totals' },
-    ...(BUDGET_LIMITS_ENABLED ? [{ id: 'budgets', label: 'Budgets' }] : []),
+    ...(budgetLimitsOn() ? [{ id: 'budgets', label: 'Budgets' }] : []),
     { id: 'categories', label: 'Categories' },
     { id: 'import', label: 'Import' },
   ];
@@ -2795,13 +2797,13 @@ function renderBudget() {
     ${ui.budgetTab === 'transactions' ? budgetTransactionsTab() : ''}
     ${ui.budgetTab === 'recurring' ? budgetRecurringTab() : ''}
     ${ui.budgetTab === 'totals' ? budgetTotalsTab() : ''}
-    ${ui.budgetTab === 'budgets' && BUDGET_LIMITS_ENABLED ? budgetLimitsTab() : ''}
+    ${ui.budgetTab === 'budgets' && budgetLimitsOn() ? budgetLimitsTab() : ''}
     ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>` : ''}
     ${ui.budgetTab === 'import' ? (typeof budgetImportTab === 'function' ? budgetImportTab() : '') : ''}
   </div>`;
 }
 function toggleHideTransfers() { data.settings.hideTransfers = !data.settings.hideTransfers; save(); render(); }
-function setBudgetTab(t) { ui.budgetTab = t === 'budgets' && !BUDGET_LIMITS_ENABLED ? 'transactions' : t; render(); }
+function setBudgetTab(t) { ui.budgetTab = t === 'budgets' && !budgetLimitsOn() ? 'transactions' : t; render(); }
 
 function budgetTransactionsTab() {
   const m = ui.budgetMonth;
@@ -2886,11 +2888,11 @@ function learnedTxFor(name, type) {
    A monthly limit per expense category (data.budgetLimits = { categoryId: euros }). The Budget
    page shows how much of each is used, the pace for the rest of the month, and warns when a new
    expense takes a category past 80 % or 100 %. */
-/* Budget → Budgets (monthly limits per category) is switched off for now, to be worked on
-   later: true brings back the tab and everything that uses the limits (the summary on the
-   Transactions tab, "left under the target" in Totals, the over-budget alerts, the recap's
-   budget lines). The limits you set stay saved either way. */
-const BUDGET_LIMITS_ENABLED = false;
+/* Budget → Budgets (monthly limits per category) is a beta, off unless you switch it on in
+   Settings → Display → "Category budgets (beta)". On, it brings back the tab and everything that
+   uses the limits (the summary on the Transactions tab, "left under the target" in Totals, the
+   over-budget alerts, the recap's budget lines). The limits you set stay saved either way. */
+function budgetLimitsOn() { return !!(data && data.settings && data.settings.budgetLimitsBeta); }
 function budgetLimits() { if (!data.budgetLimits || typeof data.budgetLimits !== 'object') data.budgetLimits = {}; return data.budgetLimits; }
 function monthSpentByCategory(monthDate) {
   const out = {};
@@ -2910,7 +2912,7 @@ function suggestedLimit(catId, monthDate) {
   return Math.max(5, Math.ceil(total / months / 5) * 5);
 }
 function budgetStatus(catId, monthDate) {
-  if (!BUDGET_LIMITS_ENABLED) return null;
+  if (!budgetLimitsOn()) return null;
   const limit = parseFloat(budgetLimits()[catId]);
   if (!(limit > 0)) return null;
   const spent = monthSpentByCategory(monthDate)[catId] || 0;
@@ -4338,27 +4340,9 @@ function renderInvestments() {
       <div style="font-size:12.5px;opacity:.55;">Invested: ${fmtMoney(invested)} · EUR/USD: ${eurUsd().toFixed(4)}</div>
     </div>
 
-    <div class="card-dark" style="margin-bottom:20px;">
-      <div style="font-weight:700;margin-bottom:14px;">Portfolio breakdown</div>
-      <div style="display:flex;align-items:center;gap:26px;flex-wrap:wrap;">
-        ${svgDonut(breakdownSegments, { size: 140, stroke: 22 })}
-        <div class="stack-gap-8">
-          ${breakdownSegments.map((s, i) => `
-            <div>
-              <div style="display:flex;align-items:center;gap:8px;font-size:13.5px;">
-                <span style="width:10px;height:10px;border-radius:3px;background:${s.color};display:inline-block;"></span>
-                ${escHtml(s.label)} · ${(s.value / breakdownTotal * 100).toFixed(0)}%
-                
-              </div>
-              ${ui.assetColorPickerOpen === s.label ? `
-                <div id="breakdown-color-picker-${i}" style="margin:6px 0 10px 18px;">
-                  ${colorPickerHtml(s.color)}
-                  <button class="btn small primary" style="margin-top:6px;" onclick="saveAssetColorFromPicker(${i},'${escHtml(s.label).replace(/'/g, "\\'")}')">Save color</button>
-                </div>` : ''}
-            </div>`).join('') || '<span style="opacity:.5;font-size:13px;">No positions yet</span>'}
-        </div>
-      </div>
-    </div>
+    ${typeof allocationCardHtml === 'function'
+      ? allocationCardHtml({ title: 'Portfolio breakdown', cls: 'card-dark', style: 'margin-bottom:20px;', link: "goPage('wealth')", empty: 'No positions yet.', segs: breakdownSegments.map(x => Object.assign({}, x, { color: typeof typeColor === 'function' ? typeColor(x.label) : x.color })) })
+      : ''}
 
     ${typeof investAccountsStripHtml === 'function' ? investAccountsStripHtml() : ''}
     ${investedByTypeCardHtml()}
@@ -5925,7 +5909,9 @@ const SETTINGS_SECTIONS = [
 const SETTINGS_BODY = {
   supabasesync: settingsSupabaseSyncHtml,
   display: settingsDisplayHtml,
-  categories: () => categoryEditorHtml(),
+  // One place to edit categories: Budget → Categories (same editor, so nothing is lost here).
+  categories: () => `<div style="font-size:13px;opacity:.7;line-height:1.5;margin-bottom:12px;">Income and spending categories, their sub-categories and payment methods are edited in one place: Budget → Categories.</div>
+    <button class="btn" onclick="goPage('budget');setBudgetTab('categories')">Open Budget → Categories ${ic('chevronRight', 14)}</button>`,
   assetcategories: settingsAssetCategoriesHtml,
   notifications: () => (typeof settingsNotificationsHtml === 'function' ? settingsNotificationsHtml() : ''),
   logos: settingsLogosHtml,
@@ -5998,6 +5984,7 @@ function settingsDisplayHtml() {
       ${boolSettingRow('Show cents (decimals)', 'showCents')}
       ${boolSettingRow('Show performance indicators', 'showPerformanceIndicators', 'Gains and losses on your investments (P&amp;L, ▲ ▼ %, the Performance card). Off: only what things are worth.')}
       ${boolSettingRow('Compact mode', 'compactMode', 'Tighter spacing and smaller headline numbers, so more fits on the screen.')}
+      ${boolSettingRow('Category budgets (beta)', 'budgetLimitsBeta', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}
       <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.55;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
       <label class="field"><span class="label-text">Twelve Data API key <span style="opacity:.6;">(ticker search &amp; live prices)</span></span>
         <input id="settings-twelvedata-key" value="${escHtml(s.twelveDataApiKey || '')}" placeholder="Paste your free API key from twelvedata.com" onchange="updateSetting('twelveDataApiKey', this.value.trim())">
@@ -6127,9 +6114,11 @@ function settingsBackupRestoreHtml() {
     <input type="file" id="import-excel-backup" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none;" onchange="restoreExcelBackup(this.files[0]);this.value=''">
     <div style="font-size:11.5px;opacity:.55;">Restoring replaces everything currently in this browser. You'll see exactly what's in the file — and what it would overwrite — and have to confirm, before anything changes.</div>`;
 }
-function exportFullBackup() {
+async function exportFullBackup() {
   const ts = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  // Goal photos travel with the backup (smaller copies, see photos.js) under "_photos".
+  const payload = typeof backupPayload === 'function' ? await backupPayload() : data;
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = `trackr-backup-${ts}.json`; a.click();
   URL.revokeObjectURL(url);
@@ -6142,7 +6131,9 @@ async function sha256Hex(text) {
 }
 async function exportExcelBackup() {
   try {
-    const json = JSON.stringify(data);
+    // The Restore sheet holds the data plus the goal photos (smaller copies); the readable
+    // sheets show the data only.
+    const json = JSON.stringify(typeof backupPayload === 'function' ? await backupPayload() : data);
     const wb = TrackrExcelBackup.buildWorkbook(XLSX, data, json, await sha256Hex(json), { source: 'Trackr app (' + location.host + ')' });
     const bytes = XLSX.write(wb, { bookType: 'xlsx', type: 'array', compression: true });
     const ts = new Date().toISOString().slice(0, 16).replace('T', '-').replace(':', '');
@@ -6190,6 +6181,7 @@ function backupSummary(d) {
     cryptoAssets: Array.isArray(d.cryptoAssets) ? d.cryptoAssets.length : 0,
     assets: Array.isArray(d.assets) ? d.assets.length : 0,
     trades: Array.isArray(d.trades) ? d.trades.length : 0,
+    photos: Array.isArray(d._photos) ? d._photos.length : 0,
     updatedAt: d.updatedAt || null,
   };
 }
@@ -6216,11 +6208,12 @@ async function handleImportBackupFile(file) {
     const fmt = iso => iso ? new Date(iso).toLocaleString() : 'unknown date';
     const message = `This will REPLACE everything currently in this browser with the backup file's data. This can't be undone unless you have another backup.\n\n`
       + `File — last saved ${fmt(incoming.updatedAt)}:\n`
-      + `  ${incoming.accounts} accounts, ${incoming.transactions} transactions, ${incoming.cryptoAssets} crypto assets, ${incoming.assets} stocks/ETFs, ${incoming.trades} trades\n\n`
+      + `  ${incoming.accounts} accounts, ${incoming.transactions} transactions, ${incoming.cryptoAssets} crypto assets, ${incoming.assets} stocks/ETFs, ${incoming.trades} trades${incoming.photos ? `, ${incoming.photos} goal photos` : ''}\n\n`
       + `Currently in this browser — last saved ${fmt(current.updatedAt)}:\n`
       + `  ${current.accounts} accounts, ${current.transactions} transactions, ${current.cryptoAssets} crypto assets, ${current.assets} stocks/ETFs, ${current.trades} trades\n\n`
       + `Continue?`;
     if (!confirm(message)) return;
+    const photosBack = typeof restoreBackupPhotos === 'function' ? await restoreBackupPhotos(parsed) : 0;
 
     // Safety net in case of a wrong choice above — recoverable via localStorage in the browser
     // console, same pattern as the sync incidents' trackr-v1-backup.
@@ -6240,7 +6233,7 @@ async function handleImportBackupFile(file) {
     // the user chose to restore a local file.
     await save();
     render();
-    alert('Backup restored.');
+    alert(`Backup restored.${photosBack ? ` ${photosBack} goal photo${photosBack === 1 ? '' : 's'} put back.` : ''}`);
   } catch (e) {
     alert("Couldn't restore this backup — " + (e && e.message ? e.message : 'unknown error'));
   } finally {

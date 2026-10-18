@@ -15,7 +15,7 @@
  *     this week.
  *   - Goal achieved: the first time a goal reaches its target (again if you raise the target
  *     and reach it).
- *   - Budget limit alerts: only while the Budgets tab is switched on (BUDGET_LIMITS_ENABLED).
+ *   - Budget limit alerts: only while the Budgets tab is switched on (Settings → Display → Category budgets).
  * With amounts hidden (the eye), system notifications leave the amounts out.
  */
 const NOTIFY_STATE_KEY = 'trackr-notified', NOTIFY_SYSTEM_KEY = 'trackr-system-notifications';
@@ -202,7 +202,7 @@ window.__modalRenderers.weekSummary = function (p) {
 /* ---- Settings → Notifications ---- */
 function settingsNotificationsHtml() {
   const items = [
-    ...(BUDGET_LIMITS_ENABLED ? [{ key: 'budgetLimitAlerts', title: 'Budget limit alerts', desc: 'When a category passes 80 % and 100 % of its limit, right after you log the expense.' }] : []),
+    ...(budgetLimitsOn() ? [{ key: 'budgetLimitAlerts', title: 'Budget limit alerts', desc: 'When a category passes 80 % and 100 % of its limit, right after you log the expense.' }] : []),
     { key: 'negativeBalanceWarning', title: 'Negative balance warning', desc: 'When more has gone out than came in this month — once a month.' },
     { key: 'weeklySummary', title: 'Weekly summary', desc: 'From Monday, a card on the Overview with last week: in, out, top categories, net worth, what\'s due.' },
     { key: 'goalAchieved', title: 'Goal achieved', desc: 'The first time a goal reaches its target.' },

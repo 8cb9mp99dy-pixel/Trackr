@@ -143,6 +143,8 @@ async function restoreFromJson(json, label) {
   if (!confirm(`Restore ${label}?\n\n${s.accounts} accounts · ${s.transactions} transactions · ${s.assets} investments\n\nEverything you have now is replaced (on all your devices once it syncs). You can undo it right after.`)) return;
   await safetyPut({ key: 'before:' + Date.now(), kind: 'before-restore', day: todayYmd(), savedAt: new Date().toISOString(), summary: safetySummary(data), json: JSON.stringify(data), label: 'Just before a restore' });
   const before = JSON.stringify(data);
+  // A backup's goal photos ("_photos") go back to the photo store, never into the data.
+  if (typeof restoreBackupPhotos === 'function') await restoreBackupPhotos(parsed); else delete parsed._photos;
   data = parsed;
   try { migrateCryptoModel(); } catch (e) {}
   save();
