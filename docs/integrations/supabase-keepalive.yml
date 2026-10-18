@@ -1,0 +1,17 @@
+# TEMPLATE — free Supabase projects pause after about a week without activity. This pings the
+# project twice a week with a harmless call that returns nothing (a wrong secret), so no data is
+# read. Put it in your PRIVATE trackr-data repo (secrets live there), as .github/workflows/keepalive.yml.
+# Repository secrets: TRACKR_SUPABASE_URL, TRACKR_ANON_KEY.
+name: Supabase keep-alive
+on:
+  schedule: [{ cron: '15 6 * * 1,4' }]
+  workflow_dispatch:
+permissions: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          curl -sf -o /dev/null "${{ secrets.TRACKR_SUPABASE_URL }}/rest/v1/rpc/get_trackr_data" \
+            -H "apikey: ${{ secrets.TRACKR_ANON_KEY }}" -H "Authorization: Bearer ${{ secrets.TRACKR_ANON_KEY }}" \
+            -H 'Content-Type: application/json' -d '{"secret":"keep-alive-ping-not-a-real-secret"}'

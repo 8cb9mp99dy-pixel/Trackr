@@ -1,0 +1,44 @@
+# TEMPLATE — goes in your PRIVATE trackr-data repository as .github/workflows/backup.yml.
+# NEVER add it to the public Trackr repository: it handles your financial data.
+#
+# Every night: reads your Trackr document through the same RPC the app uses, encrypts it
+# (AES-256, key derived from a passphrase with PBKDF2, 600,000 rounds, via openssl), and commits
+# only the encrypted file. Without the passphrase the file is unreadable, even to GitHub.
+#
+# Repository secrets to add yourself (Settings → Secrets and variables → Actions):
+#   TRACKR_SUPABASE_URL, TRACKR_ANON_KEY, TRACKR_SYNC_SECRET, TRACKR_BACKUP_PASSPHRASE
+# To decrypt on your Mac:
+#   openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in backups/2026-10-18.json.enc -out restore.json
+name: Nightly Trackr backup (encrypted)
+on:
+  schedule: [{ cron: '30 2 * * *' }]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch and encrypt
+        env:
+          URL: ${{ secrets.TRACKR_SUPABASE_URL }}
+          KEY: ${{ secrets.TRACKR_ANON_KEY }}
+          SECRET: ${{ secrets.TRACKR_SYNC_SECRET }}
+          PASS: ${{ secrets.TRACKR_BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir -p backups
+          day=$(date -u +%F)
+          # The response is never printed to the log.
+          curl -sf "$URL/rest/v1/rpc/get_trackr_data" -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+               -H 'Content-Type: application/json' -d "{\"secret\":\"$SECRET\"}" -o /tmp/trackr.json
+          test -s /tmp/trackr.json
+          openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:PASS -in /tmp/trackr.json -out "backups/$day.json.enc"
+          shred -u /tmp/trackr.json
+          # Keep the last 90 nightly files.
+          ls -1 backups/*.json.enc | sort | head -n -90 | xargs -r git rm -q
+      - name: Commit
+        run: |
+          git config user.name 'trackr-backup'; git config user.email 'actions@users.noreply.github.com'
+          git add backups && (git diff --cached --quiet || git commit -qm "Encrypted backup $(date -u +%F)") && git push -q
