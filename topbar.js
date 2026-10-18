@@ -80,6 +80,12 @@ function actionItems() {
     manual.push(item);
     if (days > STALE_MANUAL_DAYS) attention.push(item);
   }));
+  // Incomes waiting to be split by the income plan (Budget → Income plan).
+  if (typeof incomePlanPending === 'function') {
+    incomePlanPending().forEach(t => attention.push({ key: 'split:' + t.id, icon: `<span class="add-ic" style="width:30px;height:30px;">${ic('wallet', 16)}</span>`, name: 'Split income · ' + (t.comment || 'Income'),
+      detail: `${fmtMoney(t.amount, t.currency)} on ${shortDay(t.date)} — not split yet`,
+      actions: [{ label: 'Split', onclick: `closeModal();openIncomeSplit('${t.id}')`, primary: true }, { label: 'Not this one', onclick: `skipIncomeSplit('${t.id}')` }] }));
+  }
   // X-ray rules that need a look (Analysis), each can be snoozed for 30 days.
   if (typeof xrayAttention === 'function') {
     try {

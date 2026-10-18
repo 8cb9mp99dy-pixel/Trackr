@@ -1231,3 +1231,26 @@ html.compact .tab-row { margin-bottom: 12px; }
 /* Budget import: which rows move account balances */
 .bi-balances { padding: 12px 0 4px; border-top: 1px solid var(--dark-border); margin-top: 6px; }
 .bi-balance-moves { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* Budget → Income plan (allocation.js) */
+.split-steps { display: flex; flex-direction: column; gap: 10px; }
+.split-step { border: 1px solid var(--dark-border); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.split-step-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.split-step-name { flex: 1; min-width: 0; font-weight: 600; }
+.split-pct { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.split-pct input { width: 70px; text-align: right; }
+.split-step-opts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.split-step-opts .mini-select { max-width: 100%; }
+.split-examples { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 16px; }
+.split-example { background: var(--dark-card-2); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.split-ex-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; font-size: 13px; padding: 3px 0; }
+.split-ex-row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-head { margin-bottom: 12px; }
+.split-lines { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.split-line { display: grid; grid-template-columns: 22px minmax(0, 1fr) 96px; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--dark-border); }
+.split-line.off { opacity: .45; }
+.split-line.rest { border-bottom: none; }
+.split-line input[type=checkbox] { width: 18px; height: 18px; }
+.split-what { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.split-what .mini-select { max-width: 100%; }
+.split-amt { width: 96px; text-align: right; }

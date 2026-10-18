@@ -481,6 +481,15 @@ function defaultData() {
     forecastScenarios: [],
     // Budget → Categories → Rules: your own "if … then …" for new and imported transactions (rules.js).
     txRules: [],
+    // Budget → Income plan (allocation.js): how a salary / freelance payment is split when it comes in.
+    incomePlan: {
+      on: true, since: null, triggerCats: ['inc_salary', 'inc_freelance'],
+      steps: [
+        { id: 'ip_vat', label: 'VAT', pct: 21, setAside: true, onlyCat: 'inc_freelance', to: '' },
+        { id: 'ip_invest', label: 'Invest', pct: 25, setAside: false, onlyCat: '', to: '' },
+        { id: 'ip_daily', label: 'Day-to-day spending', pct: 25, setAside: false, onlyCat: '', to: 'stay' },
+      ],
+    },
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
     // (today's entry is updated in place every time something changes; past days are frozen).
     // Starts empty — no fabricated history — and grows for real as you use the app.
@@ -2836,6 +2845,7 @@ function renderBudget() {
     { id: 'recurring', label: 'Recurring' },
     ...(typeof budgetForecastTab === 'function' ? [{ id: 'forecast', label: 'Forecast' }] : []),
     { id: 'totals', label: 'Totals' },
+    ...(typeof incomePlanTab === 'function' ? [{ id: 'plan', label: 'Income plan' }] : []),
     ...(budgetLimitsOn() ? [{ id: 'budgets', label: 'Budgets' }] : []),
     { id: 'categories', label: 'Categories' },
     { id: 'import', label: 'Import' },
@@ -2852,6 +2862,7 @@ function renderBudget() {
     ${ui.budgetTab === 'recurring' ? budgetRecurringTab() : ''}
     ${ui.budgetTab === 'forecast' && typeof budgetForecastTab === 'function' ? budgetForecastTab() : ''}
     ${ui.budgetTab === 'totals' ? budgetTotalsTab() : ''}
+    ${ui.budgetTab === 'plan' && typeof incomePlanTab === 'function' ? incomePlanTab() : ''}
     ${ui.budgetTab === 'budgets' && budgetLimitsOn() ? budgetLimitsTab() : ''}
     ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>${typeof rulesCardHtml === 'function' ? rulesCardHtml() : ''}` : ''}
     ${ui.budgetTab === 'import' ? (typeof budgetImportTab === 'function' ? budgetImportTab() : '') : ''}
@@ -4402,6 +4413,8 @@ function saveTxForm() {
   attachToRecurringSeries(record, { setDay: !!prior && prior.nature === 'Fixed' });
   runRecurring();
   save(); closeModal();
+  // A new salary / freelance income: offer to split it (Budget → Income plan).
+  if (!prior && typeof incomePlanOffer === 'function') incomePlanOffer(record);
   budgetCheckAfterSave(record, prior && prior.type === 'expense' && prior.categoryId === record.categoryId && ymOf(prior.date) === ymOf(record.date) ? toEUR(record.amount, record.currency) - toEUR(prior.amount, prior.currency) : toEUR(record.amount, record.currency));
 }
 /* ===================== Investments ===================== */
