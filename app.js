@@ -476,6 +476,8 @@ function defaultData() {
     exchangeLogos: {},
     // Budget → Forecast: what-if scenarios [{ id, name, amount, direction 'in'|'out', date, repeat 'once'|'monthly', active, accountId }].
     forecastScenarios: [],
+    // Budget → Categories → Rules: your own "if … then …" for new and imported transactions (rules.js).
+    txRules: [],
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
     // (today's entry is updated in place every time something changes; past days are frozen).
     // Starts empty — no fabricated history — and grows for real as you use the app.
@@ -2803,7 +2805,7 @@ function renderBudget() {
     ${ui.budgetTab === 'forecast' && typeof budgetForecastTab === 'function' ? budgetForecastTab() : ''}
     ${ui.budgetTab === 'totals' ? budgetTotalsTab() : ''}
     ${ui.budgetTab === 'budgets' && budgetLimitsOn() ? budgetLimitsTab() : ''}
-    ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>` : ''}
+    ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>${typeof rulesCardHtml === 'function' ? rulesCardHtml() : ''}` : ''}
     ${ui.budgetTab === 'import' ? (typeof budgetImportTab === 'function' ? budgetImportTab() : '') : ''}
   </div>`;
 }
@@ -4123,7 +4125,8 @@ window.__modalRenderers.tx = function (p) {
     const more = !!p._more || !!(p.location || p.description || p.logo || p.impact);
     body = `
       ${summary()}
-      ${p._autoFrom ? `<div class="tx-auto">Category filled in from your past “${escHtml(p._autoFrom)}” — <a href="#" onclick="event.preventDefault();txGo(2);">change</a></div>` : ''}
+      ${p._ruleText ? `<div class="tx-auto">Filled in by your rule (${escHtml(p._ruleText)}) — <a href="#" onclick="event.preventDefault();txGo(2);">change</a></div>` : ''}
+      ${!p._ruleText && p._autoFrom ? `<div class="tx-auto">Category filled in from your past “${escHtml(p._autoFrom)}” — <a href="#" onclick="event.preventDefault();txGo(2);">change</a></div>` : ''}
       <div class="tx-label">When?</div>
       <div class="tx-chips">
         ${chip(p.date === today, `updateTxField('date','${today}')`, 'Today')}
@@ -4190,6 +4193,14 @@ function txNext() {
   // A name you've used before: its category, account and payment method are filled in for you,
   // and the category step is skipped (you can still go back to it).
   if (step === 1 && p.type !== 'transfer' && !p.categoryId && p.comment) {
+    // Your own rules first (Budget → Categories → Rules), then what Trackr learned.
+    const rule = typeof ruleForTx === 'function' ? ruleForTx({ name: p.comment, amount: parseFloat(p.amount) || 0, type: p.type, accountId: p.accountId }) : null;
+    if (rule) {
+      const ch = ruleChanges(rule, p.type);
+      Object.assign(p, ch);
+      p._ruleText = ruleSummary(rule).ifs;
+      if (ch.categoryId) { txGo(3); return; }
+    }
     const past = learnedTxFor(p.comment, p.type);
     if (past) {
       Object.assign(p, { categoryId: past.categoryId, subCategoryId: past.subCategoryId || '', paymentMethodId: p.paymentMethodId || past.paymentMethodId || '', accountId: p.accountId || past.accountId || '', logo: p.logo || past.logo || '' });

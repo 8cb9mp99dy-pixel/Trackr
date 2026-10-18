@@ -1166,3 +1166,18 @@ html.compact .tab-row { margin-bottom: 12px; }
 .xr-off .xr-detail, .xr-na .xr-detail { opacity: .45; }
 .xr-help { font-size: 12px; opacity: .5; margin-top: 3px; }
 .xr-edit { display: flex; align-items: center; gap: 10px; flex: none; }
+
+/* Budget → Categories → Rules (rules.js) */
+.rule-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--light-border); }
+.rule-row:last-child { border-bottom: none; }
+.rule-row.off .rule-txt { opacity: .45; }
+.rule-txt { flex: 1; min-width: 0; font-size: 13.5px; line-height: 1.45; }
+.rule-txt .dim { opacity: .5; }
+.rule-btns { display: flex; align-items: center; gap: 8px; flex: none; }
+.rule-preview { background: rgba(128,128,128,.07); border-radius: 12px; padding: 12px; }
+.rule-matches { max-height: 230px; overflow: auto; display: flex; flex-direction: column; gap: 2px; }
+.rule-match { display: grid; grid-template-columns: auto 64px minmax(0, 1.3fr) minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12.5px; padding: 5px 2px; cursor: pointer; }
+.rule-match .rm-n, .rule-match .rm-c { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rule-match .rm-d, .rule-match .rm-c { opacity: .65; }
+.rule-match .rm-a { font-weight: 600; text-align: right; }
+@media (max-width: 640px) { .rule-match { grid-template-columns: auto minmax(0, 1fr) auto; } .rule-match .rm-d, .rule-match .rm-c { display: none; } }

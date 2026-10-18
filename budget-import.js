@@ -604,7 +604,19 @@ function biParseRows(picked, opts) {
     const catSaysTransfer = BI_TRANSFER_CATS.includes(biNorm(str('category')));
     const catRaw = catSaysTransfer ? '' : str('category'), subRaw = catSaysTransfer ? '' : str('subcategory');
     let cat = biResolveCategory(type, catRaw, subRaw);
-    if (!catRaw && !subRaw && name0) {
+    // Your rules (Budget → Categories → Rules) come before the learned categories.
+    let ruleName = '', ruleRecurring = false;
+    const rule = !catRaw && !subRaw && name0 && typeof ruleForTx === 'function' ? ruleForTx({ name: name0, amount: Math.abs(amount), type, accountId: account ? account.id : null }) : null;
+    if (rule) {
+      const ch = ruleChanges(rule, type), rc = ch.categoryId && categoryById(type, ch.categoryId);
+      if (rc) {
+        const rs = ch.subCategoryId ? (rc.subcategories || []).find(x => x.id === ch.subCategoryId) : null;
+        cat = { categoryId: rc.id, categoryName: rc.name, newCategory: false, subCategoryId: rs ? rs.id : null, subName: rs ? rs.name : '', newSub: false, notes: [`Rule: ${ruleSummary(rule).ifs}`] };
+      } else cat.notes = cat.notes.concat([`Rule: ${ruleSummary(rule).ifs}`]);
+      if (ch.comment) ruleName = ch.comment;
+      ruleRecurring = !!ch.nature;
+    }
+    if (!rule && !catRaw && !subRaw && name0) {
       // Bank files have no categories — reuse the one you gave this payee last time.
       const past = typeof learnedTxFor === 'function' ? learnedTxFor(name0, type)
         : data.budgetTransactions.filter(t => t.type === type && t.categoryId && !['inc_other', 'exp_other'].includes(t.categoryId) && biNorm(t.comment) === biNorm(name0)).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
@@ -618,11 +630,11 @@ function biParseRows(picked, opts) {
     const pm = pmRaw ? data.paymentMethods.find(p => biNorm(p.name) === biNorm(pmRaw)) : null;
     if (pmRaw && !pm) notes.push(`Payment method "${pmRaw}" not found — left empty`);
     // A bank file with only a "Description" column: that text is the payee.
-    const name = name0;
+    const name = ruleName || name0;
     const description = map.name == null ? '' : str('description');
     const row = {
       rowNum, date, type, amount: Math.abs(amount), signedAmount: amount, currency, name, description,
-      location: str('location'), recurring: biYes(cell('recurring')), impact: biParseImpact(cell('impact')),
+      location: str('location'), recurring: biYes(cell('recurring')) || ruleRecurring, impact: biParseImpact(cell('impact')),
       accountId: account ? account.id : null, accountName: account ? account.name : '',
       paymentMethodId: pm ? pm.id : null,
       categoryId: cat.categoryId, categoryName: cat.categoryName, newCategory: cat.newCategory,
@@ -632,7 +644,7 @@ function biParseRows(picked, opts) {
     // Kept to go back to income / expense ("Not a transfer" in the preview).
     row.plain = { type, categoryId: cat.categoryId, categoryName: cat.categoryName, newCategory: cat.newCategory, subCategoryId: cat.subCategoryId, subName: cat.subName, newSub: cat.newSub, notes: row.notes.slice() };
     if (transfer) biMakeTransferRow(row, fromRaw, toRaw);
-    else if (!catRaw && !subRaw) {
+    else if (!rule && !catRaw && !subRaw) {
       // A bank line to one of your own accounts or pockets ("Naar Oranje spaarrekening").
       const own = account ? 'acc:' + account.id : null;
       const other = biGuessPlace(`${name} ${description}`, own) || biGuessPlace(name, own, true);
