@@ -2539,6 +2539,7 @@ function renderAccounts() {
   const active = data.accounts.filter(a => a.visibleInTotals).length;
   const hidden = data.accounts.length - active;
   const total = bankTotal(), avail = bankAvailable(), pockets = pocketsTotal();
+  const wallet = typeof cashWallet === 'function' ? cashWallet() : null;
   const sortedAccounts = data.accounts.slice().sort((a, b) => toEUR(accountTotal(b), b.currency) - toEUR(accountTotal(a), a.currency));
   const chips = sortedAccounts.map(a => `<span class="chip">${accountIconHtml(a, 16)} ${escHtml(a.name)} <span>${fmtMoney(accountTotal(a), a.currency)}</span></span>`).join('');
 
@@ -2554,7 +2555,7 @@ function renderAccounts() {
     <div class="card-dark stack-gap-16" style="margin-bottom:20px;">
       <div class="row-flex">
         <div>
-          <div class="eyebrow">Bank total</div>
+          <div class="eyebrow">${wallet ? 'Bank &amp; cash total' : 'Bank total'}</div>
           <div class="big-number">${fmtMoney(total)}</div>
         </div>
         
@@ -2569,7 +2570,8 @@ function renderAccounts() {
     <button class="btn primary full" style="margin-bottom:22px;" onclick="openAccountForm()">+ &nbsp;Add account</button>
 
     <div class="stack-gap-16">
-      ${sortedAccounts.map(accountCardHtml).join('') || `<div class="empty-state"><div class="emoji">🏦</div><div class="title">No accounts yet</div><div class="sub">Add your first account to get started.</div></div>`}
+      ${typeof walletSectionHtml === 'function' ? walletSectionHtml() : ''}
+      ${sortedAccounts.filter(a => !(typeof isCashWallet === 'function' && isCashWallet(a))).map(accountCardHtml).join('') || `<div class="empty-state"><div class="emoji">🏦</div><div class="title">No accounts yet</div><div class="sub">Add your first account to get started.</div></div>`}
     </div>
   </div>`;
 }
@@ -2655,7 +2657,9 @@ function quickUpdateBalance(id) {
   const el = document.getElementById('quickbal-' + id);
   const v = parseFloat(el.value);
   if (isNaN(v)) return;
-  accountById(id).balance = v;
+  const acc = accountById(id);
+  acc.balance = v;
+  acc.balanceCheckedAt = new Date().toISOString(); // typing the balance = you just checked it
   save(); render();
 }
 function deleteAccount(id) { data.accounts = data.accounts.filter(a => a.id !== id); save(); render(); }
@@ -3468,8 +3472,29 @@ function hashColor(str) {
    swap pattern as assetLogoHtml/logoImg elsewhere), else the category/sub-category's emoji
    (item 3) in a color derived from the transaction's label, plus a small income/expense badge.
    Never fabricates a merchant logo — only ever shows one the user actually set. */
+/* The emoji a transfer borrows: the pocket it goes to (or comes from), else the cash wallet it
+   fills or empties. null = none, so the plain ⇄ circle is shown. */
+function transferEmoji(t) {
+  for (const ref of [t.to, t.from]) {
+    const ep = parseTransferRef(ref);
+    if (ep && ep.kind === 'pk') {
+      const a = accountById(ep.accountId), pk = a && (a.pockets || []).find(p => p.id === ep.pocketId);
+      if (pk && pk.icon) return pk.icon;
+    }
+  }
+  for (const ref of [t.to, t.from]) {
+    const ep = parseTransferRef(ref);
+    const a = ep && ep.kind === 'acc' ? accountById(ep.accountId) : null;
+    if (a && isCashWallet(a)) return a.icon || '💵';
+  }
+  return null;
+}
 function txAvatarHtml(t) {
   if (t.type === 'transfer') {
+    const emoji = transferEmoji(t);
+    if (emoji) {
+      return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--accent-soft);align-items:center;justify-content:center;font-size:17px;">${escHtml(emoji)}</span><span aria-hidden="true" style="position:absolute;right:-3px;bottom:-3px;display:flex;width:17px;height:17px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:10px;border:2px solid var(--dark-card);">⇄</span></div>`;
+    }
     return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:17px;">⇄</span></div>`;
   }
   const cat = categoryById(t.type === 'income' ? 'income' : 'expense', t.categoryId);
@@ -4066,9 +4091,9 @@ function removePaymentMethod(id) { data.paymentMethods = data.paymentMethods.fil
 function blankTxDraft() {
   return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: '', currency: data.settings.defaultCurrency, amount: '', date: todayYmd(), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
 }
-function openTxForm(id) {
+function openTxForm(id, prefill) {
   const existing = id ? data.budgetTransactions.find(t => t.id === id) : null;
-  ui.modal = { type: 'tx', payload: existing ? Object.assign({}, existing, { step: 1 }) : Object.assign(blankTxDraft(), { step: 1 }) };
+  ui.modal = { type: 'tx', payload: existing ? Object.assign({}, existing, { step: 1 }) : Object.assign(blankTxDraft(), prefill || {}, { step: 1 }) };
   ui.txSuggestions = [];
   render();
   txFocusStep();
@@ -4248,6 +4273,8 @@ function updateTxField(field, value) {
   const p = ui.modal.payload;
   if (field === 'type') { p.categoryId = ''; p.subCategoryId = ''; }
   if (field === 'categoryId') { p.subCategoryId = ''; }
+  // "Paid with: Cash" and the cash wallet pick each other (wallet.js).
+  if (typeof walletLinkTxField === 'function') walletLinkTxField(p, field, value);
   // Default the amount's currency to whatever the money is leaving, so a transfer out of a EUR
   // account starts in EUR — still changeable, and converted automatically if the other side differs.
   if (p.type === 'transfer' && (field === 'from' || field === 'type')) {

@@ -128,7 +128,7 @@ function buildBudgetTemplateWorkbook(XLSX, ctx) {
     ['• In a bank export, a transfer to your own savings account or pocket is recognised from its name or its Type/Category; the preview lets you choose where it went if Trackr can\'t tell.'],
     ['• Bank exports (Excel or CSV) usually work as they are: Date, Amount (or Debit/Credit columns) and Description are recognised, in English, French or Dutch.'],
     ['• Budget → Export to Excel uses these same column names, so you can export, edit and re-import.'],
-    ['• Account balances (and pockets, broker and exchange cash for transfers) only change if you tick "Also update balances" in the preview.'],
+    ['• Account balances (and pockets, broker and exchange cash for transfers) change only for rows dated after you last checked that balance. You can change this in the preview.'],
   ];
   const helpWs = XLSX.utils.aoa_to_sheet(help);
   helpWs['!cols'] = [{ wch: 130 }];
@@ -630,13 +630,16 @@ function biParseRows(picked, opts) {
     const pmRaw = str('paymentMethod');
     const pm = pmRaw ? data.paymentMethods.find(p => biNorm(p.name) === biNorm(pmRaw)) : null;
     if (pmRaw && !pm) notes.push(`Payment method "${pmRaw}" not found — left empty`);
+    const wallet = !account && pm && typeof walletAccountForImport === 'function' ? walletAccountForImport(pm.id) : null;
+    if (wallet) notes.push(`Paid in cash — goes to your ${wallet.name} wallet`);
+    const rowAccount = account || wallet;
     // A bank file with only a "Description" column: that text is the payee.
     const name = ruleName || name0;
     const description = map.name == null ? '' : str('description');
     const row = {
       rowNum, date, type, amount: Math.abs(amount), signedAmount: amount, currency, name, description,
       location: str('location'), recurring: biYes(cell('recurring')) || ruleRecurring, impact: biParseImpact(cell('impact')),
-      accountId: account ? account.id : null, accountName: account ? account.name : '',
+      accountId: rowAccount ? rowAccount.id : null, accountName: rowAccount ? rowAccount.name : '',
       paymentMethodId: pm ? pm.id : null,
       categoryId: cat.categoryId, categoryName: cat.categoryName, newCategory: cat.newCategory,
       subCategoryId: cat.subCategoryId, subName: cat.subName, newSub: cat.newSub,
@@ -824,7 +827,7 @@ async function biHandleFile(file) {
     const opts = { order: detected.order, date1904: !!(wb.Workbook && wb.Workbook.WBProps && wb.Workbook.WBProps.date1904) };
     ui.budgetImport = Object.assign({ step: 'preview', fileName: file.name, sources, opts, detected,
       sheetNames: sources.map(x => x.sheetName), mapping: sources[0].mapping, ignored: sources[0].ignored,
-      updateBalances: false, defaultAccountId: '' }, biBuild(sources, opts));
+      balanceMode: 'smart', defaultAccountId: '' }, biBuild(sources, opts));
     render();
   } catch (e) {
     ui.budgetImport = { step: 'start', error: `Couldn't import ${file.name}: ${e && e.message ? e.message : e}` };
@@ -959,10 +962,7 @@ function biPreviewHtml(st) {
           ${data.accounts.map(a => `<option value="${a.id}" ${st.defaultAccountId === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}
         </select>
       </label>` : ''}
-      ${anyAccount ? `<label class="row-flex" style="gap:12px;cursor:pointer;margin-bottom:4px;">
-        <span style="font-size:13px;line-height:1.45;"><strong>Also update balances</strong><br><span style="opacity:.6;">Accounts, and for transfers the pockets and broker / exchange cash too. Leave off if they already include these transactions (usual for a bank statement) — otherwise they'd be counted twice.</span></span>
-        <input type="checkbox" ${st.updateBalances ? 'checked' : ''} onchange="ui.budgetImport.updateBalances=this.checked" style="width:18px;height:18px;flex:none;">
-      </label>` : ''}
+      ${anyAccount ? biBalanceChoiceHtml(st) : ''}
     </div>
     ${biErrorsHtml(st)}
     ${st.rows.length ? `<div class="card" style="margin-bottom:16px;">
@@ -991,6 +991,8 @@ function biToggleRow(i, on) {
   if (tr) { tr.classList.toggle('bi-off', !on); tr.classList.remove('bi-need'); }
   const sum = document.getElementById('bi-summary');
   if (sum) sum.innerHTML = biSummaryHtml(st);
+  const bal = document.getElementById('bi-balances');
+  if (bal) bal.outerHTML = biBalanceChoiceHtml(st);
   const btn = document.getElementById('bi-import-btn');
   if (btn) {
     const n = st.rows.filter(r => r.included).length;
@@ -1046,6 +1048,68 @@ function biMakeTransfer(i) {
 }
 function biCancel() { ui.budgetImport = null; render(); }
 
+/* ---- Which imported rows move account balances ----
+   'smart' (the default): a row counts only if it's dated after you last checked that account's
+   balance (edited it, typed it, or confirmed it). Older rows are already inside the balance you
+   typed, so counting them again would count them twice. 'all': every row counts (for money you
+   haven't put in any balance yet). 'none': balances stay as they are. Transfers count in 'smart'
+   when they touch at least one bank account (or the wallet) and are newer than its check. */
+function biCheckedDay(acc) { return acc && acc.balanceCheckedAt ? dateToYmd(new Date(acc.balanceCheckedAt)) : ''; }
+function biBalanceAccounts(rec) {
+  if (rec.type !== 'transfer') { const a = accountById(rec.accountId); return a ? [a] : []; }
+  return [rec.from, rec.to].map(parseTransferRef).filter(ep => ep && (ep.kind === 'acc' || ep.kind === 'pk')).map(ep => accountById(ep.accountId)).filter(Boolean);
+}
+function biCountsForBalance(rec, st) {
+  const mode = (st && st.balanceMode) || 'smart';
+  if (mode === 'none') return false;
+  if (rec.type !== 'transfer' && !accountById(rec.accountId)) return false;
+  if (mode === 'all') return true;
+  const accs = biBalanceAccounts(rec);
+  if (!accs.length) return false;
+  const last = accs.map(biCheckedDay).sort().pop();
+  return !last || rec.date > last;
+}
+/* What the import would do to each balance, for the preview. */
+function biBalancePreview(st) {
+  const moves = new Map();
+  let counted = 0, older = 0;
+  const add = (label, ccy, d) => { const m = moves.get(label) || { label, ccy, delta: 0 }; m.delta += d; moves.set(label, m); };
+  st.rows.filter(r => r.included && biTransferReady(r, st)).forEach(r => {
+    let rec;
+    if (r.type === 'transfer') { const refs = biTransferRefs(r, st); rec = { type: 'transfer', date: r.date, from: refs.from, to: refs.to }; }
+    else rec = { type: r.type, date: r.date, accountId: r.accountId || (accountById(st.defaultAccountId) ? st.defaultAccountId : null) };
+    if (!biBalanceAccounts(rec).length && rec.type !== 'transfer') return;
+    if (!biCountsForBalance(rec, st)) { older++; return; }
+    counted++;
+    if (rec.type === 'transfer') {
+      const src = transferEndpoint(rec.from), dst = transferEndpoint(rec.to);
+      if (src) add(src.label, src.ccy, -convertCurrency(r.amount, r.currency, src.ccy));
+      if (dst) add(dst.label, dst.ccy, convertCurrency(r.amount, r.currency, dst.ccy));
+    } else {
+      const a = accountById(rec.accountId);
+      add(a.name, a.currency, (r.type === 'income' ? 1 : -1) * convertCurrency(r.amount, r.currency, a.currency));
+    }
+  });
+  return { counted, older, moves: [...moves.values()].filter(m => Math.abs(m.delta) >= 0.005) };
+}
+function biBalanceChoiceHtml(st) {
+  const mode = st.balanceMode || 'smart', pv = biBalancePreview(st);
+  const seg = (m, label) => `<button type="button" class="seg ${mode === m ? 'on' : ''}" onclick="ui.budgetImport.balanceMode='${m}';render();">${label}</button>`;
+  const why = mode === 'smart'
+    ? `Only rows dated after you last checked each balance. ${pv.older ? `${pv.older} older row${pv.older === 1 ? ' is' : 's are'} already in the balance you typed, so ${pv.older === 1 ? 'it doesn\'t' : 'they don\'t'} change it.` : ''}`
+    : mode === 'all' ? 'Every row changes balances. Use this if your balances don\'t include these transactions yet.'
+    : 'Balances stay exactly as they are.';
+  return `
+      <div class="bi-balances" id="bi-balances">
+        <div class="row-flex" style="gap:10px;flex-wrap:wrap;">
+          <strong style="font-size:13px;">Account balances</strong>
+          <div class="seg-row" style="margin:0;">${seg('smart', 'Smart')}${seg('all', 'All rows')}${seg('none', 'Don\'t change')}</div>
+        </div>
+        <div style="font-size:12.5px;opacity:.65;margin-top:6px;line-height:1.45;">${why}</div>
+        ${pv.moves.length ? `<div class="bi-balance-moves">${pv.moves.map(m => `<span class="chip" style="cursor:default;">${escHtml(m.label)} <strong class="${m.delta > 0 ? 'positive' : 'negative'}">${m.delta > 0 ? '+' : '−'}${fmtMoney(Math.abs(m.delta), m.ccy)}</strong></span>`).join('')}</div>` : ''}
+      </div>`;
+}
+
 async function biApply() {
   const st = ui.budgetImport;
   if (!st) return;
@@ -1053,7 +1117,7 @@ async function biApply() {
   if (!sel.length) return;
   const created = { cats: 0, subs: 0 };
   const imported = [];
-  let replaced = 0;
+  let replaced = 0, balanceRows = 0;
   sel.forEach(r => {
     const kind = r.type;
     if (kind === 'transfer') {
@@ -1074,7 +1138,7 @@ async function biApply() {
         replaced++;
       } else {
         data.budgetTransactions.push(record);
-        if (st.updateBalances) applyTxToAccountBalance(record, 1);
+        if (biCountsForBalance(record, st)) { applyTxToAccountBalance(record, 1); balanceRows++; }
       }
       imported.push(record);
       return;
@@ -1113,11 +1177,11 @@ async function biApply() {
       applyTxToAccountBalance(auto, -1);
       data.budgetTransactions = data.budgetTransactions.filter(t => t !== auto);
       data.budgetTransactions.push(record);
-      if (auto.accountId || st.updateBalances) applyTxToAccountBalance(record, 1);
+      if (auto.accountId || biCountsForBalance(record, st)) { applyTxToAccountBalance(record, 1); balanceRows++; }
       replaced++;
     } else {
       data.budgetTransactions.push(record);
-      if (st.updateBalances) applyTxToAccountBalance(record, 1);
+      if (biCountsForBalance(record, st)) { applyTxToAccountBalance(record, 1); balanceRows++; }
     }
     imported.push(record);
   });
@@ -1129,7 +1193,7 @@ async function biApply() {
   }
   await save();
   const dates = sel.map(r => r.date).sort();
-  ui.budgetImport = { step: 'done', count: sel.length, transfers: imported.filter(t => t.type === 'transfer').length, from: dates[0], to: dates[dates.length - 1], created, replaced, balances: st.updateBalances && sel.some(r => r.accountId || st.defaultAccountId || r.type === 'transfer'), fileName: st.fileName };
+  ui.budgetImport = { step: 'done', count: sel.length, transfers: imported.filter(t => t.type === 'transfer').length, from: dates[0], to: dates[dates.length - 1], created, replaced, balances: balanceRows, fileName: st.fileName };
   render();
 }
 function biDoneHtml(st) {
@@ -1138,7 +1202,7 @@ function biDoneHtml(st) {
     st.created.subs ? `${st.created.subs} new sub-categor${st.created.subs === 1 ? 'y' : 'ies'}` : '',
     st.transfers ? `${st.transfers} transfer${st.transfers === 1 ? '' : 's'}` : '',
     st.replaced ? `${st.replaced} automatic recurring entr${st.replaced === 1 ? 'y' : 'ies'} replaced by the real one` : '',
-    st.balances ? 'account balances updated' : '',
+    st.balances ? `${st.balances} row${st.balances === 1 ? '' : 's'} added to account balances` : '',
   ].filter(Boolean).join(' · ');
   return `
     <div class="card" style="text-align:center;padding:32px 20px;">

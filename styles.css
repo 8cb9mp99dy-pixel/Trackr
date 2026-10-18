@@ -1218,3 +1218,14 @@ html.compact .tab-row { margin-bottom: 12px; }
 .section-tabs button.on { background: var(--light-card); opacity: 1; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 @media (max-width: 900px) { .section-tabs { margin: 0 22px 4px; } }
 @media (max-width: 640px) { .section-tabs { margin: 8px 14px 0; } }
+
+/* Accounts → cash wallet (wallet.js) */
+.wallet-empty { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.wallet-coin { display: flex; width: 40px; height: 40px; border-radius: 50%; background: var(--accent-soft); align-items: center; justify-content: center; font-size: 20px; flex: none; }
+.wallet-card { padding-bottom: 19px; }
+.wallet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.wallet-recent { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--dark-border); display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
+.wallet-line { display: flex; justify-content: space-between; gap: 12px; min-width: 0; }
+/* Budget import: which rows move account balances */
+.bi-balances { padding: 12px 0 4px; border-top: 1px solid var(--dark-border); margin-top: 6px; }
+.bi-balance-moves { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
