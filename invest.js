@@ -85,7 +85,7 @@ function renderInvestAccount() {
     <button class="link-btn" style="margin-bottom:12px;" onclick="goPage('investments')">${ic('chevronLeft', 15)} Investments</button>
     <div class="page-head" style="align-items:center;">
       <div style="display:flex;gap:12px;align-items:center;">${logoImg(acc.logo, 40)}<div><h1 class="page-title">${escHtml(acc.name)}</h1><div class="page-subtitle">${acc.kind === 'broker' ? 'Broker' : 'Crypto exchange'}</div></div></div>
-      <button class="btn primary" onclick="openDepositForm()">${ic('plus', 15)} Deposit</button>
+      <div style="display:flex;gap:8px;"><button class="btn" onclick="editInvestAccount()">${ic('edit', 15)} Edit</button><button class="btn primary" onclick="openDepositForm()">${ic('plus', 15)} Deposit</button></div>
     </div>
     <div class="card" style="margin-bottom:16px;">
       <div class="eyebrow">Balance</div>
@@ -315,3 +315,103 @@ document.addEventListener('click', e => {
   if (e.target.closest && e.target.closest('.c-menu')) return;
   ui.investMenu = null; render();
 });
+
+/* ---- Edit a broker or an exchange ----
+   A broker opens its usual form (name, logo, cash, interest). A crypto exchange has no record of
+   its own — its name is written on each holding, purchase, cash line and stake — so renaming it
+   rewrites that name everywhere it appears (holdings, purchases, cash, stakes, transfers in
+   Budget, plans and recorded trades, and the daily per-holding history so its charts continue).
+   Renaming it to the name of another exchange you use merges the two. */
+function editInvestAccount() {
+  const acc = investAccountByKey(ui.investAccount);
+  if (!acc) return;
+  if (acc.kind === 'broker') openBrokerForm(acc.id);
+  else { ui.modal = { type: 'exchange', payload: { name: acc.id } }; render(); }
+}
+window.__modalRenderers.exchange = function (p) {
+  const cash = cryptoExchangeCashFor(p.name);
+  const logo = (data.exchangeLogos || {})[p.name.trim().toLowerCase()] || '';
+  return `
+    <div class="modal-head"><div class="modal-title">Edit exchange</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="stack-gap-12">
+      <label class="field"><span class="label-text">Name</span><input id="ex-name" value="${escHtml(p.name)}" autocomplete="off"></label>
+      <label class="field"><span class="label-text">Logo URL (optional)</span>
+        <div style="display:flex;gap:6px;align-items:center;"><input id="ex-logo" style="flex:1;" placeholder="https://… (empty = the built-in logo)" value="${escHtml(logo)}">${logoPickerButtonHtml('ex-logo')}</div>
+        ${logoPickerPopoverHtml('ex-logo')}
+      </label>
+      <div class="form-grid">
+        <label class="field"><span class="label-text">Cash held here</span><input id="ex-cash" type="number" step="0.01" inputmode="decimal" value="${cash ? cash.amount : ''}" placeholder="0"></label>
+        <label class="field"><span class="label-text">Currency</span><select id="ex-ccy">${CURRENCIES.map(c => `<option ${(cash ? cash.currency : 'EUR') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+      </div>
+      <div style="font-size:12px;opacity:.6;line-height:1.5;">A new name is applied to every coin, purchase, stake and transfer at this exchange. Using the name of another exchange you have merges the two.</div>
+      <div id="ex-err" style="display:none;color:var(--negative);font-size:12.5px;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn primary" onclick="saveExchangeForm()">Save</button>
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
+    </div>`;
+};
+function renameExchange(oldName, newName) {
+  const same = n => (n || '').trim().toLowerCase() === oldName.trim().toLowerCase();
+  (data.cryptoAssets || []).forEach(c => {
+    (c.snapshots || []).forEach(r => { if (same(r.broker)) r.broker = newName; });
+    (c.stakes || []).forEach(s => { if (same(s.exchange)) s.exchange = newName; });
+  });
+  (data.cryptoLots || []).forEach(l => { if (same(l.broker)) l.broker = newName; });
+  // Cash: one line per exchange — merged if the new name already has one.
+  const cashOld = (data.cryptoExchangeCash || []).filter(c => same(c.exchange));
+  const target = (data.cryptoExchangeCash || []).find(c => !same(c.exchange) && (c.exchange || '').trim().toLowerCase() === newName.trim().toLowerCase());
+  cashOld.forEach(c => {
+    if (target) { target.amount = Math.round((+target.amount + convertCurrency(+c.amount || 0, c.currency, target.currency)) * 100) / 100; data.cryptoExchangeCash = data.cryptoExchangeCash.filter(x => x !== c); }
+    else c.exchange = newName;
+  });
+  const oldRef = 'cx:' + oldName, newRef = 'cx:' + newName;
+  (data.budgetTransactions || []).forEach(t => {
+    if (t.from && same(t.from.startsWith('cx:') ? t.from.slice(3) : null)) { t.from = newRef; t.fromLabel = `${newName} (cash)`; }
+    if (t.to && same(t.to.startsWith('cx:') ? t.to.slice(3) : null)) { t.to = newRef; t.toLabel = `${newName} (cash)`; }
+  });
+  const oldKey = 'exchange:' + oldName, newKey = 'exchange:' + newName;
+  (data.investPlans || []).forEach(p => { if (p.accountKey === oldKey) p.accountKey = newKey; });
+  (data.investmentTransactions || []).forEach(x => { if (x.accountKey === oldKey) x.accountKey = newKey; else if (!x.accountKey && same(x.account)) x.account = newName; });
+  // Per-holding daily values: "c:BTC@Old" → "c:BTC@New" (added together if both exist that day).
+  (data.history || []).forEach(h => {
+    if (!h.pos) return;
+    Object.keys(h.pos).forEach(k => {
+      const m = /^c:([^@]+)@(.*)$/.exec(k);
+      if (!m || !same(m[2])) return;
+      const nk = `c:${m[1]}@${newName}`;
+      h.pos[nk] = (nk !== k && h.pos[nk] != null ? h.pos[nk] : 0) + h.pos[k];
+      if (nk !== k) delete h.pos[k];
+    });
+  });
+  if (data.exchangeLogos) {
+    const o = oldName.trim().toLowerCase(), n = newName.trim().toLowerCase();
+    if (data.exchangeLogos[o] && !data.exchangeLogos[n]) data.exchangeLogos[n] = data.exchangeLogos[o];
+    if (o !== n) delete data.exchangeLogos[o];
+  }
+  if (oldRef !== newRef && ui.investAccount === oldKey) ui.investAccount = newKey;
+}
+function saveExchangeForm() {
+  const p = ui.modal && ui.modal.payload;
+  if (!p) return;
+  const err = document.getElementById('ex-err');
+  const name = document.getElementById('ex-name').value.trim().replace(/\s+/g, ' ');
+  if (!name) { err.textContent = 'Give the exchange a name.'; err.style.display = 'block'; return; }
+  if (data.brokers.some(b => b.name.trim().toLowerCase() === name.toLowerCase())) {
+    err.textContent = `"${name}" is the name of one of your stock brokers — pick another name.`; err.style.display = 'block'; return;
+  }
+  const logo = document.getElementById('ex-logo').value.trim();
+  const cashRaw = document.getElementById('ex-cash').value.trim(), ccy = document.getElementById('ex-ccy').value;
+  if (name !== p.name) renameExchange(p.name, name);
+  data.exchangeLogos = data.exchangeLogos || {};
+  if (logo) data.exchangeLogos[name.toLowerCase()] = logo; else delete data.exchangeLogos[name.toLowerCase()];
+  let cash = cryptoExchangeCashFor(name);
+  if (cashRaw !== '') {
+    const amt = parseFloat(cashRaw);
+    if (!isFinite(amt) || amt < 0) { err.textContent = 'Cash must be zero or more.'; err.style.display = 'block'; return; }
+    if (!cash) { cash = { id: uid('cec'), exchange: name, amount: 0, currency: ccy, interestBearing: false, interestRate: null }; data.cryptoExchangeCash.push(cash); }
+    cash.amount = amt; cash.currency = ccy;
+  } else if (cash) cash.currency = ccy;
+  ui.investAccount = 'exchange:' + name;
+  save(); closeModal();
+}

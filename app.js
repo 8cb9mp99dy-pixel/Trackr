@@ -470,6 +470,8 @@ function defaultData() {
     emergencyFund: { enabled: false, months: 6, links: null, excludeCats: [] },
     // Recurring buys (Investments → an account → Plans) — never real orders, see invest.js.
     investPlans: [],
+    // Logos chosen for crypto exchanges (Investments → an exchange → Edit): { 'name in lower case': url }.
+    exchangeLogos: {},
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
     // (today's entry is updated in place every time something changes; past days are frozen).
     // Starts empty — no fabricated history — and grows for real as you use the app.
@@ -1910,6 +1912,7 @@ function cryptoBrokerLogo(name) {
   if (!name) return '';
   const key = name.trim().toLowerCase();
   if (!key) return '';
+  if (data.exchangeLogos && data.exchangeLogos[key]) return data.exchangeLogos[key];   // set in the exchange's Edit form
   const matchingBroker = data.brokers.find(b => b.name.trim().toLowerCase() === key);
   if (matchingBroker && matchingBroker.logo) return matchingBroker.logo;
   return COMMON_EXCHANGE_LOGOS[key] || builtinLogoFor(name);
@@ -5409,10 +5412,20 @@ window.__modalRenderers.broker = function (payload) {
       <label class="field"><span class="label-text">Interest rate (% APY)</span><input id="bf-cash-rate" type="number" step="0.01" value="${b && b.cashInterestRate != null ? b.cashInterestRate : ''}" placeholder="e.g. 3.5" ${interestOn ? '' : 'disabled'}></label>
     </div>
     <div class="modal-actions">
+      ${b ? `<button class="btn ghost" style="margin-right:auto;color:var(--negative);" onclick="confirmDeleteBroker('${b.id}')">Delete</button>` : ''}
       <button class="btn primary" onclick="saveBrokerForm('${b ? b.id : ''}')">Save</button>
       <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
 };
+function confirmDeleteBroker(id) {
+  const b = brokerById(id);
+  if (!b) return;
+  const n = data.assetEntries.filter(e => e.broker === id).length;
+  if (!confirm(`Delete ${b.name}${n ? ` and the ${n} holding${n === 1 ? '' : 's'} there` : ''}? You can undo for 10 seconds.`)) return;
+  closeModal();
+  deleteBroker(id);
+  if (ui.page === 'investAccount') goPage('investments');
+}
 function saveBrokerForm(id) {
   const name = document.getElementById('bf-name').value.trim();
   if (!name) return;
