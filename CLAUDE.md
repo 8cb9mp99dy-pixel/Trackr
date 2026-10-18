@@ -11,7 +11,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 5. **Hide amounts.** Every amount must be hideable with the eye. Format money with `fmtMoney()`; it applies the eye. This covers pages, charts, tooltips, notifications, PDFs and exports. The live price bar is the one exception: it shows public market prices, not the user's amounts.
 6. **No build step.** Stays zero-build vanilla JS. `package.json` is dev-only. No runtime framework.
 7. **No social features.** Nothing social, multi-user, subscription-based or ranked.
-8. **Git.** Never push or commit to `main` unless the user says "push". Do overnight work on `overnight/<date>` branches.
+8. **Git.** Work on a branch, then push to `main` automatically once a change passes the checks and the secret check (the user asked for this on 18 Oct 2026); confirm the live site serves the new cache version. Never force-push. Do not add or edit files in `.github/workflows/`: this Mac's token can't push them (they wait in `docs/integrations/github-workflows/`). Overnight work goes on `overnight/<date>` branches.
 9. **Real Supabase.** Never query or write it from tools or tests. SQL changes go in `supabase/migrations/` as proposals.
 10. **Secrets.** Never read, print or commit them. Run `bash tools/dev/secret-check.sh` before every commit.
 11. **Test data.** Never use real financial data in tests or commits. Use the invented `tests/fixtures/demo-data.json`.
