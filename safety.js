@@ -217,3 +217,5 @@ window.addEventListener('online', () => safetyToast('<span>Back online — synci
 // app.js draws the first screen as soon as it's loaded, before the section files after it (top
 // bar, Wealth, Goals, Analysis…) exist — this file is the last one, so draw once more now.
 if (data) render();
+// Opened from a quick-add link (Apple Pay shortcut): the pre-filled Add sheet, never saved by itself.
+if (data && typeof handleQuickAddLink === 'function') handleQuickAddLink();
