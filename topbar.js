@@ -183,8 +183,8 @@ window.__modalRenderers.moreNav = function () {
   return `
     <div class="modal-head"><div class="modal-title">More</div><button class="close-x" onclick="closeModal()">✕</button></div>
     <div class="stack-gap-8">
-      ${NAV_ITEMS.filter(i => !i.phone).map(i => `
-        <button class="more-row ${ui.page === i.id ? 'active' : ''}" onclick="${i.id === 'settings' ? "ui.modal=null;goPage('settings')" : `goPage('${i.id}')`}">${ic(i.icon, 20)}<span>${i.label}</span>${i.id === 'settings' ? navSyncBadgeHtml() : ''}<span class="more-chev">${ic('chevronRight', 16)}</span></button>`).join('')}
+      ${(typeof currentNavItems === 'function' ? currentNavItems() : NAV_ITEMS).filter(i => !i.phone).map(i => `
+        <button class="more-row ${(typeof navItemActive === 'function' ? navItemActive(i) : ui.page === i.id) ? 'active' : ''}" onclick="${i.id === 'settings' ? "ui.modal=null;goPage('settings')" : `goPage('${i.id}')`}">${ic(i.icon, 20)}<span>${i.label}</span>${i.id === 'settings' ? navSyncBadgeHtml() : ''}<span class="more-chev">${ic('chevronRight', 16)}</span></button>`).join('')}
     </div>
     <div style="margin-top:14px;">${syncStatusIndicatorHtml()}</div>
     <button class="btn full" style="margin-top:10px;" onclick="exportFullBackup()">${ic('download', 16)} Download a backup (JSON)</button>`;

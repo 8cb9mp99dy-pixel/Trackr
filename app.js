@@ -389,6 +389,7 @@ function defaultData() {
       showPerformanceIndicators: true,
       compactMode: false,
       budgetLimitsBeta: false, // Settings → Display → "Category budgets (beta)"
+      newNav: false, // Settings → Display → "New navigation (beta)" (nav.js)
       applyTradesToHoldings: false, // Investments → an account → Buy: "Also update my holdings and cash"
       privacyMode: false,
       eurUsdRate: 1.08, // used to blend USD crypto purchases into one EUR average price
@@ -2277,20 +2278,23 @@ function renderApp(app) {
     'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
   };
   const pageHtml = pageRenderers[ui.page] ? pageRenderers[ui.page]() : '';
+  // Settings → Display → "New navigation (beta)" groups the same pages differently (nav.js).
+  const navItems = typeof currentNavItems === 'function' ? currentNavItems() : NAV_ITEMS;
+  const navActive = typeof navItemActive === 'function' ? navItemActive : item => ui.page === item.id || (item.id === 'investments' && ui.page === 'investAccount');
 
   app.innerHTML = `
     <div class="shell">
       <div class="sidebar">
         <div class="sidebar-logo">Trackr</div>
         <ul class="nav-list">
-          ${NAV_ITEMS.map(item => `
+          ${navItems.map(item => `
             <li class="${item.phone ? 'nav-phone' : 'nav-desk'}">
-              <button class="nav-item ${ui.page === item.id || (item.id === 'investments' && ui.page === 'investAccount') ? 'active' : ''}" onclick="${item.id === 'settings' ? settingsNavItemOnClick() : `goPage('${item.id}')`}">
+              <button class="nav-item ${navActive(item) ? 'active' : ''}" onclick="${item.id === 'settings' ? settingsNavItemOnClick() : `goPage('${item.id}')`}">
                 <span class="nav-icon">${ic(item.icon, 19)}${item.id === 'settings' ? navSyncBadgeHtml() : ''}</span><span class="label">${item.label}</span>
               </button>
             </li>`).join('')}
           <li class="nav-more">
-            <button class="nav-item ${NAV_ITEMS.some(i => !i.phone && i.id === ui.page) ? 'active' : ''}" onclick="openMoreNav()">
+            <button class="nav-item ${navItems.some(i => !i.phone && navActive(i)) ? 'active' : ''}" onclick="openMoreNav()">
               <span class="nav-icon">${ic('dots', 19)}${navSyncBadgeHtml()}</span><span class="label">More</span>
             </button>
           </li>
@@ -2305,6 +2309,7 @@ function renderApp(app) {
       <div class="main">
         ${typeof topbarHtml === 'function' ? topbarHtml() : ''}
         ${syncGlobalBannerHtml()}
+        ${typeof sectionTabsHtml === 'function' ? sectionTabsHtml() : ''}
         ${pageHtml}
       </div>
     </div>
@@ -2408,7 +2413,9 @@ function renderDashboard() {
         <div class="eyebrow">P&amp;L</div>
         <div style="font-size:19px;font-weight:700;" class="${pl >= 0 ? 'positive' : 'negative'}">${fmtMoney(pl)} <span style="font-weight:500;font-size:14px;">(${fmtPct(plPct)})</span></div>
       </div>
-      <div class="chip-scroll">${accountChips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>
+      ${typeof newNavOn === 'function' && newNavOn()
+        ? `<button class="chip" style="cursor:pointer;" onclick="goPage('accounts')">${ic('bank', 15)} Cash in ${data.accounts.filter(a => a.visibleInTotals).length} account${data.accounts.filter(a => a.visibleInTotals).length === 1 ? '' : 's'} · <strong>${fmtMoney(bankTotal())}</strong> ${ic('chevronRight', 14)}</button>`
+        : `<div class="chip-scroll">${accountChips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>`}
     </div>
 
     ${typeof loanDashboardHtml === 'function' ? loanDashboardHtml(netWorth) : ''}
@@ -6008,6 +6015,7 @@ function settingsDisplayHtml() {
       ${boolSettingRow('Show performance indicators', 'showPerformanceIndicators', 'Gains and losses on your investments (P&amp;L, ▲ ▼ %, the Performance card). Off: only what things are worth.')}
       ${boolSettingRow('Compact mode', 'compactMode', 'Tighter spacing and smaller headline numbers, so more fits on the screen.')}
       <div class="row-flex"><div><div style="font-size:13.5px;">Dutch box 3 estimate</div><div style="font-size:12px;opacity:.55;margin-top:2px;">A card in Analysis estimating the Dutch wealth tax from your 1 January figures (2026 rules, editable). An estimate, not tax advice.</div></div><div class="toggle ${data.settings.box3 && data.settings.box3.enabled ? 'on' : ''}" style="flex:none;" onclick="setBox3('enabled', !(data.settings.box3 && data.settings.box3.enabled))"></div></div>
+      ${boolSettingRow('New navigation (beta)', 'newNav', 'Home · Money · Wealth (overview, cash, investments, debts) · Plan (goals, emergency, insights). Same pages, grouped differently — switch back any time.')}
       ${boolSettingRow('Update holdings when I record a trade', 'applyTradesToHoldings', 'After Buy / Sell / Convert (or a plan) on an account page, show how quantities, average price and cash would change, and apply it if you confirm. Never places a real order.')}
       ${boolSettingRow('Category budgets (beta)', 'budgetLimitsBeta', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}
       <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.55;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
