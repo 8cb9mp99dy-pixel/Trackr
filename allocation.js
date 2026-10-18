@@ -277,7 +277,7 @@ if (typeof window !== 'undefined') {
       </div>
       <div class="ip-summary">
         <div class="ip-sum-row dim">For ${escHtml(catNames.join(', ') || 'no income yet')}</div>
-        ${v ? `<div class="ip-sum-row"><b class="ip-pct">${v.pct}%</b><span>VAT${vatCat ? ` of ${escHtml(vatCat)}` : ''}, set aside first</span><span class="dim">${escHtml(placeText(incomeStepTarget(v)))}</span></div>` : ''}
+        ${v ? `<div class="ip-sum-row"><b class="ip-pct">${v.pct}%</b><span>VAT${vatCat ? ` on ${escHtml(vatCat)}` : ''}</span><span class="dim">${escHtml(placeText(incomeStepTarget(v)))}</span></div>` : ''}
         ${v && parts.length ? '<div class="ip-sum-row dim" style="padding-left:2px;">Then, of what\'s left:</div>' : ''}
         ${parts.map(x => `<div class="ip-sum-row"><b class="ip-pct">${x.pct}%</b><span>${escHtml(x.label)}</span><span class="dim">${escHtml(placeText(incomeStepTarget(x)))}</span></div>`).join('')}
         ${total < 100 ? `<div class="ip-sum-row"><b class="ip-pct dim">${100 - total}%</b><span class="dim">Left</span><span class="dim">stays in the account</span></div>` : ''}

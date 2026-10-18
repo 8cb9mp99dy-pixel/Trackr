@@ -53,7 +53,7 @@ test('an income not split yet waits in Action required; the tab edits the plan',
 
   // The plan tab: a short summary; the editor has two steps.
   await page.evaluate(() => { goPage('budget'); setBudgetTab('plan'); });
-  await expect(page.locator('.ip-summary')).toContainText('VAT of Freelance, set aside first');
+  await expect(page.locator('.ip-summary')).toContainText('VAT on Freelance');
   await expect(page.locator('.ip-summary')).toContainText('Savings (invest)');
   await expect(page.locator('.ip-summary')).toContainText('25%');
   await page.getByRole('button', { name: 'Edit plan' }).click();

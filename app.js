@@ -2841,26 +2841,42 @@ function savePocketForm(accId, pkId) {
   save(); closeModal();
 }
 /* ===================== Budget ===================== */
+/* Four sections: Transactions, Totals, Plan (income plan, recurring, forecast, budgets) and
+   Setup (categories & rules, import). Every old tab id still works with setBudgetTab(). */
+function budgetGroups() {
+  return [
+    { id: 'transactions', label: 'Transactions', tabs: [{ id: 'transactions', label: 'Transactions' }] },
+    { id: 'totals', label: 'Totals', tabs: [{ id: 'totals', label: 'Totals' }] },
+    { id: 'planning', label: 'Plan', tabs: [
+      ...(typeof incomePlanTab === 'function' ? [{ id: 'plan', label: 'Income plan' }] : []),
+      { id: 'recurring', label: 'Recurring' },
+      ...(typeof budgetForecastTab === 'function' ? [{ id: 'forecast', label: 'Forecast' }] : []),
+      ...(budgetLimitsOn() ? [{ id: 'budgets', label: 'Budgets' }] : []),
+    ] },
+    { id: 'setup', label: 'Setup', tabs: [{ id: 'categories', label: 'Categories & rules' }, { id: 'import', label: 'Import' }] },
+  ];
+}
+function budgetGroupOf(tab) { return budgetGroups().find(g => g.tabs.some(t => t.id === tab)) || budgetGroups()[0]; }
+function setBudgetGroup(id) {
+  const g = budgetGroups().find(x => x.id === id);
+  if (!g) return;
+  ui.budgetLastTab = ui.budgetLastTab || {};
+  const last = ui.budgetLastTab[id];
+  setBudgetTab(g.tabs.some(t => t.id === last) ? last : g.tabs[0].id);
+}
 function renderBudget() {
   if (ui.budgetTab === 'budgets' && !budgetLimitsOn()) ui.budgetTab = 'transactions';
-  const tabs = [
-    { id: 'transactions', label: 'Transactions' },
-    { id: 'recurring', label: 'Recurring' },
-    ...(typeof budgetForecastTab === 'function' ? [{ id: 'forecast', label: 'Forecast' }] : []),
-    { id: 'totals', label: 'Totals' },
-    ...(typeof incomePlanTab === 'function' ? [{ id: 'plan', label: 'Income plan' }] : []),
-    ...(budgetLimitsOn() ? [{ id: 'budgets', label: 'Budgets' }] : []),
-    { id: 'categories', label: 'Categories' },
-    { id: 'import', label: 'Import' },
-  ];
+  if (!ui.budgetTab || !budgetGroups().some(g => g.tabs.some(t => t.id === ui.budgetTab))) ui.budgetTab = 'transactions';
+  const group = budgetGroupOf(ui.budgetTab);
   return `
   <div class="page surface-light">
     <div class="page-head">
       <div><h1 class="page-title">Budget</h1><div class="page-subtitle">${data.budgetTransactions.length} transaction${data.budgetTransactions.length !== 1 ? 's' : ''} logged</div></div>
     </div>
-    <div class="tab-row">
-      ${tabs.map(t => `<button class="tab-btn ${ui.budgetTab === t.id ? 'active' : ''}" onclick="setBudgetTab('${t.id}')">${t.label}</button>`).join('')}
+    <div class="tab-row budget-tabs">
+      ${budgetGroups().map(g => `<button class="tab-btn ${group.id === g.id ? 'active' : ''}" onclick="setBudgetGroup('${g.id}')">${g.label}</button>`).join('')}
     </div>
+    ${group.tabs.length > 1 ? `<div class="seg-row budget-subtabs">${group.tabs.map(t => `<button class="seg ${ui.budgetTab === t.id ? 'on' : ''}" onclick="setBudgetTab('${t.id}')">${t.label}</button>`).join('')}</div>` : ''}
     ${ui.budgetTab === 'transactions' ? budgetTransactionsTab() : ''}
     ${ui.budgetTab === 'recurring' ? budgetRecurringTab() : ''}
     ${ui.budgetTab === 'forecast' && typeof budgetForecastTab === 'function' ? budgetForecastTab() : ''}
@@ -2872,7 +2888,12 @@ function renderBudget() {
   </div>`;
 }
 function toggleHideTransfers() { data.settings.hideTransfers = !data.settings.hideTransfers; save(); render(); }
-function setBudgetTab(t) { ui.budgetTab = t === 'budgets' && !budgetLimitsOn() ? 'transactions' : t; render(); }
+function setBudgetTab(t) {
+  ui.budgetTab = t === 'budgets' && !budgetLimitsOn() ? 'transactions' : t;
+  ui.budgetLastTab = ui.budgetLastTab || {};
+  ui.budgetLastTab[budgetGroupOf(ui.budgetTab).id] = ui.budgetTab;
+  render();
+}
 
 function budgetTransactionsTab() {
   const m = ui.budgetMonth;
@@ -2893,32 +2914,45 @@ function budgetTransactionsTab() {
   const minMonth = budgetMinMonth();
   const atMin = m.getFullYear() === minMonth.getFullYear() && m.getMonth() === minMonth.getMonth();
   const investedCardHtmlStr = investedCardHtml(m);
+  const monthName = m.toLocaleDateString('en-GB', { month: 'long' });
+  const invested = monthInvested(m).net;
+  const chartsOpen = budgetChartsOpen();
   return `
     ${budgetTimelineHtml(m)}
 
-    ${categoryFoldHtml(m, expenseSegments, incomeSegments, animateCharts)}
+    <div class="card bt-summary">
+      <div><div class="eyebrow">In</div><b class="positive">${fmtMoney(income)}</b></div>
+      <div><div class="eyebrow">Out</div><b class="negative">${fmtMoney(expenses)}</b></div>
+      <div><div class="eyebrow">Balance</div><b class="${balance >= 0 ? 'positive' : 'negative'}">${fmtMoney(balance)}</b></div>
+      <div><div class="eyebrow">Invested</div><b style="color:var(--accent-1);">${fmtMoney(invested)}</b></div>
+    </div>
     ${budgetsGlanceHtml(m)}
 
-    <div class="grid-3" style="margin-bottom:20px;">
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(income)}</div></div></div></div>
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div></div></div>
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Balance</div><div style="font-size:20px;font-weight:700;" class="${balance >= 0 ? 'positive' : 'negative'}">${fmtMoney(balance)}</div></div></div></div>
+    <div class="bt-actions">
+      <button class="btn primary" onclick="openTxForm()">${ic('plus', 15)} Add transaction</button>
+      <button class="btn" onclick="setBudgetTab('import')" title="Add many income &amp; expenses at once from an Excel or CSV file">Import</button>
+      <button class="btn" onclick="exportBudgetTransactionsExcel()" title="Every logged transaction — date, type, category, sub-category, amount, and more">Export</button>
     </div>
 
-    ${investedCardHtmlStr}
-
-    <div class="card" style="margin-bottom:20px;">
-      <div class="row-flex" style="margin-bottom:10px;align-items:baseline;gap:10px;flex-wrap:wrap;">
+    <div class="card bt-charts ${chartsOpen ? 'open' : ''}">
+      <button class="bt-charts-head" onclick="toggleBudgetCharts()" aria-expanded="${chartsOpen}">
+        <span style="min-width:0;"><span class="eyebrow" style="margin:0;">Charts for ${escHtml(monthName)}</span><span class="bt-charts-sub">By category, spending trend, invested, income vs expenses</span></span>
+        <span aria-hidden="true">${chartsOpen ? '⌃' : '⌄'}</span>
+      </button>
+      ${chartsOpen ? `<div class="bt-charts-body">
+        ${categoryFoldHtml(m, expenseSegments, incomeSegments, animateCharts)}
+        ${investedCardHtmlStr}
+        <div class="card" style="margin-bottom:20px;">
         <div class="eyebrow">Spending trend</div>
         <div style="font-size:12px;opacity:.6;">${fmtMoney(trend.total)} ${trend.isCurrentMonth ? 'so far' : 'spent'}${trend.compare.length ? ` · last month ${fmtMoney(trend.compareAtSameDay)}${trend.isCurrentMonth ? ' by this day' : ''}` : ''}</div>
       </div>
       ${trendChartOrPlaceholder(trend.points, 120, { xMin: 1, xMax: trend.daysInMonth, zeroBase: true, compare: trend.compare, compareLabel: 'Last month', valueSuffix: ' spent', endLabel: trend.endLabel }, 'No spending logged yet this month.')}
-    </div>
-
-    <button class="btn primary full" style="margin-bottom:10px;" onclick="openTxForm()">+ Add transaction</button>
-    <div class="grid-2" style="margin-bottom:22px;">
-      <button class="btn" onclick="setBudgetTab('import')" title="Add many income & expenses at once from an Excel or CSV file">Import from Excel</button>
-      <button class="btn" onclick="exportBudgetTransactionsExcel()" title="Every logged transaction — date, type, category, sub-category, amount, and more">Export to Excel</button>
+        </div>
+        <div class="card">
+          <div class="eyebrow" style="margin-bottom:14px;">Income vs expenses</div>
+          ${cashflowBarsHtml(m)}
+        </div>
+      </div>` : ''}
     </div>
 
     <div class="tx-list-tools">
@@ -2927,13 +2961,16 @@ function budgetTransactionsTab() {
     </div>
     ${dayGroups.length ? dayGroups.map(dayGroupHtml).join('') : hideTransfers && transferCount ? `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Only transfers this month</div><div class="sub">${transferCount} transfer${transferCount === 1 ? ' is' : 's are'} hidden. <button class="link-btn" onclick="toggleHideTransfers()">Show them</button></div></div></div>` : `
-      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}
-
-
-    <div class="card">
-      <div class="eyebrow" style="margin-bottom:14px;">Income vs expenses</div>
-      ${cashflowBarsHtml(m)}
-    </div>`;
+      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}`;
+}
+/* The month's charts sit in one fold under the summary; it remembers whether you left it open. */
+const BUDGET_CHARTS_KEY = 'trackr-budget-charts';
+function budgetChartsOpen() { try { return localStorage.getItem(BUDGET_CHARTS_KEY) === '1'; } catch (e) { return !!ui.budgetChartsOpen; } }
+function toggleBudgetCharts() {
+  const open = !budgetChartsOpen();
+  ui.budgetChartsOpen = open;
+  try { localStorage.setItem(BUDGET_CHARTS_KEY, open ? '1' : '0'); } catch (e) { /* private mode: this view only */ }
+  render();
 }
 
 /* ===================== Learned categories =====================
