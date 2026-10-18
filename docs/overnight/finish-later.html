@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trackr — finish later</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 16mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #15171f; font-size: 10pt; line-height: 1.5; margin: 0; }
+  h1 { font-size: 24pt; margin: 0 0 2px; letter-spacing: -0.5px; }
+  .sub { color: #6b7080; margin: 0 0 18px; }
+  h2 { font-size: 13pt; margin: 22px 0 6px; padding-bottom: 4px; border-bottom: 2px solid #15171f; break-after: avoid; }
+  h2 .n { display: inline-block; min-width: 22px; }
+  .tag { font-size: 8pt; font-weight: 600; padding: 1px 7px; border-radius: 10px; margin-left: 6px; vertical-align: 2px; }
+  .must { background: #15171f; color: #fff; }
+  .soon { background: #e6e8f0; color: #15171f; }
+  .opt { border: 1px solid #c9ccd6; color: #6b7080; }
+  ol, ul { margin: 4px 0 6px; padding-left: 20px; }
+  li { margin: 2px 0; }
+  code, .cmd { font-family: "SF Mono", Menlo, monospace; font-size: 9pt; }
+  .cmd { display: block; background: #f3f4f7; border-radius: 6px; padding: 6px 10px; margin: 4px 0; }
+  .why { color: #4a4f5e; margin: 2px 0 6px; }
+  .box { border: 1px solid #d8dbe3; border-radius: 8px; padding: 10px 14px; margin: 10px 0; break-inside: avoid; }
+  .box .t { display: block; font-weight: 700; margin-bottom: 2px; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0; }
+  td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid #e3e5eb; vertical-align: top; }
+  th { font-size: 8.5pt; color: #6b7080; font-weight: 600; }
+  .check { width: 18px; }
+  .sq { display: inline-block; width: 11px; height: 11px; border: 1.5px solid #15171f; border-radius: 2px; }
+  section { break-inside: avoid-page; }
+</style>
+</head>
+<body>
+
+<h1>Trackr — what to do later</h1>
+<p class="sub">Written 18 Oct 2026, after the overnight run. Tick the boxes as you go. Steps marked <b>Must</b> come first.</p>
+
+<div class="box">
+  <span class="t">Where things stand now</span>
+  Everything from the overnight run (forecast, rules, returns, X-ray, notifications, broker editing, new navigation and the rest) is merged into <code>main</code> <b>on your Mac only</b>. It is tested: 37 unit tests and 72 browser tests pass. It is <b>not on GitHub yet</b>, so the live app still runs yesterday's version. Nothing is lost while you wait.
+</div>
+
+<section>
+<h2><span class="n">1</span> Let GitHub accept the push <span class="tag must">Must</span></h2>
+<p class="why">Why: the update includes automatic test runs for GitHub (files in <code>.github/workflows/</code>). GitHub only accepts those from a login that has the <b>workflow</b> permission, and the one saved on your Mac doesn't. So GitHub refused the whole push.</p>
+<p>Pick <b>one</b> of these three:</p>
+<table>
+  <tr><th class="check"></th><th>Option</th><th>How</th></tr>
+  <tr><td><span class="sq"></span></td><td><b>A. Install GitHub's tool</b> (recommended)</td><td>In Terminal, one line at a time:
+    <span class="cmd">brew install gh</span><span class="cmd">gh auth login</span><span class="cmd">gh auth setup-git</span>
+    Choose GitHub.com, HTTPS, and "Login with a web browser". This login includes the workflow permission, and it lets Claude open pull requests for you next time.</td></tr>
+  <tr><td><span class="sq"></span></td><td><b>B. Edit your token</b></td><td>On github.com: your photo → Settings → Developer settings → Personal access tokens. Open the token this Mac uses and tick <b>workflow</b> (for a fine-grained token: Repository permissions → <b>Workflows: Read and write</b>). Save.</td></tr>
+  <tr><td><span class="sq"></span></td><td><b>C. Push without the test runs</b></td><td>Tell Claude <b>"push without CI"</b> and approve when Claude Code asks to rewrite the unpushed commits. Everything goes live except the automatic test runs, which wait switched off in <code>docs/integrations/github-workflows/</code>.</td></tr>
+</table>
+<p><span class="sq"></span>&nbsp; Then tell Claude: <b>"push"</b>.</p>
+</section>
+
+<section>
+<h2><span class="n">2</span> Check the live app after the push <span class="tag must">Must</span></h2>
+<ol>
+  <li><span class="sq"></span>&nbsp; Wait about 2 minutes, then open the app on your phone.</li>
+  <li><span class="sq"></span>&nbsp; Close it and open it again (the app updates itself on the second start).</li>
+  <li><span class="sq"></span>&nbsp; Check that your numbers look the same as before, and that the loan is still not in your net worth.</li>
+  <li><span class="sq"></span>&nbsp; Open Budget: there is now a <b>Forecast</b> tab. If you see it, the update worked.</li>
+</ol>
+<p class="why">If something looks wrong, tell Claude what you see. The previous version is one command away.</p>
+</section>
+
+<section>
+<h2><span class="n">3</span> Replace your Twelve Data key <span class="tag must">Must</span></h2>
+<p class="why">Why: your key for live stock prices is written in the public code (<code>app.js</code>), so anyone could use it up. It was already there before the overnight run.</p>
+<ol>
+  <li><span class="sq"></span>&nbsp; Tell Claude: <b>"remove the Twelve Data key from the code"</b>. The app will then read the key from Settings only.</li>
+  <li><span class="sq"></span>&nbsp; Sign in on twelvedata.com and create a new key. Then delete (revoke) the old one.</li>
+  <li><span class="sq"></span>&nbsp; Paste the new key yourself in the app: Settings → Display → Twelve Data API key. Never paste it into the chat.</li>
+</ol>
+</section>
+
+<section>
+<h2><span class="n">4</span> Decide about your loan figures <span class="tag soon">Soon</span></h2>
+<p class="why">Why: <code>loan.js</code> holds your real loan amounts, and the repository is public.</p>
+<ul>
+  <li><span class="sq"></span>&nbsp; <b>Option 1:</b> tell Claude <b>"move my loan figures out of the code"</b>. They move into your own synced data, and the code only keeps the calculation. Old versions stay in GitHub's history.</li>
+  <li><span class="sq"></span>&nbsp; <b>Option 2:</b> make the repository private as well. GitHub Pages on a private repository needs a paid GitHub plan.</li>
+</ul>
+</section>
+
+<section>
+<h2><span class="n">5</span> Try the new things and switch on what you like <span class="tag soon">Soon</span></h2>
+<table>
+  <tr><th class="check"></th><th>Where</th><th>What it does</th></tr>
+  <tr><td><span class="sq"></span></td><td>Budget → Forecast</td><td>Your balance for the next 30/90/365 days, the lowest point, and "what if" scenarios.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Budget → Categories → Rules</td><td>"If the name contains X, put it in Y". Add 3–5 rules for your usual shops.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Analysis → Returns / X-ray</td><td>Real performance, and 9 health checks. Snooze or switch off the ones you don't care about.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Bell icon → Notifications</td><td>All alerts in one list. You can download calendar reminders there.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Any broker page → Edit</td><td>Rename or edit a broker or exchange.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Cmd+K (on a computer)</td><td>Jump to any page or holding.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Settings → Display</td><td>Switches, all off by default: <b>Category budgets</b>, <b>Update holdings when I record a trade</b>, <b>Dutch box 3 estimate</b>, <b>New navigation</b>.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Settings → Backup &amp; Restore</td><td><b>Emergency pack</b>: a printable summary and a passphrase-locked backup for family.</td></tr>
+</table>
+</section>
+
+<section>
+<h2><span class="n">6</span> Optional set-ups <span class="tag opt">Optional</span></h2>
+<ul>
+  <li><span class="sq"></span>&nbsp; <b>Apple Pay → Trackr.</b> An iPhone Shortcut that opens Trackr pre-filled after each Apple Pay payment. Instructions: <code>docs/apple-pay-shortcut.md</code>. Note: it may open in Safari rather than the Home Screen app.</li>
+  <li><span class="sq"></span>&nbsp; <b>Daily snapshot on the server</b>, so history has no gaps on days you don't open the app. Read <code>docs/integrations/server-snapshot/README.md</code> first. You run the SQL yourself in Supabase; Claude never touches your database.</li>
+  <li><span class="sq"></span>&nbsp; <b>Encrypted nightly backup to your private repo</b>: <code>docs/integrations/nightly-backup-to-private-repo.yml</code>. It needs secrets that you add yourself in GitHub settings.</li>
+  <li><span class="sq"></span>&nbsp; Close the stuck <b>Microsoft Excel</b> window a research helper opened during the night. Nothing was saved in it.</li>
+</ul>
+</section>
+
+<section>
+<h2><span class="n">7</span> Features still to build (ask Claude when you want them)</h2>
+<table>
+  <tr><th class="check"></th><th>Feature</th><th>What you'd get</th></tr>
+  <tr><td><span class="sq"></span></td><td>Historical exchange rates</td><td>Old USD/GBP/CHF transactions converted at the rate of their own day, not today's.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Recurring transfers</td><td>"€200 into a pocket every month" as a recurring item.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Recurring calendar states</td><td>Paid / paid a different amount / missed, for each bill.</td></tr>
+  <tr><td><span class="sq"></span></td><td>"To review" list</td><td>Transactions whose category the app guessed with low confidence.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Goal photos in the Mac's daily backup</td><td>Photos included in your daily Excel backup too (needs you present: it uses your real Supabase).</td></tr>
+  <tr><td><span class="sq"></span></td><td>Server snapshots, app side</td><td>The app fills history gaps from the server (after the optional set-up in step 6).</td></tr>
+  <tr><td><span class="sq"></span></td><td>Year in review</td><td>Swipeable cards summarising your year.</td></tr>
+  <tr><td><span class="sq"></span></td><td>Age of Money · "next €250" planner</td><td>How long money sits before you spend it; where new money should go to reach your target mix.</td></tr>
+</table>
+</section>
+
+<section>
+<h2><span class="n">8</span> Tidy up at the end <span class="tag opt">Optional</span></h2>
+<ul>
+  <li><span class="sq"></span>&nbsp; Once everything is live and fine, Claude can delete the local branches <code>overnight/2026-10-18</code> and <code>overnight/navigation</code>; everything they hold is in <code>main</code>.</li>
+  <li><span class="sq"></span>&nbsp; The full overnight notes stay in <code>docs/overnight/</code>: REPORT, PLAN, RESEARCH, BACKLOG, DECISIONS and before/after screenshots.</li>
+</ul>
+</section>
+
+</body>
+</html>
