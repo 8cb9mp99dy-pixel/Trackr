@@ -105,6 +105,7 @@ function topbarHtml() {
           : unread ? `<button class="tb-action tb-notes" onclick="openActionRequired('notes')" title="New notifications">${ic('bell', 16)}<span>Notifications</span><b>${unread}</b></button>` : ''}
       </div>
       <div class="topbar-right">
+        ${typeof openPalette === 'function' ? `<button class="tb-btn" onclick="openPalette()" title="Jump to… (⌘K)" aria-label="Search">${ic('search', 18)}</button>` : ''}
         <button class="tb-btn" onclick="shareReport()" title="Share a PDF report" aria-label="Share">${ic('share', 18)}</button>
         <button class="tb-btn" onclick="downloadReportPdf()" title="Download a PDF report" aria-label="PDF report">${ic('file', 18)}</button>
         <button class="tb-btn ${hidden ? 'on' : ''}" onclick="togglePrivacy()" title="${hidden ? 'Show the amounts' : 'Hide every amount'} (this device only)" aria-label="${hidden ? 'Show amounts' : 'Hide amounts'}">${ic(hidden ? 'eyeOff' : 'eye', 18)}</button>

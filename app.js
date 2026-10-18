@@ -2358,7 +2358,7 @@ function renderModal() {
   const renderers = window.__modalRenderers || {};
   const fn = renderers[ui.modal.type];
   if (!fn) return '';
-  const wide = ui.modal.type === 'goalView' ? ' modal-wide modal-flush' : '';
+  const wide = ui.modal.type === 'goalView' ? ' modal-wide modal-flush' : ui.modal.type === 'palette' ? ' modal-palette' : '';
   return `<div class="modal-backdrop" onclick="if(event.target===this) closeModal()"><div class="modal${wide}">${fn(ui.modal.payload)}</div></div>`;
 }
 window.__modalRenderers = {};

@@ -1189,3 +1189,17 @@ html.compact .tab-row { margin-bottom: 12px; }
 .b3-result { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: rgba(128,128,128,.07); font-size: 14px; }
 .b3-rates { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 10px; }
 .b3-rate { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+
+/* Jump to… (palette.js) */
+.modal.modal-palette { max-width: 560px; padding: 0; align-self: flex-start; margin-top: 12vh; overflow: hidden; }
+.pal-in { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--light-border); }
+.pal-in input { flex: 1; border: none; outline: none; background: none; font: inherit; font-size: 16px; padding: 4px 0; }
+.pal-in kbd { font: inherit; font-size: 11px; opacity: .5; border: 1px solid var(--light-border); border-radius: 6px; padding: 2px 6px; }
+.pal-list { max-height: 55vh; overflow: auto; padding: 6px; }
+.pal-group { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; opacity: .45; padding: 10px 10px 4px; }
+.pal-item { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none; text-align: left; padding: 9px 10px; border-radius: 10px; font: inherit; font-size: 14px; color: inherit; cursor: pointer; }
+.pal-item.on { background: rgba(59,91,219,.1); }
+.pal-l { font-weight: 600; white-space: nowrap; }
+.pal-s { opacity: .55; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pal-empty { padding: 18px; text-align: center; opacity: .55; }
+@media (max-width: 640px) { .modal.modal-palette { margin-top: 0; max-width: none; } }
