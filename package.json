@@ -5,7 +5,7 @@
   "scripts": {
     "check": "node tools/dev/check-syntax.js",
     "lint": "eslint .",
-    "test": "node --test tests/unit/",
+    "test": "node --test \"tests/unit/*.test.js\"",
     "test:e2e": "playwright test",
     "validate:html": "html-validate index.html",
     "serve": "node tools/dev/serve.js 8080",

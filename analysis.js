@@ -133,6 +133,7 @@ function renderAnalysis() {
       ${diversificationCardHtml()}
       ${recurringScanCardHtml()}
     </div>
+    ${typeof returnsCardHtml === 'function' ? returnsCardHtml() : ''}
     ${simulatorCardHtml()}
     ${profileCardHtml()}
   </div>`;
