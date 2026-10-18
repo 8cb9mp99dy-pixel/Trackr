@@ -754,6 +754,8 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
 .sk-label { position: absolute; transform: translateY(-50%); display: flex; flex-direction: column; gap: 0; border: none; background: color-mix(in srgb, var(--light-card) 80%, transparent); padding: 2px 6px; border-radius: 6px; font-size: 12px; line-height: 1.25; cursor: pointer; max-width: 44%; text-align: left; color: var(--light-text); }
 .sk-label.left { left: 16px; }
 .sk-label.right { right: 16px; text-align: right; align-items: flex-end; }
+.sk-label.left, .sk-label.right { max-width: 34%; }
+.sk-label.mid { left: 50%; transform: translate(-50%, -50%); align-items: center; text-align: center; cursor: default; font-size: 12.5px; }
 .sk-label.on { outline: 2px solid var(--accent-1); }
 .sk-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .sk-val { opacity: .6; font-size: 11px; }

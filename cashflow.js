@@ -54,12 +54,26 @@ function cashflowModel() {
   else if (leftover < -0.005) L.push({ key: 'savings', label: 'From your savings', icon: '🏦', color: '#9AA3B5', value: -leftover, count: 0, subs: {}, special: true });
   return { L, R, income, spent, invested, leftover };
 }
+/* Three columns, so nothing crosses: each income flows into one "Income" bar in the middle,
+   which then splits into where the money went (spending categories, Invested, Left over). With
+   many spending categories the smallest are grouped into "Other categories" (tap it to see them
+   in the donut), so every label stays readable. */
+const SANKEY_MAX_RIGHT = 8;
+function sankeyRight(M) {
+  const spend = M.R.filter(n => !n.special), special = M.R.filter(n => n.special);
+  if (spend.length <= SANKEY_MAX_RIGHT) return M.R;
+  const keep = spend.slice(0, SANKEY_MAX_RIGHT - 1), rest = spend.slice(SANKEY_MAX_RIGHT - 1);
+  const other = { key: 'grouped', label: `Other categories (${rest.length})`, icon: '', color: '#A9B0BF', value: 0, count: 0, subs: {}, grouped: true };
+  rest.forEach(n => { other.value += n.value; other.count += n.count; other.subs[n.key] = { label: n.label, icon: n.icon, value: n.value, count: n.count }; });
+  return keep.concat([other], special);
+}
 function sankeyHtml(M, opts) {
   opts = opts || {};
-  const total = Math.max(M.L.reduce((s, n) => s + n.value, 0), M.R.reduce((s, n) => s + n.value, 0));
+  const R = sankeyRight(M);
+  const total = Math.max(M.L.reduce((s, n) => s + n.value, 0), R.reduce((s, n) => s + n.value, 0));
   if (!total) return '';
-  const rows = Math.max(M.L.length, M.R.length);
-  const H = opts.h || Math.max(240, rows * 40 + 20), gap = 8, pad = 6, minH = 22;
+  const rows = Math.max(M.L.length, R.length);
+  const H = opts.h || Math.max(260, rows * 46 + 20), gap = 10, pad = 6, minH = 24;
   // Every bar gets at least minH px so its label stays readable; the rest is shared in proportion.
   const layout = list => {
     const usable = H - pad * 2 - gap * Math.max(0, list.length - 1) - minH * list.length;
@@ -67,28 +81,30 @@ function sankeyHtml(M, opts) {
     let y = pad;
     return list.map(n => { const h = minH + Math.max(0, usable) * n.value / sum; const o = { n, y, h }; y += h + gap; return o; });
   };
-  const Lp = layout(M.L), Rp = layout(M.R);
+  const Lp = layout(M.L), Rp = layout(R);
   const sel = ui.cfSel;
-  // Each source splits across the destinations in proportion; bands stack in order on both ends.
-  const lOff = Lp.map(p => p.y), rOff = Rp.map(p => p.y);
-  const bands = [];
-  Lp.forEach((lp, i) => Rp.forEach((rp, j) => {
-    const v = lp.n.value * rp.n.value / total;
-    const hl = v / lp.n.value * lp.h, hr = v / rp.n.value * rp.h;
-    const y0 = lOff[i], y1 = rOff[j];
-    lOff[i] += hl; rOff[j] += hr;
-    const on = !sel || sel === rp.n.key || sel === lp.n.key;
-    bands.push(`<path d="M12,${y0} C500,${y0} 500,${y1} 988,${y1} L988,${y1 + hr} C500,${y1 + hr} 500,${y0 + hl} 12,${y0 + hl} Z" fill="${rp.n.color}" fill-opacity="${on ? 0.28 : 0.07}"/>`);
-  }));
+  // The middle bar: one block, as tall as the space; bands join and leave it stacked in order.
+  const midY = pad, midH = H - pad * 2, X0 = 12, XM0 = 494, XM1 = 506, X1 = 988;
+  const band = (xa, ya, ha, xb, yb, hb, color, on) => {
+    const c = (xa + xb) / 2;
+    return `<path d="M${xa},${ya} C${c},${ya} ${c},${yb} ${xb},${yb} L${xb},${yb + hb} C${c},${yb + hb} ${c},${ya + ha} ${xa},${ya + ha} Z" fill="${color}" fill-opacity="${on ? 0.3 : 0.08}"/>`;
+  };
+  const sumL = M.L.reduce((s, n) => s + n.value, 0) || 1, sumR = R.reduce((s, n) => s + n.value, 0) || 1;
+  let mIn = midY, mOut = midY;
+  const inBands = Lp.map(p => { const hm = midH * p.n.value / sumL, b = band(X0, p.y, p.h, XM0, mIn, hm, p.n.color, !sel || sel === p.n.key); mIn += hm; return b; });
+  const outBands = Rp.map(p => { const hm = midH * p.n.value / sumR, b = band(XM1, mOut, hm, X1, p.y, p.h, p.n.color, !sel || sel === p.n.key); mOut += hm; return b; });
   const label = (p, side) => `<button class="sk-label ${side} ${sel === p.n.key ? 'on' : ''}" style="top:${(p.y + p.h / 2).toFixed(1)}px;" onclick="setCashflowSel('${p.n.key}')" title="${escHtml(p.n.label)}"><span class="sk-name">${escHtml(p.n.label)}</span><span class="sk-val">${fmtMoney(p.n.value)}</span></button>`;
+  const income = M.L.filter(n => !n.special).reduce((s, n) => s + n.value, 0);
   return `
     <div class="sankey" style="height:${H}px;">
       <svg width="100%" height="${H}" viewBox="0 0 1000 ${H}" preserveAspectRatio="none" aria-hidden="true">
-        ${bands.join('')}
-        ${Lp.map(p => `<rect x="0" y="${p.y}" width="12" height="${p.h}" rx="2" fill="${p.n.color}"/>`).join('')}
+        ${inBands.join('')}${outBands.join('')}
+        ${Lp.map(p => `<rect x="0" y="${p.y}" width="12" height="${p.h}" rx="2" fill="${p.n.color}" opacity="${!sel || sel === p.n.key ? 1 : 0.35}"/>`).join('')}
+        <rect x="${XM0}" y="${midY}" width="${XM1 - XM0}" height="${midH}" rx="2" fill="var(--accent-1)"/>
         ${Rp.map(p => `<rect x="988" y="${p.y}" width="12" height="${p.h}" rx="2" fill="${p.n.color}" opacity="${!sel || sel === p.n.key ? 1 : 0.35}"/>`).join('')}
       </svg>
       ${Lp.map(p => label(p, 'left')).join('')}
+      <div class="sk-label mid" style="top:${(midY + midH / 2).toFixed(1)}px;"><span class="sk-name">Income</span><span class="sk-val">${fmtMoney(income)}</span></div>
       ${Rp.map(p => label(p, 'right')).join('')}
     </div>`;
 }
@@ -104,7 +120,7 @@ function cashflowControlsHtml() {
     </div>`;
 }
 function cashflowDonutHtml(M) {
-  const node = ui.cfSel ? M.L.concat(M.R).find(n => n.key === ui.cfSel) : null;
+  const node = ui.cfSel ? M.L.concat(sankeyRight(M)).find(n => n.key === ui.cfSel) : null;
   const spendNodes = M.R.filter(n => !n.special);
   let segs, title, total, count;
   if (node && !node.special) {
@@ -120,7 +136,7 @@ function cashflowDonutHtml(M) {
       <div class="donut-wrap" style="width:150px;height:150px;">${svgDonut(segs.length ? segs : [{ value: 1, color: 'var(--dark-card-2)' }], { size: 150, stroke: 20 })}
         <div class="donut-center"><b>${node && M.L.includes(node) ? '+' : '−'}${fmtMoney(total)}</b><span>${escHtml(title)}</span></div></div>
       <div class="cf-donut-facts">
-        ${count ? `<div>${count} transaction${count === 1 ? '' : 's'}${node && !node.special && M.R.includes(node) ? ` · ${(node.value / base * 100).toFixed(1)}% of spending` : ''}</div>` : ''}
+        ${count ? `<div>${count} transaction${count === 1 ? '' : 's'}${node && !node.special && (M.R.includes(node) || node.grouped) ? ` · ${(node.value / base * 100).toFixed(1)}% of spending` : ''}</div>` : ''}
         ${segs.slice(0, 6).map(s => `<div class="donut-legend-row"><span class="donut-swatch" style="background:${s.color};"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.icon || ''} ${escHtml(s.label)}</span><b style="margin-left:auto;">${fmtMoney(s.value)}</b></div>`).join('')}
         ${node ? `<button class="link-btn" onclick="setCashflowSel('${node.key}')">Show everything</button>` : '<div class="dim">Tap a category in the chart to see its details.</div>'}
       </div>
@@ -136,7 +152,7 @@ function cashflowCardHtml() {
         ${has ? cashflowControlsHtml() : ''}
       </div>
       ${has ? `<div class="cf-body">${sankeyHtml(M)}${cashflowDonutHtml(M)}</div>
-        <div style="font-size:11.5px;opacity:.5;margin-top:8px;">Each income feeds each category in proportion — Trackr doesn't know which euro paid for what. Transfers between your own accounts aren't counted; money sent to a broker or exchange is "Invested".</div>`
+        <div style="font-size:11.5px;opacity:.5;margin-top:8px;">Transfers between your own accounts aren't counted. Money sent to a broker or exchange counts as Invested.</div>`
         : `<div class="empty-state" style="padding:24px 10px;"><div class="title">No data yet</div><div class="sub">Log income and expenses for this period to see where your money goes.</div><button class="btn primary" style="margin-top:12px;" onclick="openTxForm()">${ic('plus', 15)} Add a transaction</button></div>`}
     </div>`;
 }
@@ -150,10 +166,10 @@ window.__modalRenderers.cashflowFull = function () {
 };
 function exportCashflowCsv() {
   const M = cashflowModel();
-  const total = Math.max(M.L.reduce((s, n) => s + n.value, 0), M.R.reduce((s, n) => s + n.value, 0)) || 1;
   const q = v => `"${String(v).replace(/"/g, '""')}"`;
   const lines = [['From', 'To', 'Amount (EUR)'].map(q).join(',')];
-  M.L.forEach(l => M.R.forEach(r => lines.push([q(l.label), q(r.label), (l.value * r.value / total).toFixed(2)].join(','))));
+  M.L.forEach(l => lines.push([q(l.label), q('Income'), l.value.toFixed(2)].join(',')));
+  M.R.forEach(r => lines.push([q('Income'), q(r.label), r.value.toFixed(2)].join(',')));
   lines.push('', [q('Category'), q('Side'), q('Total (EUR)'), q('Transactions')].join(','));
   M.L.forEach(n => lines.push([q(n.label), q('In'), n.value.toFixed(2), n.count].join(',')));
   M.R.forEach(n => lines.push([q(n.label), q('Out'), n.value.toFixed(2), n.count].join(',')));
