@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trackr — feature map</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm 15mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #15171f; font-size: 9.6pt; line-height: 1.42; margin: 0; }
+  h1 { font-size: 26pt; margin: 0 0 4px; letter-spacing: -0.5px; }
+  h2 { font-size: 14pt; margin: 22px 0 8px; padding-bottom: 5px; border-bottom: 2px solid #15171f; break-after: avoid; }
+  h3 { font-size: 11pt; margin: 14px 0 4px; break-after: avoid; }
+  h4 { font-size: 9.8pt; margin: 9px 0 2px; color: #4b5162; text-transform: uppercase; letter-spacing: .4px; font-size: 8.4pt; break-after: avoid; }
+  p { margin: 4px 0; }
+  ul { margin: 2px 0 6px; padding-left: 16px; }
+  li { margin: 1.5px 0; }
+  .sub { color: #5c6274; font-size: 10.5pt; margin-bottom: 14px; }
+  .meta { color: #7a8092; font-size: 8.6pt; }
+  .box { border: 1.5px solid #15171f; border-radius: 8px; padding: 10px 13px; margin: 12px 0; break-inside: avoid; }
+  .box.soft { border-color: #d5d8e0; background: #f6f7f9; }
+  .box h3 { margin-top: 0; }
+  .tag { display: inline-block; font-size: 7.6pt; font-weight: 700; padding: 1px 6px; border-radius: 10px; background: #eceef2; color: #4b5162; vertical-align: 1px; margin-left: 4px; }
+  .tag.off { background: #fde8e8; color: #a32727; }
+  .tag.ph { background: #fff1d6; color: #8a5a00; }
+  .page { break-before: page; }
+  .cols { columns: 2; column-gap: 20px; }
+  .cols > * { break-inside: avoid; }
+  table { border-collapse: collapse; width: 100%; font-size: 8.8pt; margin: 6px 0 10px; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #e3e5ea; vertical-align: top; }
+  th { font-size: 8pt; text-transform: uppercase; letter-spacing: .4px; color: #5c6274; }
+  .section { }
+  code { font-family: Menlo, monospace; font-size: 8.4pt; background: #f0f1f4; padding: 0 3px; border-radius: 3px; }
+  ol { margin: 4px 0 6px; padding-left: 18px; }
+  ol li { margin: 3px 0; }
+</style>
+</head>
+<body>
+
+<h1>Trackr</h1>
+<div class="sub">Complete feature map, written to be handed to an AI for ideas and a reorganisation plan.</div>
+<div class="meta">Scanned from the app's source code on 17 October 2026. Contains no personal amounts, accounts or secrets.</div>
+
+<div class="box">
+  <h3>Brief for the AI reading this</h3>
+  <p>This is my personal finance app, Trackr. I'm the only user, so there are no other users, subscriptions, rankings or social features, and none should be suggested. The rest of this document lists everything the app does today, page by page, plus the gaps I already know about. Please answer in four parts:</p>
+  <ol>
+    <li><strong>Deepen what exists.</strong> For each page, suggest features that build on the ones already there. Say which page each one belongs to and why it's useful.</li>
+    <li><strong>Brand-new features.</strong> Suggest things Trackr doesn't do at all yet that fit a personal wealth + budget app for one person.</li>
+    <li><strong>Reorganise the app.</strong> Propose a better navigation, with page names, what goes on each page, and what should merge, split or move. The phone has room for only 4–5 bottom tabs. Point out duplicates and features that are hard to find.</li>
+    <li><strong>Priorities.</strong> Rank your top 10 ideas by value against effort, and flag anything that would break the rules below.</li>
+  </ol>
+  <p><strong>Rules to respect:</strong></p>
+  <ul>
+    <li>Minimalist design with very few emojis. Keep the logo.</li>
+    <li>No connection to banks or brokers. Everything is typed in, imported from Excel/CSV, or priced from public market data.</li>
+    <li>Nothing ever places a real order.</li>
+    <li>The invested bank loan is "not my money" and stays out of net worth.</li>
+    <li>Every amount can be hidden with one tap.</li>
+    <li>It's a zero-build vanilla JavaScript web app hosted on GitHub Pages, installed on iPhone and Mac. Data lives in my own Supabase project.</li>
+  </ul>
+</div>
+
+<h2>1. What Trackr is</h2>
+<ul>
+  <li><strong>What it covers:</strong> a personal wealth manager and budget tracker for one person, covering:
+    <ul>
+      <li>bank accounts and savings pockets;</li>
+      <li>income and expenses;</li>
+      <li>stocks, ETFs, crypto and other assets (private equity, gold, real estate…);</li>
+      <li>a bank loan that was invested;</li>
+      <li>leveraged trades;</li>
+      <li>goals, analysis and backups.</li>
+    </ul>
+  </li>
+  <li><strong>How it runs:</strong> a web app (PWA) that installs on the iPhone home screen and opens instantly offline. Changes sync between devices through Supabase when online.</li>
+  <li><strong>Currencies:</strong> EUR by default, plus USD, GBP and CHF with live exchange rates.</li>
+  <li><strong>Size:</strong> about 14,000 lines in classic scripts, one file per area.</li>
+</ul>
+
+<h2>2. Navigation today</h2>
+<table>
+  <tr><th style="width:24%">Where</th><th>What's there</th></tr>
+  <tr><td>Desktop sidebar</td><td>9 pages: Overview · Wealth · Goals · Analysis · Budget · Investments · Accounts · Trading · Settings. Also a hide-amounts button and the sync status.</td></tr>
+  <tr><td>Phone bottom bar</td><td>Overview · Wealth · Budget · Investments · <em>More</em>. The More sheet holds Goals, Analysis, Accounts, Trading, Settings, the sync status and "Download a backup (JSON)".</td></tr>
+  <tr><td>Top bar (every page)</td><td><strong>Action required (n)</strong> · Share · PDF · Eye (hide amounts) · <strong>+ Add</strong></td></tr>
+  <tr><td>+ Add menu</td><td>Transaction · Bank account · Stock/ETF position (or gold, real estate…) · Crypto · Broker · Debt · Goal</td></tr>
+  <tr><td>Hidden pages</td><td>
+    <ul>
+      <li>One page per broker or crypto exchange, opened from Investments, Overview or Wealth.</li>
+      <li>A Manual prices screen.</li>
+      <li>A full-screen cashflow diagram.</li>
+    </ul>
+  </td></tr>
+</table>
+
+<h2>3. Pages, one by one</h2>
+
+<div class="section">
+<h3>Overview</h3>
+<div class="cols">
+<div>
+<h4>Live price bar</h4>
+<ul>
+  <li>The 8 biggest holdings scroll past with their live price and change over 1D / 1W / 1M / 1Y, in % and per unit.</li>
+  <li>Stocks and ETFs are priced from TradingView by ISIN; crypto from CoinGecko.</li>
+  <li>Refreshes every 60 s. Touch pauses the scroll; tapping an item opens the holding.</li>
+</ul>
+<h4>Monthly recap</h4>
+<ul>
+  <li>A banner shows during the first 10 days of a month and opens a recap of the previous month:
+    <ul>
+      <li>what came in, what went out, what was kept, and the savings rate;</li>
+      <li>spending compared with the month before;</li>
+      <li>the top 3 categories and the biggest expense;</li>
+      <li>budgets kept and the change in net worth;</li>
+      <li>recurring payments coming next month.</li>
+    </ul>
+  </li>
+  <li>Earlier months can be browsed from the recap.</li>
+</ul>
+<h4>Net worth card</h4>
+<ul>
+  <li>Total net worth, then what's available, in pockets and invested.</li>
+  <li>P&amp;L in € and %, and a chip per bank account.</li>
+  <li>The loan has its own card, marked "not your money".</li>
+  <li>This month's income, expenses and balance.</li>
+</ul>
+</div>
+<div>
+<h4>Wealth history chart</h4>
+<ul>
+  <li>Shows the whole net worth, or financial wealth only (investments plus broker cash).</li>
+  <li>Periods: 1W / 1M / 3M / 1Y / All. It can be filtered to one asset type.</li>
+  <li>Built from daily snapshots, with no back-filling.</li>
+</ul>
+<h4>Performance</h4>
+<ul>
+  <li>The unrealised gain on all holdings.</li>
+  <li>"My performance" is a carousel with one card per holding: value, gain in € and %, a mini chart and its rank.</li>
+  <li>Cards can be sorted by gain %, gain € or value, and filtered by type.</li>
+</ul>
+<h4>By broker and allocation cards</h4>
+<ul>
+  <li>A split bar shows each broker's or exchange's share; tapping one opens its page.</li>
+  <li>An allocation card shows the split by asset type.</li>
+</ul>
+</div>
+</div>
+</div>
+
+<div class="section">
+<h3>Wealth</h3>
+<ul>
+  <li>Net worth and its history over 1M / 3M / 1Y / All.</li>
+  <li>Two tabs: <strong>Assets</strong> and <strong>Liabilities</strong>.</li>
+  <li><strong>Allocation donut:</strong>
+    <ul>
+      <li>grouped by asset, by type or by institution;</li>
+      <li>"Compare" puts it next to a target allocation, with the target % per type editable.</li>
+    </ul>
+  </li>
+  <li><strong>Table, with one row per place money sits:</strong> a bank account (pockets included), one holding at one broker, one coin at one exchange, or a broker's cash.
+    <ul>
+      <li>Filters by type and institution, group by type, and search.</li>
+      <li>Sortable by name, type, allocation, value, +/- value and change over the period.</li>
+      <li>Each row has a "…" menu: open, edit, delete.</li>
+    </ul>
+  </li>
+  <li>A "Show the loan" switch shows the loan portfolio, clearly marked; it's hidden by default.</li>
+  <li><strong>Liabilities:</strong>
+    <ul>
+      <li>Debts entered by hand (name, kind, lender, amount owed, currency, interest rate, note) are subtracted from net worth.</li>
+      <li>The invested loan is listed but not subtracted.</li>
+    </ul>
+  </li>
+</ul>
+</div>
+
+<div class="section">
+<h3>Goals</h3>
+<div class="cols">
+<div>
+<h4>Goals tab (the showroom)</h4>
+<ul>
+  <li>A timeline across the top places each goal on the year it should be reached.</li>
+  <li>Each goal has a card with a cover photo, progress bar and amount.</li>
+  <li><strong>Goal view:</strong>
+    <ul>
+      <li>a photo gallery that crossfades every 5 s;</li>
+      <li>a description, details as "Label: value" lines, and a link;</li>
+      <li>money put in and taken out, pace, amount still to save and expected date;</li>
+      <li>"on track" or "behind" when a target date is set;</li>
+      <li>"Add money" opens a transfer to the goal's pocket, already filled in.</li>
+    </ul>
+  </li>
+  <li><strong>Where the money comes from:</strong>
+    <ul>
+      <li>a pocket, either new in an account or existing; its target syncs both ways;</li>
+      <li>or any mix of accounts, pockets, brokers, positions and coins;</li>
+      <li>or the whole net worth.</li>
+    </ul>
+  </li>
+  <li><strong>Pace:</strong> pocket goals use transfers into the pocket over the last 3 months. Other goals use the daily snapshots (30 days needed), or a monthly amount I type.</li>
+  <li>Photos: several per goal, one set as cover. They're stored on the device and synced through Supabase.</li>
+  <li>Deleting a goal keeps its pocket.</li>
+</ul>
+</div>
+<div>
+<h4>Emergency savings tab</h4>
+<ul>
+  <li>The cushion is N months of real average spending, taken from the last full months in Budget.</li>
+  <li>Some spending categories can be left out (e.g. gifts, travel).</li>
+  <li>I choose which accounts and pockets count. The tab shows how many months are covered and what's left to save.</li>
+</ul>
+</div>
+</div>
+</div>
+
+<div class="section">
+<h3>Analysis</h3>
+<ul>
+  <li><strong>Fees:</strong>
+    <ul>
+      <li>yearly fee % per position, pre-filled for known funds and editable;</li>
+      <li>a yearly account fee per broker;</li>
+      <li>the total gives € per year.</li>
+    </ul>
+  </li>
+  <li><strong>Passive income:</strong>
+    <ul>
+      <li>interest on cash that earns an APY;</li>
+      <li>crypto staking rewards;</li>
+      <li>dividends and interest logged in Budget over the last 12 months;</li>
+      <li>from these, an estimate for the next 12 months.</li>
+    </ul>
+  </li>
+  <li><strong>Diversification score /10:</strong>
+    <ul>
+      <li>how evenly money is spread across types and positions;</li>
+      <li>also across sectors and countries, using the per-fund splits filled in from each fund's ISIN.</li>
+    </ul>
+  </li>
+  <li><strong>Recurring payments scanner:</strong> recurring expenses, plus repeats Trackr detected that aren't recurring items yet.</li>
+  <li><strong>Wealth simulator:</strong> today's net worth plus a monthly amount, over 10 / 20 / 30 years, at 3 yearly returns I choose (3/5/7 % by default).</li>
+  <li><strong>Investor profile:</strong> risk profile, emergency cushion in months, debt ratio, and how long I've been tracking.</li>
+</ul>
+</div>
+
+<div class="section">
+<h3>Budget</h3>
+<p class="meta">Tabs: Transactions · Recurring · Totals · <span class="tag off">Budgets: built but switched off</span> · Categories · Import</p>
+<div class="cols">
+<div>
+<h4>Transactions</h4>
+<ul>
+  <li>Month arrows and month pills.</li>
+  <li>An expense/income fold with category donuts.</li>
+  <li>Income, expenses and balance for the month.</li>
+  <li>An "Invested this month" card: money sent to brokers and exchanges.</li>
+  <li>A spending-trend line compared with last month by the same day.</li>
+  <li>Buttons: Add, Import from Excel, Export to Excel.</li>
+  <li>The list is grouped by day, with logos or coloured avatars.</li>
+  <li>Income-vs-expenses bars over the months.</li>
+</ul>
+<h4>Adding a transaction (3 steps)</h4>
+<ol>
+  <li><strong>Amount</strong>, then a name, with suggestions from past entries.</li>
+  <li><strong>Category and sub-category.</strong> Learned automatically from past names, so "ALBERT HEIJN 1234" finds Groceries.</li>
+  <li><strong>Details:</strong>
+    <ul>
+      <li>date, and the account whose balance follows;</li>
+      <li>payment method, and fixed/recurring vs variable;</li>
+      <li>note, place, "personal impact" and logo.</li>
+    </ul>
+  </li>
+</ol>
+<ul>
+  <li><strong>Transfers</strong> go between accounts, pockets, brokers and exchanges. Both balances move.</li>
+</ul>
+<h4>Recurring</h4>
+<ul>
+  <li>Monthly series are added automatically on their day, never earlier.</li>
+  <li>The newest entry is the model for the next ones; a series can be stopped.</li>
+  <li>Calendar or list view, with fixed income and fixed expenses per month.</li>
+  <li>A real or imported entry replaces the automatic one, so nothing is counted twice.</li>
+  <li>The expense scanner finds payments repeated in 3 or more months that aren't recurring yet. One tap makes them recurring, or ignores them.</li>
+</ul>
+</div>
+<div>
+<h4>Totals</h4>
+<ul>
+  <li>Periods: this month, 3 months, this year, all.</li>
+  <li>Sub-tabs: Outflows / Inflows / Recurring, with categories that open into their sub-categories.</li>
+  <li><strong>Cashflow (Sankey) diagram:</strong>
+    <ul>
+      <li>income categories flow into spending, investing and what's left over;</li>
+      <li>tapping a destination shows its sub-categories in a donut;</li>
+      <li>filters by account and by sub-category;</li>
+      <li>CSV export and full screen.</li>
+    </ul>
+  </li>
+</ul>
+<h4>Budgets <span class="tag off">off</span></h4>
+<ul>
+  <li>A limit per category, suggested limits, alerts and a progress bar. The code is kept so it can be switched back on later.</li>
+</ul>
+<h4>Categories</h4>
+<ul>
+  <li>Income and expense categories with sub-categories: emoji icon, rename, add and remove.</li>
+  <li>An editor for payment methods.</li>
+</ul>
+<h4>Import (Excel / CSV)</h4>
+<ul>
+  <li><strong>Reading the file:</strong>
+    <ul>
+      <li>columns are matched automatically, with English, French and Dutch names;</li>
+      <li>amounts can be signed or split into debit/credit columns;</li>
+      <li>one date order is detected per file and can be switched; Excel serial dates and European numbers are handled;</li>
+      <li>every sheet with a status column is read.</li>
+    </ul>
+  </li>
+  <li><strong>Before anything is written:</strong>
+    <ul>
+      <li>a full preview;</li>
+      <li>duplicates are flagged, either exact or likely (±3 days, similar name);</li>
+      <li>automatic recurring entries are replaced by the real ones;</li>
+      <li>skipped rows and problems are shown separately.</li>
+    </ul>
+  </li>
+  <li><strong>Templates:</strong>
+    <ul>
+      <li>a template is generated with my own categories;</li>
+      <li>a reference PDF lets another AI fill in the template from bank statements.</li>
+    </ul>
+  </li>
+</ul>
+</div>
+</div>
+</div>
+
+<div class="section">
+<h3>Investments (Portfolio)</h3>
+<p class="meta">Tabs: Stocks &amp; ETFs · Crypto · Other Assets · Loan</p>
+<ul>
+  <li><strong>Header:</strong> total value, P&amp;L, amount invested and the EUR/USD rate (editable), with a Refresh-all-prices button.</li>
+  <li><strong>Portfolio breakdown:</strong> a donut by asset type, with editable colours.</li>
+  <li><strong>Accounts strip:</strong> each broker or exchange, opening its own page.</li>
+  <li><strong>Invested by type:</strong> what was paid against what it's worth now, and the difference.</li>
+</ul>
+<div class="cols">
+<div>
+<h4>Stocks &amp; ETFs · Other assets</h4>
+<ul>
+  <li>A position can be held at several brokers. Quantity and average price are always computed from those entries.</li>
+  <li><strong>Prices:</strong>
+    <ul>
+      <li>live by ISIN from TradingView, with Twelve Data as backup;</li>
+      <li>or a manual override, with an "update price" control per position;</li>
+      <li>a Manual prices screen, with CSV export/import.</li>
+    </ul>
+  </li>
+  <li>A brokers card with the cash held at each.</li>
+  <li><strong>Import Excel</strong> of positions:
+    <ul>
+      <li>the file is the full state of each broker it lists;</li>
+      <li>positions missing from it ask "sold or keep?";</li>
+      <li>brokers not in the file are never touched.</li>
+    </ul>
+  </li>
+  <li>The "Other" tab works the same way for private equity, gold, real estate and the like.</li>
+</ul>
+<h4>Crypto</h4>
+<ul>
+  <li>Total value, P&amp;L, amount invested and cash held at exchanges.</li>
+  <li>The list of exchanges.</li>
+  <li><strong>Each coin has two modes:</strong>
+    <ul>
+      <li>snapshot: a quantity per exchange;</li>
+      <li>purchase lots.</li>
+    </ul>
+  </li>
+  <li>CoinGecko ID filled in automatically, manual price, choice of display currency, and exchange cash.</li>
+  <li><strong>Staking:</strong>
+    <ul>
+      <li>several stakes per coin, each with: where it's staked, amount, APY, compounding, start date, locked until, days to unstake, rewards received and a note;</li>
+      <li>rewards are either typed in or estimated (and labelled as an estimate);</li>
+      <li>rewards per year, and whether the coins can be taken back now.</li>
+    </ul>
+  </li>
+</ul>
+</div>
+<div>
+<h4>Loan (an invested bank loan, not my money)</h4>
+<ul>
+  <li><strong>What I owe:</strong>
+    <ul>
+      <li>capital plus interest, month by month, from the loan's terms;</li>
+      <li>the terms cover total or partial deferral, capitalisation and repayment months;</li>
+      <li>real figures from bank statements are shown as dots.</li>
+    </ul>
+  </li>
+  <li><strong>The positions bought with the loan:</strong> their real value recorded each day, then a projection for each return scenario (3/5/7 %).</li>
+  <li><strong>Break-even:</strong> the date the investments pass what's owed, with many other figures.</li>
+  <li>Always kept out of net worth.</li>
+</ul>
+<h4>A broker's or exchange's own page</h4>
+<ul>
+  <li>Balance and <strong>Deposit</strong>: a transfer from a bank account, so both balances move.</li>
+  <li>Tabs: <strong>Portfolio</strong>, <strong>Plans</strong>, <strong>Buy</strong> and <strong>Transactions</strong>.
+    <ul>
+      <li>Plans are recurring buys; when one is due it can be recorded or skipped.</li>
+      <li>Buy covers Buy / Sell / Convert, with a live quote.</li>
+    </ul>
+  </li>
+  <li>Buy/Sell/Convert <strong>only records</strong> the trade. It never changes quantities or cash; I update those after the real trade.</li>
+</ul>
+</div>
+</div>
+</div>
+
+<div class="section">
+<h3>Accounts</h3>
+<ul>
+  <li>Bank total, amount available and amount in pockets, with a chip per account.</li>
+  <li><strong>Each account:</strong>
+    <ul>
+      <li>colour, logo or icon, currency, balance and description;</li>
+      <li>can be hidden from totals;</li>
+      <li>has a quick "update balance";</li>
+      <li>a "last checked" date feeds Action required.</li>
+    </ul>
+  </li>
+  <li><strong>Pockets:</strong>
+    <ul>
+      <li>expanding an account shows its pockets: name, icon, amount saved, target and a progress bar;</li>
+      <li>a pocket linked to a goal shows a "Goal: …" button.</li>
+    </ul>
+  </li>
+  <li>Balances follow Budget transactions and transfers automatically.</li>
+</ul>
+</div>
+
+<div class="section">
+<h3>Trading (leveraged positions)</h3>
+<ul>
+  <li>A separate tracker for futures, CFDs, options, forex, perpetual swaps and spot margin. It's never counted in net worth.</li>
+  <li>Open and Closed tabs, with collateral at risk and unrealised P&amp;L in EUR.</li>
+  <li><strong>Each trade records:</strong>
+    <ul>
+      <li>instrument, type, long/short and platform;</li>
+      <li>currency, size, entry price, current price and leverage;</li>
+      <li>collateral, stop loss and take profit;</li>
+      <li>open and close dates, status, close price and notes.</li>
+    </ul>
+  </li>
+  <li>P&amp;L is shown in € and as % of collateral, along with the potential gain or loss at the stop loss and take profit.</li>
+  <li>"Import Excel" adds trades from a broker export or a template, with a preview and duplicate check.</li>
+</ul>
+</div>
+
+<div class="section">
+<h3>Settings</h3>
+<table>
+  <tr><td style="width:26%">Supabase Sync</td><td>Connects this device to my Supabase project, with the setup SQL and the connection status.</td></tr>
+  <tr><td>Display</td><td>
+    <ul>
+      <li>one minimalist look and the default currency;</li>
+      <li>show cents;</li>
+      <li>a Twelve Data API key;</li>
+      <li>"Show performance indicators" (hides every gain and loss) and "Compact mode" (tighter spacing).</li>
+    </ul>
+  </td></tr>
+  <tr><td>Categories / Asset categories</td><td>The same category editor as in Budget; asset types and their colours.</td></tr>
+  <tr><td>Notifications</td><td>Negative balance, weekly summary (a card on the Overview) and goal achieved, shown in the app's bottom bar and optionally as system notifications; budget alerts while Budgets are on.</td></tr>
+  <tr><td>Logos &amp; images</td><td>The library of every logo in use plus the built-in ones, auto-matched by name, with "download all".</td></tr>
+  <tr><td>Export data</td><td>Transactions or investments, for a chosen period, with the fields I pick, as CSV or Excel.</td></tr>
+  <tr><td>Backup &amp; Restore</td><td>
+    <ul>
+      <li>JSON backup and restore;</li>
+      <li>Excel backup and restore, protected by a SHA-256 fingerprint;</li>
+      <li>daily restore points: 14 days on the device, 30 in the cloud.</li>
+    </ul>
+  </td></tr>
+  <tr><td>Asset list export · About</td><td>Ticker, price and currency of every holding; app information.</td></tr>
+</table>
+</div>
+
+<h2>4. Things that work across the whole app</h2>
+<div class="cols">
+<div>
+<h4>Data and sync</h4>
+<ul>
+  <li>All data is stored as one JSON document, kept on the device and in my Supabase project.</li>
+  <li>The app re-reads it every few seconds.</li>
+  <li>A safeguard refuses to save over newer cloud data. When versions conflict, I choose "keep mine" or "use the cloud's".</li>
+  <li>The sync status is always visible.</li>
+</ul>
+<h4>Safety net</h4>
+<ul>
+  <li>Undo for 10 s after any deletion or big change.</li>
+  <li>Daily restore points.</li>
+  <li>Works offline thanks to a service worker, with an "update available" bar.</li>
+  <li>A crash screen with Reload, Go to Dashboard and "Download a backup of my data".</li>
+</ul>
+<h4>Backups on my Mac</h4>
+<ul>
+  <li><strong>Excel backup:</strong> readable sheets plus a restore sheet, checked by its fingerprint.</li>
+  <li><strong>Automatic:</strong> runs every day at 21:00 into a local folder that stays out of iCloud and GitHub; the last 60 are kept.</li>
+  <li><strong>Encryption:</strong> optional AES-256, with the password kept in the macOS Keychain.</li>
+</ul>
+<h4>Market data</h4>
+<ul>
+  <li>Prices from TradingView (stocks and ETFs by ISIN), CoinGecko (crypto) and Twelve Data (backup).</li>
+  <li>Live exchange rates for EUR→USD, GBP and CHF.</li>
+  <li>Manual prices for anything without a quote.</li>
+</ul>
+</div>
+<div>
+<h4>Action required centre</h4>
+<ul>
+  <li>Lists the things that need a manual look:
+    <ul>
+      <li>bank balances not checked in 30 days;</li>
+      <li>prices older than 7 days, or 30 for typed prices;</li>
+      <li>stale loan values;</li>
+      <li>sync errors.</li>
+    </ul>
+  </li>
+  <li>A second tab lists every value kept by hand and when it was last checked.</li>
+</ul>
+<h4>History</h4>
+<ul>
+  <li>Daily snapshots of net worth, of each asset type and of each holding.</li>
+  <li>Per-holding history starts on 16 Oct 2026.</li>
+</ul>
+<h4>Privacy, PDF and sharing</h4>
+<ul>
+  <li>The eye hides every amount on this device, in PDFs too.</li>
+  <li>The PDF button makes a PDF of the current page, with page numbers.</li>
+  <li>Share opens the iPhone/Mac share sheet; Trackr never sends anything itself.</li>
+</ul>
+<h4>Feel</h4>
+<ul>
+  <li>Cards rise in when a page opens and big amounts count up.</li>
+  <li>Charts draw in, donuts turn, and tabs and windows fade in.</li>
+  <li>All motion is off when the device asks for reduced motion.</li>
+  <li>On the phone: a bottom bar and bottom sheets, and the screen stays still while typing.</li>
+</ul>
+</div>
+</div>
+
+<h2>5. What the data holds</h2>
+<table>
+  <tr><th style="width:26%">Thing</th><th>Main fields</th></tr>
+  <tr><td>Bank account</td><td>name, currency, balance, colour, logo, shown in totals, last checked; its pockets (name, amount, target, icon)</td></tr>
+  <tr><td>Budget transaction</td><td>type (income / expense / transfer), amount, currency, date, category, sub-category, account, payment method, fixed or variable, recurring series, note, place, impact, logo, from → to for transfers</td></tr>
+  <tr><td>Broker / exchange</td><td>name, logo, cash, cash currency, cash interest APY, yearly fee</td></tr>
+  <tr><td>Asset (stock, ETF, other)</td><td>name, ticker, ISIN, type, price and price currency, manual override, logo, fee %, 5-year return, sector and country split, entries per broker (quantity and average price)</td></tr>
+  <tr><td>Crypto coin</td><td>symbol, CoinGecko ID, mode (snapshot or lots), quantity per exchange or purchase lots, manual price, stakes</td></tr>
+  <tr><td>Investment transaction · plan</td><td>Buy / Sell / Convert records; recurring plans (amount, day, asset)</td></tr>
+  <tr><td>Loan</td><td>terms, statements, positions bought with it, daily value history, scenarios</td></tr>
+  <tr><td>Liability · goal · trade</td><td>debts; goals (target, date, sources or pocket, photos, details); leveraged trades</td></tr>
+  <tr><td>History · settings</td><td>daily snapshots (net worth, by type, per holding); target allocation, emergency fund, categories, theme…</td></tr>
+</table>
+
+<h2>6. Known gaps and observations</h2>
+<ul>
+  <li><strong>Half-built or inactive:</strong>
+    <ul>
+      <li>budget limits are switched off;</li>
+      <li>notifications only appear while the app is open (no server for push);</li>
+      <li>goal photos are not in the backups.</li>
+    </ul>
+  </li>
+  <li><strong>Double entry:</strong>
+    <ul>
+      <li>Buy/Sell/Convert and plans only record the trade, so quantities are then updated again by hand or by Excel import;</li>
+      <li>nothing ties the trade log to holdings or to realised gains.</li>
+    </ul>
+  </li>
+  <li><strong>Overlaps that could be reorganised:</strong>
+    <ul>
+      <li>Accounts vs Wealth vs the Overview chips all show balances;</li>
+      <li>three allocation views: the Investments breakdown, the Wealth donut and the Overview allocation card;</li>
+      <li>the recurring scanner appears both in Budget → Recurring and in Analysis;</li>
+      <li>the category editor appears both in Budget and in Settings.</li>
+    </ul>
+  </li>
+  <li><strong>Hard to reach on the phone:</strong> Goals, Analysis, Accounts and Trading sit under "More", although pockets (in Accounts) drive Goals.</li>
+  <li><strong>Performance:</strong>
+    <ul>
+      <li>only unrealised gains are shown;</li>
+      <li>there are no realised gains, dividends per position, time-weighted or money-weighted return, or tax view.</li>
+    </ul>
+  </li>
+  <li><strong>History is short:</strong> per-holding and per-type history only starts on 16 Oct 2026, and nothing is back-filled.</li>
+  <li><strong>Backups:</strong> goal photos aren't included.</li>
+  <li><strong>No bank or broker connection, by choice:</strong> keeping numbers fresh depends on imports and the Action required list.</li>
+</ul>
+
+<div class="box soft">
+  <h3>Please answer with</h3>
+  <ol>
+    <li>Feature ideas that build on each existing page, grouped by page.</li>
+    <li>New features, each explained in 1–2 lines.</li>
+    <li>A proposed navigation:
+      <ul>
+        <li>a page list for desktop and the 4–5 phone tabs;</li>
+        <li>what each page contains;</li>
+        <li>what merges, moves or disappears.</li>
+      </ul>
+    </li>
+    <li>A ranked top 10 by value against effort, and quick wins for the half-built items above.</li>
+  </ol>
+</div>
+
+</body>
+</html>
