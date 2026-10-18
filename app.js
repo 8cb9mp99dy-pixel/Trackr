@@ -483,11 +483,14 @@ function defaultData() {
     txRules: [],
     // Budget → Income plan (allocation.js): how a salary / freelance payment is split when it comes in.
     incomePlan: {
-      on: true, since: null, triggerCats: ['inc_salary', 'inc_freelance'],
+      on: true, since: null, version: 2, triggerCats: ['inc_salary', 'inc_freelance'],
+      // VAT first (freelance), then savings, then pockets, then money for the month. Empty "to" =
+      // guessed from the name (VAT pocket, Trade Republic, a pocket, Revolut) until you choose.
       steps: [
         { id: 'ip_vat', label: 'VAT', pct: 21, setAside: true, onlyCat: 'inc_freelance', to: '' },
-        { id: 'ip_invest', label: 'Invest', pct: 25, setAside: false, onlyCat: '', to: '' },
-        { id: 'ip_daily', label: 'Day-to-day spending', pct: 25, setAside: false, onlyCat: '', to: 'stay' },
+        { id: 'ip_invest', label: 'Savings (invest)', pct: 25, setAside: false, onlyCat: '', to: '' },
+        { id: 'ip_pockets', label: 'Pockets', pct: 25, setAside: false, onlyCat: '', to: '' },
+        { id: 'ip_daily', label: 'Monthly expenses', pct: 25, setAside: false, onlyCat: '', to: '' },
       ],
     },
     // Real daily snapshots of net worth & portfolio value, recorded automatically by save()
