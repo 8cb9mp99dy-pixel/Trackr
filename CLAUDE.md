@@ -46,6 +46,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `analysis.js` / `returns.js` / `xray.js` / `box3.js` | Analysis: fees, passive income, diversification; returns (TWR/XIRR/FIFO); X-ray rules; Dutch box 3 estimate |
 | `invest.js` / `staking.js` / `loan.js` | broker/exchange pages (Buy/Sell/Convert, plans, apply to holdings, edit/rename); staking; the invested loan |
 | `allocation.js` | Budget → Income plan: split a salary / freelance income (VAT first, then % to invest, day-to-day…) into transfers |
+| `fakedata.js` | "Real or fake numbers?" at start; fake mode = your data with made-up amounts, never saved or synced (`isFakeMode()`) |
 | `wallet.js` | Accounts → cash wallet (an account with `kind: 'cash'`): add cash, spent, withdraw, count; "Paid with: Cash" picks it |
 | `budget-import.js` / `rules.js` / `excel-import.js` / `trade-import.js` | Excel/CSV imports (transfers included); transaction rules engine; positions import; trades import |
 | `notify.js` / `insights.js` / `palette.js` / `quickadd.js` / `emergency.js` | alerts and notification centre, weekly summary and `.ics`; Overview insights; Cmd+K palette; Apple Pay quick-add link; emergency pack |

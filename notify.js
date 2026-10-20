@@ -59,7 +59,7 @@ function notifyAfterRender() {
   notifyTimer = setTimeout(() => { try { notifyCheck(); } catch (e) { console.warn('Notification check failed', e); } }, 1500);
 }
 function notifyCheck() {
-  if (!data || !data.settings) return;
+  if (!data || !data.settings || (typeof isFakeMode === 'function' && isFakeMode())) return; // no alerts about fake numbers
   let st = notifyState();
   const first = !st;
   st = st || { goals: {} };

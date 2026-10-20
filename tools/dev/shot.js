@@ -14,7 +14,7 @@ const opt = k => { const i = args.indexOf('--' + k); return i > 0 ? args[i + 1] 
   await p.context().route(/^https?:\/\/(?!127\.0\.0\.1)/, r => r.abort());
   await p.clock.setFixedTime(new Date('2026-10-18T10:00:00'));
   const fx = fs.readFileSync(path.join(__dirname, '..', '..', 'tests', 'fixtures', 'demo-data.json'), 'utf8');
-  await p.addInitScript(d => { if (!sessionStorage.getItem('fx')) { localStorage.clear(); localStorage.setItem('trackr-v1', d); sessionStorage.setItem('fx', '1'); } }, fx);
+  await p.addInitScript(d => { if (!sessionStorage.getItem('fx')) { localStorage.clear(); localStorage.setItem('trackr-v1', d); localStorage.setItem('trackr-ask-mode', '0'); sessionStorage.setItem('fx', '1'); } }, fx);
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await p.goto('http://127.0.0.1:8080/');
   await p.waitForFunction(() => typeof data !== 'undefined' && data && document.querySelector('.main .page'));

@@ -6,7 +6,7 @@ const FIXTURE = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'demo-dat
 test.use({ serviceWorkers: 'allow' });
 test('offline reload', async ({ page, context }) => {
   await context.route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
-  await page.addInitScript(d => { if (!localStorage.getItem('trackr-v1')) localStorage.setItem('trackr-v1', d); }, FIXTURE);
+  await page.addInitScript(d => { if (!localStorage.getItem('trackr-v1')) { localStorage.setItem('trackr-v1', d); localStorage.setItem('trackr-ask-mode', '0'); } }, FIXTURE);
   await page.goto('/');
   await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 15000 }).catch(async () => { await page.reload(); await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 }); });
   await page.waitForTimeout(1500);   // let the shell finish caching
