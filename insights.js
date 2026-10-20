@@ -42,6 +42,11 @@ if (typeof window !== 'undefined') {
   window.hideInsight = function (key) { const h = hidden(); h[key] = true; try { localStorage.setItem(INSIGHT_HIDE_KEY, JSON.stringify(h)); } catch (e) {} render(); };
   window.insightsList = function () {
     const out = [], today = todayYmd(), now = appToday(), min = budgetMinMonth();
+    // 0. December and January: the year in review (the year that's ending, or the one just ended).
+    if (typeof openYearReview === 'function' && (now.getMonth() === 11 || now.getMonth() === 0)) {
+      const y = now.getMonth() === 11 ? now.getFullYear() : now.getFullYear() - 1;
+      if ((data.budgetTransactions || []).some(t => String(t.date).slice(0, 4) === String(y))) out.push({ key: 'year-' + y, tone: 'info', icon: 'calendar', text: `Your ${y} in review: where the money went, your regulars, how much you kept.`, go: `openYearReview(${y})` });
+    }
     // 1. Category spikes: last full month vs the 3 before.
     const months = [];
     for (let i = 4; i >= 1; i--) {

@@ -120,7 +120,7 @@ General AC for every item:
 - [x] **Recurring transfers** (monthly money into a pocket). Done 20 Oct 2026.
 - [x] **Recurring calendar states** (paid / different amount / to confirm / missed / coming, ±7.5 %). Done 20 Oct 2026.
 - [x] **"To review" list** for guessed categories (partial name match, none found, recent "Other"). Done 20 Oct 2026.
-- [ ] **Year in review** (swipeable cards).
+- [x] **Year in review** (swipeable cards). Done 20 Oct 2026.
 - [ ] **Age of Money**, YNAB-style.
 - [x] **New-money planner** ("where should my next €250 go"). Done 20 Oct 2026 (Wealth → Compare).
 - [ ] **Read the market cache** (`get_market_cache`) before the live fetch.

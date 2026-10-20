@@ -3327,6 +3327,7 @@ function budgetTotalsTab() {
       <div class="card"><div class="eyebrow">Spent</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(exp)}</div></div>
       <div class="card"><div class="eyebrow">Left over</div><div style="font-size:20px;font-weight:700;" class="${inc - exp >= 0 ? 'positive' : 'negative'}">${fmtMoney(inc - exp)}</div></div>
     </div>
+    ${p === 'year' && typeof openYearReview === 'function' ? `<button class="btn full" style="margin-bottom:16px;" onclick="openYearReview(${ui.budgetMonth.getFullYear()})">Your ${ui.budgetMonth.getFullYear()} in review</button>` : ''}
     ${p === 'month' ? `<button class="btn full" style="margin-bottom:16px;" onclick="openRecap(${ui.budgetMonth.getFullYear()},${ui.budgetMonth.getMonth()})">${escHtml(monthLabel(ui.budgetMonth))} recap</button>` : ''}
     ${typeof cashflowCardHtml === 'function' ? cashflowCardHtml() : ''}
     ${typeof budgetTotalsTabsHtml === 'function' ? budgetTotalsTabsHtml() : budgetTotalsSectionHtml('expense') + budgetTotalsSectionHtml('income')}

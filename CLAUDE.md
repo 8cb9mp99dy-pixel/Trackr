@@ -45,6 +45,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `cashflow.js` / `forecast.js` | Totals, Sankey, recurring calendar and scanner; Budget → Forecast with what-ifs |
 | `analysis.js` / `returns.js` / `xray.js` / `box3.js` | Analysis: fees, passive income, diversification; returns (TWR/XIRR/FIFO); X-ray rules; Dutch box 3 estimate |
 | `invest.js` / `staking.js` / `loan.js` | broker/exchange pages (Buy/Sell/Convert, plans, apply to holdings, edit/rename); staking; the invested loan |
+| `yearreview.js` | Year in review: swipeable cards (Budget → Totals → Year, and an insight in Dec/Jan) |
 | `ai-export.js` | Settings → Backup & Restore → "Export for AI": one readable workbook (Read me, Summary, Monthly, Transactions, holdings…) |
 | `allocation.js` | Budget → Income plan: split a salary / freelance income (VAT first, then % to invest, day-to-day…) into transfers |
 | `planner.js` | Wealth → Compare: "where should new money go" (to the types below target, no selling) |
@@ -54,7 +55,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `ticker.js`, `report.js`, `motion.js`, `backup-excel.js`, `safety.js`, `sw.js` | live price bar, PDF/share, animations, Excel backup, undo/restore points/offline, service worker |
 | `nav.js` (branch `overnight/navigation`) | New navigation (beta) |
 
-Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js` and `insights.js` is exported with `module.exports` and unit-tested in Node.
+Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js` and `yearreview.js` is exported with `module.exports` and unit-tested in Node.
 
 ## How to test
 
