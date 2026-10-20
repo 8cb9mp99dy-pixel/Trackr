@@ -94,7 +94,6 @@ async function safetyPoints() {
   } catch (e) { return []; }
 }
 async function safetyPut(point) {
-  if (typeof isFakeMode === 'function' && isFakeMode()) return; // fake numbers are never kept
   try {
     const db = await safetyDb();
     await new Promise((resolve, reject) => {
@@ -118,7 +117,7 @@ function safetySummary(d) {
 }
 /* Once a day: a copy on this device, and one in the cloud. */
 async function safetyDailyCopy() {
-  if (!data || (typeof isFakeMode === 'function' && isFakeMode())) return;
+  if (!data) return;
   const today = todayYmd();
   const json = JSON.stringify(data);
   const pts = await safetyPoints();

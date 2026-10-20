@@ -602,7 +602,6 @@ function loadSupabaseSyncConfig() {
 function saveSupabaseSyncConfig(cfg) { localStorage.setItem(SUPABASE_SYNC_KEY, JSON.stringify(cfg)); }
 function clearSupabaseSyncConfig() { localStorage.removeItem(SUPABASE_SYNC_KEY); }
 async function supabaseRpc(fn, body) {
-  if (fakeMode && !/^get_/.test(fn)) throw new Error('Fake numbers are on: nothing is sent to the cloud.');
   const cfg = loadSupabaseSyncConfig();
   if (!cfg) return null;
   // A request that never answers (common on a phone switching between Wi-Fi and mobile data) would
@@ -779,7 +778,6 @@ function syncShouldWaitForUser() {
   return Date.now() - syncState.waitingSince < 90 * 1000;
 }
 function syncAdoptRemote(row) {
-  if (fakeMode) return;
   try { localStorage.setItem(STORAGE_KEY + '-backup', JSON.stringify(data)); } catch (e) {}
   data = row.data;
   try { migrateCryptoModel(); } catch (e) { console.error('Migration failed', e); }
@@ -843,7 +841,7 @@ async function syncOnce() {
    made while one is running just queues exactly one more. Never throws unless opts.throwErrors
    (used by Connect, which needs to show what went wrong). */
 function syncNow(opts) {
-  if (fakeMode || !loadSupabaseSyncConfig()) return Promise.resolve();
+  if (!loadSupabaseSyncConfig()) return Promise.resolve();
   if (syncRunning) { syncRunAgain = true; return syncRunning; }
   const beforeState = syncStatusState(), beforePending = syncIsPending();
   syncRunning = (async () => {
@@ -884,44 +882,6 @@ function startSyncPolling() {
   window.addEventListener('pageshow', wake);
   window.addEventListener('online', wake);
 }
-/* ---- Real or fake numbers (fakedata.js) ----
-   Each time the app opens it can ask which to use (on by default; Settings → Display). The
-   answer holds for this visit (sessionStorage), so a reload doesn't ask again. Fake numbers are
-   never saved or sent anywhere: save(), sync and supabaseRpc check fakeMode. */
-const MODE_SESSION_KEY = 'trackr-mode', MODE_ASK_KEY = 'trackr-ask-mode', FAKE_SEED_KEY = 'trackr-fake-seed';
-let fakeMode = false;
-function isFakeMode() { return fakeMode; }
-function modeAskAtStart() { try { return localStorage.getItem(MODE_ASK_KEY) !== '0'; } catch (e) { return true; } }
-function setModeAskAtStart(on) { try { localStorage.setItem(MODE_ASK_KEY, on ? '1' : '0'); } catch (e) { /* private mode: asks again */ } }
-/* Runs fn once every script has loaded (fakedata.js and the pages come after this file). */
-function whenScriptsLoaded(fn) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn, { once: true }); else fn(); }
-function startApp() {
-  let chosen = null, hasData = false;
-  try { chosen = sessionStorage.getItem(MODE_SESSION_KEY); } catch (e) { /* no session storage: ask */ }
-  try { hasData = !!localStorage.getItem(STORAGE_KEY); } catch (e) { /* nothing saved */ }
-  if (chosen === 'fake' && hasData) { whenScriptsLoaded(loadFake); return; }
-  if (chosen === 'real' || !hasData || !modeAskAtStart()) { load(); return; }
-  ui.chooseMode = true;
-  whenScriptsLoaded(() => render());
-}
-function loadFake() {
-  fakeMode = true;
-  ui.chooseMode = false;
-  let real = null;
-  try { real = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { /* none */ }
-  data = real || defaultData();
-  try { migrateCryptoModel(); } catch (e) { console.error('Migration failed', e); }
-  let seed = 0;
-  try { seed = +sessionStorage.getItem(FAKE_SEED_KEY) || 0; if (!seed) { seed = 1 + Math.floor(Math.random() * 2147483646); sessionStorage.setItem(FAKE_SEED_KEY, String(seed)); } } catch (e) { seed = 1 + Math.floor(Math.random() * 2147483646); }
-  data = fakeNumbers(data, seed);
-  applyTheme();
-  render();
-  if (eurUsdRateIsStale()) fetchEurUsdRate(true);
-  fetchCryptoPrices();
-  fetchAssetPrices();
-  startPriceRefresh();
-}
-
 /* Shows this device's own copy straight away (so the app opens instantly, even offline), then
    syncs: takes the cloud's version if the other device changed it, or sends this device's edits
    if it has any that haven't gone up yet. */
@@ -1241,8 +1201,6 @@ function snapshotsToLots(symbol, snapshots) {
    every device fetches its own, and sending them made two open devices look like they were both
    editing at once. They still travel along with your next real change. */
 async function save(opts) {
-  // Fake numbers: kept in memory only, never on this device nor in the cloud.
-  if (fakeMode) { mirrorLinkedBrokerCash(); recordHistorySnapshot(); return; }
   const auto = !!(opts && opts.auto);
   if (!auto) data.updatedAt = new Date().toISOString();
   mirrorLinkedBrokerCash();
@@ -2280,13 +2238,10 @@ if (window.visualViewport) { visualViewport.addEventListener('resize', syncVisua
 function render() {
   ui.renderDeferred = false;
   const app = document.getElementById('app');
-  // Still asking "real or fake?" (fakedata.js): nothing to draw yet.
-  if (!data) { if (ui.chooseMode && typeof renderModeChooser === 'function') renderModeChooser(); return; }
   // The live price bar keeps scrolling through redraws: the same bar (same holdings) is put back.
   const keepTicker = app && app.querySelector('.ticker');
   try {
     renderApp(app);
-    if (fakeMode && typeof fakeModeBadgeHtml === 'function') app.insertAdjacentHTML('beforeend', fakeModeBadgeHtml());
     const newTicker = keepTicker && app.querySelector('.ticker');
     if (newTicker && newTicker.dataset.sig === keepTicker.dataset.sig) newTicker.replaceWith(keepTicker);
     dimBigCents(app);
@@ -6167,7 +6122,6 @@ function settingsDisplayHtml() {
   const s = data.settings;
   return `
     <div class="stack-gap-16">
-      ${typeof fakeModeSettingsHtml === 'function' ? fakeModeSettingsHtml() : ''}
       ${fxRatesLineHtml()}
       <label class="field"><span class="label-text">Default currency</span>
         <select onchange="updateSetting('defaultCurrency', this.value)">${CURRENCIES.map(c => `<option ${s.defaultCurrency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
@@ -6428,7 +6382,7 @@ async function handleImportBackupFile(file) {
       data = previousData; // roll back in memory — localStorage was never touched, still has the old data
       throw new Error("This backup file couldn't be loaded — it may be corrupted or from an incompatible version. Nothing was changed.");
     }
-    if (!fakeMode) localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     // Goes through the normal, CAS-guarded save() — not a forced overwrite — so if Supabase Sync
     // is connected and another device has genuinely newer data there, this surfaces the same
     // conflict resolution UI as any other save, rather than blindly clobbering it just because
@@ -7189,7 +7143,6 @@ async function copySupabaseSetupCode() {
 /* This device's data becomes the one true version: used by "Keep this device's version" when
    both devices changed, and by the explicit "Replace the cloud" button. */
 async function syncForceLocal() {
-  if (fakeMode) return;
   data.updatedAt = new Date().toISOString();
   recordHistorySnapshot();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -7324,4 +7277,4 @@ window.__modalRenderers.syncStatus = function () {
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Close</button><button class="btn primary" onclick="closeModal();syncNow();">Sync now</button></div>`;
 };
 
-startApp();
+load();

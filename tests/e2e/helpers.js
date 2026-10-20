@@ -15,19 +15,17 @@ async function openApp(page, opts = {}) {
   await page.context().route(/^https?:\/\/(?!127\.0\.0\.1|localhost)/, r => r.abort());
   await page.clock.setFixedTime(new Date('2026-10-18T10:00:00'));
   const json = opts.json || FIXTURE;
-  await page.addInitScript(([key, doc, privacy, askMode]) => {
+  await page.addInitScript(([key, doc, privacy]) => {
     if (!sessionStorage.getItem('fixture-loaded')) {
       localStorage.clear();
       localStorage.setItem(key, doc);
       if (privacy) localStorage.setItem('trackr-privacy', '1');
-      if (!askMode) localStorage.setItem('trackr-ask-mode', '0'); // skip "real or fake?" at start
       sessionStorage.setItem('fixture-loaded', '1');
     }
-  }, ['trackr-v1', json, !!opts.privacy, !!opts.askMode]);
+  }, ['trackr-v1', json, !!opts.privacy]);
   if (opts.reducedMotion) await page.emulateMedia({ reducedMotion: 'reduce' });
   if (opts.colorScheme) await page.emulateMedia({ colorScheme: opts.colorScheme });
   await page.goto('/');
-  if (opts.askMode) return errors;
   await page.waitForFunction(() => typeof data !== 'undefined' && data && document.querySelector('.main .page'));
   return errors;
 }
