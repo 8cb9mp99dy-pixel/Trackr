@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
 const { openApp, goPage } = require('./helpers');
 
-for (const p of ['dashboard', 'wealth', 'budget', 'investments', 'analysis', 'settings']) {
+for (const p of ['dashboard', 'wealth', 'budget', 'investments', 'analysis', 'settings', 'accounts', 'goals']) {
   test(`axe: ${p}`, async ({ page }, info) => {
     await openApp(page, { reducedMotion: true });
     await goPage(page, p);

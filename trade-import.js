@@ -163,12 +163,12 @@ window.__modalRenderers.tradeImport = function (p) {
   const n = p.rows.filter(r => r.on).length;
   const fmtD = ymd => (ymd ? ymdToDate(ymd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
   return `
-    <div class="modal-head"><div class="modal-title">Import trades</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Import trades</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div style="font-size:12.5px;opacity:.65;margin-bottom:12px;">${escHtml(p.fileName)}${p.sheet ? ` · sheet "${escHtml(p.sheet)}"` : ''}${p.columns && p.columns.length ? ` · columns found: ${escHtml(p.columns.join(', '))}` : ''}</div>
     ${p.noHeader ? `<div class="info-box">No trade columns found. The file needs at least <strong>Instrument</strong>, <strong>Quantity</strong> and <strong>Entry price</strong> columns (or Symbol / Size / Open price). Download the template to see the format.</div>` : `
     ${!p.dateSure ? `<div class="row-flex" style="font-size:12.5px;margin-bottom:10px;gap:8px;flex-wrap:wrap;"><span style="opacity:.7;">Dates like 03/04 read as</span><div class="seg-row" style="margin:0;"><button class="seg ${p.order === 'dmy' ? 'on' : ''}" onclick="tiSetOrder('dmy')">day / month</button><button class="seg ${p.order === 'mdy' ? 'on' : ''}" onclick="tiSetOrder('mdy')">month / day</button></div></div>` : ''}
     ${p.rows.length ? `<div class="stack-gap-8" style="max-height:46vh;overflow:auto;">${p.rows.map((r, i) => { const t = r.trade; return `
-      <label style="display:flex;gap:10px;cursor:pointer;align-items:flex-start;${r.on ? '' : 'opacity:.55;'}">
+      <label style="display:flex;gap:10px;cursor:pointer;align-items:flex-start;${r.on ? '' : 'opacity:.65;'}">
         <input type="checkbox" ${r.on ? 'checked' : ''} onchange="tiToggle(${i})" style="width:18px;height:18px;margin:2px 0 0;flex:none;" aria-label="Import row ${r.line}">
         <div style="flex:1;min-width:0;">
           <div style="font-weight:600;font-size:13.5px;">${escHtml(t.instrument)} <span style="opacity:.6;font-weight:500;">· ${t.direction} · ${escHtml(t.tradeType)}${t.leverage ? ` · ${t.leverage}×` : ''}</span></div>

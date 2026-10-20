@@ -90,14 +90,14 @@ function openStakeForm(symbol, stakeId, exchange) {
 window.__modalRenderers.stake = function (p) {
   const coins = (data.cryptoAssets || []).filter(c => cryptoAssetStats(c.symbol).quantity > 0);
   const c = cryptoAssetBySymbol(p.symbol) || coins[0];
-  if (!c) return `<div class="modal-head"><div class="modal-title">Stake coins</div><button class="close-x" onclick="closeModal()">✕</button></div><div class="empty-state"><div class="title">No crypto yet</div><div class="sub">Add a coin first.</div></div>`;
+  if (!c) return `<div class="modal-head"><div class="modal-title">Stake coins</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div><div class="empty-state"><div class="title">No crypto yet</div><div class="sub">Add a coin first.</div></div>`;
   const s = p.stakeId ? stakesOf(c).find(x => x.id === p.stakeId) : null;
   const v = s || { exchange: p.exchange || (cryptoByExchange(c.symbol)[0] || {}).exchange || '', amount: '', apy: '', compounding: true, since: todayYmd(), lockedUntil: '', unbondingDays: '', rewardsReceived: '', note: '' };
   const held = cryptoAssetStats(c.symbol).quantity;
   const where = cryptoByExchange(c.symbol);
   const other = stakedQty(c.symbol) - (s ? +s.amount || 0 : 0);
   return `
-    <div class="modal-head"><div class="modal-title">${s ? 'Edit stake' : 'Stake coins'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${s ? 'Edit stake' : 'Stake coins'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div style="font-size:12.5px;opacity:.65;margin-bottom:14px;line-height:1.5;">Records a stake you made at your exchange — nothing is staked for real from here. The coins stay counted in your wealth.</div>
     <div class="form-grid">
       <label class="field"><span class="label-text">Coin</span>

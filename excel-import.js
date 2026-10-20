@@ -484,7 +484,7 @@ function piRowHtml(r, gi, ri) {
     <tr class="${r.included ? '' : 'bi-off'}">
       <td><input type="checkbox" ${r.included ? 'checked' : ''} onchange="piToggleRow(${gi},${ri},this.checked)"></td>
       <td>${status}</td>
-      <td>${assetCell}<div style="font-size:11px;opacity:.55;">${escHtml(r.type)}${r.isin ? ' · ' + escHtml(r.isin) : ''}</div>${r.notes.map(n => `<div style="font-size:11px;color:var(--manual-accent,#E8963C);">${escHtml(n)}</div>`).join('')}</td>
+      <td>${assetCell}<div style="font-size:11px;opacity:.65;">${escHtml(r.type)}${r.isin ? ' · ' + escHtml(r.isin) : ''}</div>${r.notes.map(n => `<div style="font-size:11px;color:var(--manual-accent,#E8963C);">${escHtml(n)}</div>`).join('')}</td>
       <td class="num">${fmtQty(r.quantity)}${r.old ? was(r.old.quantity, fmtQty) : ''}</td>
       <td class="num">${fmtMoney(r.avgPrice, r.currency)}${r.old ? was(r.old.price, v => fmtMoney(v, r.old.currency)) : ''}</td>
       <td class="num">${r.price != null ? fmtMoney(r.price, r.currency) : '<span style="opacity:.5;">—</span>'}</td>
@@ -505,8 +505,8 @@ function piGroupHtml(g, gi) {
           <tbody>${g.rows.map((r, ri) => piRowHtml(r, gi, ri)).join('') || '<tr><td colspan="7" style="opacity:.5;">No positions in the file for this broker.</td></tr>'}</tbody>
         </table>
       </div>
-      ${g.cash ? `<div class="card-nested" style="margin-top:12px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">Cash not invested</div><div style="font-size:13px;"><span style="opacity:.5;">${fmtMoney(cashNow, g.brokerId ? brokerCashCurrency(brokerById(g.brokerId)) : g.cash.currency)} →</span> <strong>${fmtMoney(g.cash.amount, g.cash.currency)}</strong></div></div>${g.brokerId && linkedAccountForBroker(brokerById(g.brokerId)) ? `<div style="font-size:11px;opacity:.55;margin-top:4px;">Also updates your ${escHtml(linkedAccountForBroker(brokerById(g.brokerId)).name)} bank account balance.</div>` : ''}</div>`
-        : `<div style="font-size:12px;opacity:.55;margin-top:10px;">No Cash row for this broker — its cash stays as it is.</div>`}
+      ${g.cash ? `<div class="card-nested" style="margin-top:12px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">Cash not invested</div><div style="font-size:13px;"><span style="opacity:.5;">${fmtMoney(cashNow, g.brokerId ? brokerCashCurrency(brokerById(g.brokerId)) : g.cash.currency)} →</span> <strong>${fmtMoney(g.cash.amount, g.cash.currency)}</strong></div></div>${g.brokerId && linkedAccountForBroker(brokerById(g.brokerId)) ? `<div style="font-size:11px;opacity:.65;margin-top:4px;">Also updates your ${escHtml(linkedAccountForBroker(brokerById(g.brokerId)).name)} bank account balance.</div>` : ''}</div>`
+        : `<div style="font-size:12px;opacity:.65;margin-top:10px;">No Cash row for this broker — its cash stays as it is.</div>`}
       ${g.missing.length ? `
         <div class="card-nested" style="margin-top:12px;border:1px solid var(--manual-accent,#E8963C);">
           <div style="font-weight:700;font-size:13px;margin-bottom:4px;">Not in the file — was it sold?</div>
@@ -514,7 +514,7 @@ function piGroupHtml(g, gi) {
           <div class="stack-gap-8">
             ${g.missing.map(m => `
               <div class="row-flex" style="gap:10px;flex-wrap:wrap;">
-                <div style="font-size:13px;min-width:0;">${escHtml(m.label)} <span style="opacity:.55;font-size:12px;">· ${fmtQty(m.quantity)} · ${fmtMoney(m.value, m.currency)}</span></div>
+                <div style="font-size:13px;min-width:0;">${escHtml(m.label)} <span style="opacity:.65;font-size:12px;">· ${fmtQty(m.quantity)} · ${fmtMoney(m.value, m.currency)}</span></div>
                 <div style="display:flex;gap:6px;">
                   <button class="btn small ${m.choice === 'keep' ? 'primary' : ''}" onclick="piSetMissing(${gi},'${m.key}','keep')">Not sold — keep</button>
                   <button class="btn small ${m.choice === 'sold' ? 'primary' : ''}" style="${m.choice === 'sold' ? 'background:var(--negative);border-color:var(--negative);' : ''}" onclick="piSetMissing(${gi},'${m.key}','sold')">Sold — remove</button>

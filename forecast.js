@@ -158,7 +158,7 @@ if (typeof window !== 'undefined') {
   };
   window.__modalRenderers.scenario = function (p) {
     return `
-      <div class="modal-head"><div class="modal-title">${p.id ? 'Edit' : 'New'} what-if</div><button class="close-x" onclick="closeModal()">✕</button></div>
+      <div class="modal-head"><div class="modal-title">${p.id ? 'Edit' : 'New'} what-if</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
       <div class="stack-gap-12">
         <label class="field"><span class="label-text">Name</span><input id="sc-name" value="${escHtml(p.name)}" placeholder="e.g. New phone, Summer job"></label>
         <div class="seg-row" style="margin:0;"><button type="button" class="seg ${p.direction === 'out' ? 'on' : ''}" onclick="ui.modal.payload.direction='out';ui.modal.payload.name=document.getElementById('sc-name').value;ui.modal.payload.amount=document.getElementById('sc-amount').value;ui.modal.payload.date=document.getElementById('sc-date').value;render()">Money out</button><button type="button" class="seg ${p.direction === 'in' ? 'on' : ''}" onclick="ui.modal.payload.direction='in';ui.modal.payload.name=document.getElementById('sc-name').value;ui.modal.payload.amount=document.getElementById('sc-amount').value;ui.modal.payload.date=document.getElementById('sc-date').value;render()">Money in</button></div>
@@ -167,7 +167,7 @@ if (typeof window !== 'undefined') {
           <label class="field"><span class="label-text">${p.repeat === 'monthly' ? 'From' : 'On'}</span><input id="sc-date" type="date" value="${escHtml(p.date)}"></label>
         </div>
         <label class="field"><span class="label-text">How often</span><select id="sc-repeat"><option value="once" ${p.repeat !== 'monthly' ? 'selected' : ''}>Once</option><option value="monthly" ${p.repeat === 'monthly' ? 'selected' : ''}>Every month</option></select></label>
-        <label class="field"><span class="label-text">Account <span style="opacity:.55;">(optional)</span></span><select id="sc-acc"><option value="">Any</option>${data.accounts.map(a => `<option value="${a.id}" ${p.accountId === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}</select></label>
+        <label class="field"><span class="label-text">Account <span style="opacity:.65;">(optional)</span></span><select id="sc-acc"><option value="">Any</option>${data.accounts.map(a => `<option value="${a.id}" ${p.accountId === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}</select></label>
         <div id="sc-err" style="display:none;color:var(--negative);font-size:12.5px;"></div>
       </div>
       <div class="modal-actions">

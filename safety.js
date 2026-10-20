@@ -186,12 +186,12 @@ function restorePointsHtml() {
       <div style="font-weight:700;margin-bottom:4px;">Restore points</div>
       <div style="font-size:12.5px;opacity:.7;line-height:1.5;margin-bottom:12px;">A copy of everything is kept automatically every day. If something goes wrong, go back to any of these days. After a restore you can still undo it.</div>
       <div class="tx-label" style="margin-bottom:6px;">On this device (last ${SAFETY_KEEP_LOCAL} days)</div>
-      ${local.length ? local.map(p => line(p.label || fmtSafetyDay(p.day), sumTxt(p.summary) + ` · saved ${new Date(p.savedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`, `restoreLocalPoint('${p.key}')`)).join('') : `<div style="font-size:12.5px;opacity:.55;">${ui.restoreLoaded ? 'The first copy is made a few seconds after opening the app.' : 'Loading…'}</div>`}
+      ${local.length ? local.map(p => line(p.label || fmtSafetyDay(p.day), sumTxt(p.summary) + ` · saved ${new Date(p.savedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`, `restoreLocalPoint('${p.key}')`)).join('') : `<div style="font-size:12.5px;opacity:.65;">${ui.restoreLoaded ? 'The first copy is made a few seconds after opening the app.' : 'Loading…'}</div>`}
       ${loadSupabaseSyncConfig() ? `
         <div class="tx-label" style="margin:14px 0 6px;">In the cloud (last 30 days, for all your devices)</div>
         ${ui.cloudCopyStatus === 'missing' ? `<div style="font-size:12.5px;opacity:.75;line-height:1.5;">One-time step to turn this on: Supabase → SQL Editor → paste the setup script (Settings → Supabase Sync → Show setup SQL, or Investments → Manual Prices) → Run. Your data isn't touched.</div>`
           : cloud.length ? cloud.map(c => line(fmtSafetyDay(c.day), `${c.accounts} accounts · ${c.transactions} transactions`, `restoreCloudCopy('${c.day}')`)).join('')
-          : `<div style="font-size:12.5px;opacity:.55;">${ui.restoreLoaded ? 'The first cloud copy is made today.' : 'Loading…'}</div>`}` : ''}
+          : `<div style="font-size:12.5px;opacity:.65;">${ui.restoreLoaded ? 'The first cloud copy is made today.' : 'Loading…'}</div>`}` : ''}
     </div>`;
 }
 if (typeof SETTINGS_BODY !== 'undefined' && typeof SETTINGS_BODY.backuprestore === 'function') {

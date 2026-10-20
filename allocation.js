@@ -124,7 +124,7 @@ if (typeof window !== 'undefined') {
       : p.lines.filter(l => l.on).map(l => `
         <div class="split-row"><span class="split-row-what">${escHtml(l.label)} <span class="dim">${l.pct}%</span></span><span class="split-row-to ${l.to ? '' : 'negative'}">${escHtml(placeText(l.to, p.from))}</span><b>${fmtMoney(l.amount, t.currency)}</b></div>`).join('');
     return `
-      <div class="modal-head"><div class="modal-title">Split this income</div><button class="close-x" onclick="closeModal()">✕</button></div>
+      <div class="modal-head"><div class="modal-title">Split this income</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
       <div class="split-head"><div style="font-weight:700;">${escHtml(t.comment || (cat ? cat.name : 'Income'))} · ${fmtMoney(t.amount, t.currency)}</div>
         <div style="font-size:12.5px;opacity:.6;">${escHtml(cat ? cat.name : '')} · ${escHtml(shortDay(t.date))} · in ${escHtml(src ? src.name : '?')}</div></div>
       ${p.edit ? `<label class="field"><span class="label-text">It landed in</span>
@@ -215,7 +215,7 @@ if (typeof window !== 'undefined') {
   };
   window.__modalRenderers.incomePlanEdit = function (d) {
     const cats = data.categories.income || [];
-    const head = `<div class="modal-head"><div class="modal-title">Income plan</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    const head = `<div class="modal-head"><div class="modal-title">Income plan</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
       <div class="tx-steps">${[['Which payments', 1], ['Your split', 2]].map(([l, n]) => `<button type="button" class="tx-step ${d.step === n ? 'on' : ''}" onclick="ui.modal.payload.step=${n};render();"><span>${n}</span>${l}</button>`).join('')}</div>`;
     if (d.step === 1) {
       return `${head}

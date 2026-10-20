@@ -932,10 +932,10 @@ function biPreviewHtml(st) {
     <tr class="${r.included ? '' : tr && !refs.ok && !r.duplicate ? 'bi-need' : 'bi-off'}" id="bi-row-${i}">
       <td><input type="checkbox" ${r.included ? 'checked' : ''} ${tr && !refs.ok ? 'disabled title="Choose From and To first"' : ''} onchange="biToggleRow(${i}, this.checked)" aria-label="Import row ${r.rowNum}"></td>
       <td style="white-space:nowrap;">${escHtml(biFmt(r.date))}</td>
-      <td><div style="font-weight:600;">${escHtml(r.name || '—')}</div>${r.description ? `<div style="font-size:11.5px;opacity:.55;">${escHtml(r.description)}</div>` : ''}${multi ? `<div style="font-size:11px;opacity:.45;">${escHtml(r.sheetName)}, row ${r.rowNum}</div>` : ''}</td>
+      <td><div style="font-weight:600;">${escHtml(r.name || '—')}</div>${r.description ? `<div style="font-size:11.5px;opacity:.65;">${escHtml(r.description)}</div>` : ''}${multi ? `<div style="font-size:11px;opacity:.45;">${escHtml(r.sheetName)}, row ${r.rowNum}</div>` : ''}</td>
       ${tr ? `<td colspan="2"><div class="bi-transfer-head">${badge('Transfer', '#3B5BDB')}<button class="link-btn" style="font-size:11.5px;" onclick="biUntransfer(${i})">Not a transfer</button></div>
           <div class="bi-transfer"><span class="bi-side">From</span>${placeSelect(i, 'from', refs.from)}<span class="bi-side">To</span>${placeSelect(i, 'to', refs.to)}</div></td>`
-      : `<td>${escHtml(r.categoryName)}${r.subName ? ` <span style="opacity:.55;">› ${escHtml(r.subName)}</span>` : ''}
+      : `<td>${escHtml(r.categoryName)}${r.subName ? ` <span style="opacity:.65;">› ${escHtml(r.subName)}</span>` : ''}
         ${r.newCategory ? badge('new category', '#4FA6D9') : r.newSub ? badge('new sub-category', '#4FA6D9') : ''}</td>
       <td style="white-space:nowrap;">${r.accountName ? escHtml(r.accountName) : fallbackAcc ? `<span style="opacity:.6;">${escHtml(fallbackAcc.name)}</span>` : '—'}</td>`}
       <td class="num ${tr ? '' : r.type === 'income' ? 'positive' : 'negative'}" style="white-space:nowrap;font-weight:700;">${tr ? '⇄ ' : r.type === 'income' ? '+' : '−'}${fmtMoney(r.amount, r.currency)}</td>

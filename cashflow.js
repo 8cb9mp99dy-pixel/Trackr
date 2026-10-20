@@ -159,7 +159,7 @@ function cashflowCardHtml() {
 window.__modalRenderers.cashflowFull = function () {
   const M = cashflowModel();
   return `
-    <div class="modal-head"><div class="modal-title">Cashflow · ${escHtml(budgetTotalsRange().label)}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Cashflow · ${escHtml(budgetTotalsRange().label)}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     ${cashflowControlsHtml().replace(/<button class="tb-btn"[^>]*title="Full screen"[^>]*>[\s\S]*?<\/button>/, '')}
     <div style="margin-top:12px;">${sankeyHtml(M, { h: Math.max(420, Math.max(M.L.length, M.R.length) * 54) }) || '<div class="dim">Nothing in this period.</div>'}</div>
     ${cashflowDonutHtml(M)}`;
@@ -243,7 +243,7 @@ function recurringCalendarHtml() {
       <div class="cal-head">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<span>${d}</span>`).join('')}</div>
       <div class="cal-grid">${cells.join('')}</div>
     </div>
-    <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Solid: your recurring items (green ring: paid, red: missed, faded: coming). Dashed: detected in your history, not recurring yet.</div>`;
+    <div style="font-size:11.5px;opacity:.65;margin-top:8px;">Solid: your recurring items (green ring: paid, red: missed, faded: coming). Dashed: detected in your history, not recurring yet.</div>`;
 }
 /* Payments seen in at least 3 different months (last 6) at a similar amount (within 25 % of the
    usual one), under the same name, that aren't recurring items yet and that you didn't dismiss. */

@@ -42,8 +42,8 @@ function overviewHistoryCardHtml() {
       </div>
       ${scope === 'all' ? '<div style="font-weight:700;">Net worth over time</div>' : `<div class="big-number">${fmtMoney(now)}</div>`}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;margin:2px 0 12px;">
-        ${change != null ? `<span class="${change >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${change >= 0 ? '+' : '−'}${fmtMoney(Math.abs(change))}${first.value ? ` (${fmtPct(change / first.value * 100)})` : ''}</span><span style="opacity:.55;">since ${escHtml(first.label)}</span>`
-          : `<span style="opacity:.55;">${scope === 'financial' ? 'Investments + cash at brokers and exchanges' : 'Bank + investments − debts you added'}</span>`}
+        ${change != null ? `<span class="${change >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${change >= 0 ? '+' : '−'}${fmtMoney(Math.abs(change))}${first.value ? ` (${fmtPct(change / first.value * 100)})` : ''}</span><span style="opacity:.65;">since ${escHtml(first.label)}</span>`
+          : `<span style="opacity:.65;">${scope === 'financial' ? 'Investments + cash at brokers and exchanges' : 'Bank + investments − debts you added'}</span>`}
       </div>
       <div class="seg-row">${OVERVIEW_PERIODS.map(p => `<button class="seg ${period === p ? 'on' : ''}" onclick="setPfPeriod('${p}')">${p}</button>`).join('')}</div>
       ${trendChartOrPlaceholder(pts, 160, {}, cat ? `Values per type are saved from 16 Oct 2026 — the line appears from the second day.` : 'Saved once a day — the chart appears from the second day.')}
@@ -105,7 +105,7 @@ function overviewPerformanceCardHtml() {
       <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 0 2px;">
         <span style="font-size:26px;font-weight:800;letter-spacing:-.02em;" class="${gain >= 0 ? 'positive' : 'negative'}">${gain >= 0 ? '+' : '−'}${fmtMoney(Math.abs(gain))}</span>
         ${cost ? `<span class="pct-pill ${gain >= 0 ? 'up' : 'down'}" style="font-size:12.5px;">${fmtPct(Math.abs(gain / cost * 100), false)}</span>` : ''}
-        <span style="font-size:12.5px;opacity:.55;">unrealised gain · paid ${fmtMoney(cost)}</span>
+        <span style="font-size:12.5px;opacity:.65;">unrealised gain · paid ${fmtMoney(cost)}</span>
       </div>
       ${ui.perfInfo ? `<div class="info-box">What your holdings are worth now minus what you paid for them (your average purchase price × the quantity you still hold). Gains you already took by selling aren't in it, and neither is uninvested cash. It only becomes real money when you sell.</div>` : ''}
 

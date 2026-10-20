@@ -244,7 +244,7 @@ function weekSummaryBannerHtml() {
   if (!w.count) return '';
   const st = notifyState() || {};
   if (st.weekSeen === w.key) return '';
-  return `<div class="card recap-banner" onclick="openWeekSummary()"><div style="flex:1;"><div style="font-weight:700;">Your week · ${escHtml(weekLabel(w))}</div><div style="font-size:12.5px;opacity:.65;">${fmtMoney(w.expenses)} out · ${fmtMoney(w.income)} in · ${w.count} transaction${w.count === 1 ? '' : 's'}</div></div><button class="close-x" title="Dismiss" onclick="event.stopPropagation();dismissWeekSummary()">✕</button></div>`;
+  return `<div class="card recap-banner" onclick="openWeekSummary()"><div style="flex:1;"><div style="font-weight:700;">Your week · ${escHtml(weekLabel(w))}</div><div style="font-size:12.5px;opacity:.65;">${fmtMoney(w.expenses)} out · ${fmtMoney(w.income)} in · ${w.count} transaction${w.count === 1 ? '' : 's'}</div></div><button class="close-x" aria-label="Close" title="Dismiss" onclick="event.stopPropagation();dismissWeekSummary()">✕</button></div>`;
 }
 function markWeekSeen(key) { const st = notifyState() || { goals: {} }; st.weekSeen = key; notifySaveState(st); }
 function dismissWeekSummary() { markWeekSeen(weekSummaryData(lastWeekStart()).key); render(); }
@@ -263,7 +263,7 @@ window.__modalRenderers.weekSummary = function (p) {
   const kept = w.income - w.expenses;
   const upTotal = w.upcoming.reduce((s, u) => s + (u.x.model.type === 'expense' ? toEUR(u.x.model.amount, u.x.model.currency) : 0), 0);
   return `
-    <div class="modal-head"><div class="modal-title">Week of ${escHtml(weekLabel(w))}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Week of ${escHtml(weekLabel(w))}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     ${!w.count ? '<div style="opacity:.6;">Nothing logged that week.</div>' : `
     <div class="recap-stats">
       <div><div class="eyebrow">Received</div><div class="recap-num positive">${fmtMoney(w.income)}</div></div>
@@ -296,15 +296,15 @@ function settingsNotificationsHtml() {
   let sys;
   if (!systemNotifySupported()) sys = `<div style="font-size:12px;opacity:.6;">This browser can't show system notifications. On iPhone, add Trackr to the Home Screen first (Share → Add to Home Screen) and open it from there.</div>`;
   else if (Notification.permission === 'denied') sys = `<div style="font-size:12px;opacity:.6;">Blocked for Trackr on this device. To allow them, change it in the device's settings for this app or site, then come back.</div>`;
-  else if (systemNotifyActive()) sys = `<div class="row-flex"><div><div style="font-weight:600;font-size:13.5px;">Also as system notifications</div><div style="font-size:12px;opacity:.55;">On this device. With amounts hidden, they don't show amounts.</div></div><div class="toggle on" onclick="disableSystemNotify()"></div></div>`;
-  else sys = `<div class="row-flex"><div><div style="font-weight:600;font-size:13.5px;">Also as system notifications</div><div style="font-size:12px;opacity:.55;">On this device, in the notification centre.</div></div><button class="btn small" onclick="enableSystemNotify()">Allow</button></div>`;
+  else if (systemNotifyActive()) sys = `<div class="row-flex"><div><div style="font-weight:600;font-size:13.5px;">Also as system notifications</div><div style="font-size:12px;opacity:.65;">On this device. With amounts hidden, they don't show amounts.</div></div><div class="toggle on" onclick="disableSystemNotify()"></div></div>`;
+  else sys = `<div class="row-flex"><div><div style="font-weight:600;font-size:13.5px;">Also as system notifications</div><div style="font-size:12px;opacity:.65;">On this device, in the notification centre.</div></div><button class="btn small" onclick="enableSystemNotify()">Allow</button></div>`;
   return `<div class="stack-gap-16">${items.map(it => `
     <div class="row-flex">
-      <div><div style="font-weight:600;font-size:13.5px;">${it.title}</div><div style="font-size:12px;opacity:.55;">${it.desc}</div></div>
+      <div><div style="font-weight:600;font-size:13.5px;">${it.title}</div><div style="font-size:12px;opacity:.65;">${it.desc}</div></div>
       <div class="toggle ${data.settings.notifications[it.key] ? 'on' : ''}" onclick="toggleNotification('${it.key}')"></div>
     </div>`).join('')}
     <div style="border-top:1px solid var(--dark-border);padding-top:14px;">${sys}</div>
-    <div class="row-flex"><div><div style="font-weight:600;font-size:13.5px;">Calendar reminders</div><div style="font-size:12px;opacity:.55;">Your calendar reminds you even when Trackr is closed: balances on the 1st, the 1 January snapshot, and the day before each recurring payment. Names only, no amounts.</div></div><button class="btn small" onclick="downloadRemindersIcs()">${ic('calendar', 14)} Add</button></div>
-    <div style="font-size:12px;opacity:.55;line-height:1.5;">Trackr has no server, so it can't wake your phone: it checks whenever it's open — when you open it, add something, or new data arrives from your other device. Alerts appear in a bar at the bottom of the screen.</div>
+    <div class="row-flex"><div><div style="font-weight:600;font-size:13.5px;">Calendar reminders</div><div style="font-size:12px;opacity:.65;">Your calendar reminds you even when Trackr is closed: balances on the 1st, the 1 January snapshot, and the day before each recurring payment. Names only, no amounts.</div></div><button class="btn small" onclick="downloadRemindersIcs()">${ic('calendar', 14)} Add</button></div>
+    <div style="font-size:12px;opacity:.65;line-height:1.5;">Trackr has no server, so it can't wake your phone: it checks whenever it's open — when you open it, add something, or new data arrives from your other device. Alerts appear in a bar at the bottom of the screen.</div>
   </div>`;
 }

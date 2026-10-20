@@ -152,7 +152,7 @@ function renderWealth() {
         <div class="eyebrow">Net worth</div>
         <div class="big-number">${fmtMoney(netWorth)}</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 12px;font-size:13px;">
-          ${change != null && pts.length >= 2 ? `<span class="${change >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${change >= 0 ? '+' : '−'}${fmtMoney(Math.abs(change))}${first.value ? ` (${fmtPct(change / first.value * 100)})` : ''}</span><span style="opacity:.55;">since ${escHtml(first.label)}</span>` : '<span style="opacity:.55;">Assets minus the debts you added</span>'}
+          ${change != null && pts.length >= 2 ? `<span class="${change >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${change >= 0 ? '+' : '−'}${fmtMoney(Math.abs(change))}${first.value ? ` (${fmtPct(change / first.value * 100)})` : ''}</span><span style="opacity:.65;">since ${escHtml(first.label)}</span>` : '<span style="opacity:.65;">Assets minus the debts you added</span>'}
         </div>
         <div class="seg-row">${WEALTH_PERIODS.map(([k, l]) => `<button class="seg ${period === k ? 'on' : ''}" onclick="setWealthPeriod('${k}')">${l}</button>`).join('')}</div>
         ${trendChartOrPlaceholder(pts, 150, {}, 'Your net worth is saved once a day — the chart appears from the second day.')}
@@ -306,7 +306,7 @@ function wealthTableHtml(rows, tab, period) {
         <label class="wt-search">${ic('search', 15)}<input id="wealth-search" placeholder="Search" value="${escHtml(ui.wealthSearch || '')}" oninput="setWealthSearch(this.value)"></label>
       </div>
     </div>
-    ${tab === 'assets' && typeof loanList === 'function' && loanList().some(L => loanPositions(L).length) ? `<label class="switch-row" style="margin:-4px 0 10px;"><button class="toggle ${ui.wealthShowLoan ? 'on' : ''}" onclick="ui.wealthShowLoan=!ui.wealthShowLoan;render()" aria-label="Show the loan portfolio"></button><span>Show the loan portfolio <span style="opacity:.55;">(not your money, never in the totals)</span></span></label>` : ''}
+    ${tab === 'assets' && typeof loanList === 'function' && loanList().some(L => loanPositions(L).length) ? `<label class="switch-row" style="margin:-4px 0 10px;"><button class="toggle ${ui.wealthShowLoan ? 'on' : ''}" onclick="ui.wealthShowLoan=!ui.wealthShowLoan;render()" aria-label="Show the loan portfolio"></button><span>Show the loan portfolio <span style="opacity:.65;">(not your money, never in the totals)</span></span></label>` : ''}
     <div class="wt">
       <div class="wt-head">
         ${th('name', 'Name', 'c-name')}${th('type', 'Type', 'c-type')}${th('alloc', 'Allocation', 'c-alloc')}${th('value', 'Value', 'c-val')}${th('pl', '+/- value', 'c-pl')}${th('var', `Change ${periodLbl}`, 'c-var')}<span class="c-menu"></span>
@@ -322,7 +322,7 @@ function wealthTableHtml(rows, tab, period) {
       ${grouped.map(r => wealthRowHtml(r, total, base, tab)).join('') || `<div class="empty-state" style="padding:30px 10px;"><div class="title">${rows.length ? 'Nothing matches' : 'No data yet'}</div><div class="sub">${rows.length ? 'Change the filters or the search.' : tab === 'liabilities' ? 'Add a debt (credit card, another loan…) if you have one.' : 'Add a bank account or a position.'}</div>${rows.length ? '' : `<button class="btn primary" style="margin-top:12px;" onclick="${tab === 'liabilities' ? 'openLiabilityForm()' : 'openAddMenu()'}">${ic('plus', 15)} Add</button>`}</div>`}
     </div>
     ${tab === 'liabilities' && rows.length ? `<button class="btn" style="margin-top:12px;" onclick="openLiabilityForm()">${ic('plus', 15)} Add a debt</button>` : ''}
-    ${base && base.date !== todayYmd() ? '' : `<div style="font-size:12px;opacity:.55;margin-top:10px;">"Change" needs values from an earlier day: each line's value is saved once a day, so it fills in from tomorrow.</div>`}`;
+    ${base && base.date !== todayYmd() ? '' : `<div style="font-size:12px;opacity:.65;margin-top:10px;">"Change" needs values from an earlier day: each line's value is saved once a day, so it fills in from tomorrow.</div>`}`;
 }
 function plCellHtml(eur, cost) {
   const pct = cost ? eur / cost * 100 : null;
@@ -392,7 +392,7 @@ window.__modalRenderers.liability = function (p) {
   const l = p.id ? (data.liabilities || []).find(x => x.id === p.id) : null;
   const v = l || { name: '', institution: '', kind: 'Credit card', amount: '', currency: 'EUR', rate: '', note: '' };
   return `
-    <div class="modal-head"><div class="modal-title">${l ? 'Edit debt' : 'Add a debt'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${l ? 'Edit debt' : 'Add a debt'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div style="font-size:12.5px;opacity:.65;margin-bottom:14px;">What you still owe today. It's taken off your net worth. (Your bank loan is already listed from the Loan page.)</div>
     <div class="form-grid">
       <label class="field span-2"><span class="label-text">Name</span><input id="lb-name" value="${escHtml(v.name)}" placeholder="e.g. Revolut credit card"></label>

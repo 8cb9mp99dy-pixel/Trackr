@@ -131,7 +131,7 @@ if (typeof window !== 'undefined') {
     const changeOf = tx => { const ch = ruleChanges(p, tx.type); return (ch.categoryId && (ch.categoryId !== tx.categoryId || (ch.subCategoryId || '') !== (tx.subCategoryId || ''))) || (ch.comment && ch.comment !== tx.comment); };
     const changing = matches.filter(changeOf);
     return `
-      <div class="modal-head"><div class="modal-title">${p.id ? 'Edit rule' : 'New rule'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+      <div class="modal-head"><div class="modal-title">${p.id ? 'Edit rule' : 'New rule'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
       <div class="stack-gap-12">
         <div class="tx-label">If</div>
         <div class="form-grid">
@@ -140,18 +140,18 @@ if (typeof window !== 'undefined') {
         </div>
         <div class="form-grid">
           <label class="field"><span class="label-text">Type</span><select id="rf-type" onchange="ruleFormRedraw()"><option value="" ${!w.type ? 'selected' : ''}>Income or spending</option><option value="expense" ${w.type === 'expense' ? 'selected' : ''}>Spending</option><option value="income" ${w.type === 'income' ? 'selected' : ''}>Income</option></select></label>
-          <label class="field"><span class="label-text">Account <span style="opacity:.55;">(optional)</span></span><select id="rf-acc" onchange="ruleFormRedraw()"><option value="">Any</option>${data.accounts.map(a => `<option value="${a.id}" ${w.accountId === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}</select></label>
+          <label class="field"><span class="label-text">Account <span style="opacity:.65;">(optional)</span></span><select id="rf-acc" onchange="ruleFormRedraw()"><option value="">Any</option>${data.accounts.map(a => `<option value="${a.id}" ${w.accountId === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}</select></label>
         </div>
         <div class="form-grid">
-          <label class="field"><span class="label-text">Amount from <span style="opacity:.55;">(optional)</span></span><input id="rf-min" type="number" step="0.01" min="0" inputmode="decimal" value="${escHtml(String(w.min == null ? '' : w.min))}" onchange="ruleFormRedraw()"></label>
+          <label class="field"><span class="label-text">Amount from <span style="opacity:.65;">(optional)</span></span><input id="rf-min" type="number" step="0.01" min="0" inputmode="decimal" value="${escHtml(String(w.min == null ? '' : w.min))}" onchange="ruleFormRedraw()"></label>
           <label class="field"><span class="label-text">to</span><input id="rf-max" type="number" step="0.01" min="0" inputmode="decimal" value="${escHtml(String(w.max == null ? '' : w.max))}" onchange="ruleFormRedraw()"></label>
         </div>
         <div class="tx-label">Then</div>
         <div class="form-grid">
-          <label class="field"><span class="label-text">Category${w.type ? '' : ' <span style="opacity:.55;">(pick a type first for income)</span>'}</span><select id="rf-cat" onchange="ruleFormRedraw()"><option value="">Leave as is</option>${cats.map(c => `<option value="${c.id}" ${t.categoryId === c.id ? 'selected' : ''}>${escHtml(c.name)}</option>`).join('')}</select></label>
+          <label class="field"><span class="label-text">Category${w.type ? '' : ' <span style="opacity:.65;">(pick a type first for income)</span>'}</span><select id="rf-cat" onchange="ruleFormRedraw()"><option value="">Leave as is</option>${cats.map(c => `<option value="${c.id}" ${t.categoryId === c.id ? 'selected' : ''}>${escHtml(c.name)}</option>`).join('')}</select></label>
           <label class="field"><span class="label-text">Sub-category</span><select id="rf-sub" ${cat ? '' : 'disabled'} onchange="ruleFormRedraw()"><option value="">${cat ? 'None' : '—'}</option>${cat ? (cat.subcategories || []).map(s => `<option value="${s.id}" ${t.subCategoryId === s.id ? 'selected' : ''}>${escHtml(s.name)}</option>`).join('') : ''}</select></label>
         </div>
-        <label class="field"><span class="label-text">Rename to <span style="opacity:.55;">(optional)</span></span><input id="rf-rename" value="${escHtml(t.rename || '')}" placeholder="e.g. Albert Heijn" autocomplete="off"></label>
+        <label class="field"><span class="label-text">Rename to <span style="opacity:.65;">(optional)</span></span><input id="rf-rename" value="${escHtml(t.rename || '')}" placeholder="e.g. Albert Heijn" autocomplete="off"></label>
         <label class="switch-row" style="font-size:13px;"><input type="checkbox" id="rf-rec" ${t.recurring ? 'checked' : ''} style="width:18px;height:18px;"> <span>Mark new ones Fixed / Recurring</span></label>
         <div class="rule-preview">
           ${!w.text.trim() ? '<span class="ret-sub">Type a name to see which past transactions match.</span>' : `

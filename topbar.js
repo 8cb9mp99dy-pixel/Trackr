@@ -158,7 +158,7 @@ window.__modalRenderers.actionRequired = function () {
   // Opening the Notifications tab marks them read (after this draw, so they still show as new now).
   if (tab === 'notes' && unread) setTimeout(() => { notifyMarkAllRead(); const b = document.querySelector('.tb-dot, .tb-notes'); if (b) renderWhenIdle(); }, 1500);
   return `
-    <div class="modal-head"><div class="modal-title">Action required</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Action required</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="tab-row" style="margin-bottom:14px;">
       <button class="tab-btn ${tab === 'attention' ? 'active' : ''}" onclick="openActionRequired('attention')">Needs a look (${attention.length})</button>
       <button class="tab-btn ${tab === 'notes' ? 'active' : ''}" onclick="openActionRequired('notes')">Notifications${unread ? ` (${unread} new)` : ''}</button>
@@ -187,7 +187,7 @@ const ADD_MENU = [
 function openAddMenu() { ui.modal = { type: 'addMenu' }; render(); }
 window.__modalRenderers.addMenu = function () {
   return `
-    <div class="modal-head"><div class="modal-title">Add</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Add</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="add-grid">
       ${ADD_MENU.filter(m => !m.needs || typeof window[m.needs] === 'function').map(m => `
         <button class="add-tile" onclick="ui.modal=null;${m.go}">
@@ -200,7 +200,7 @@ window.__modalRenderers.addMenu = function () {
 function openMoreNav() { ui.modal = { type: 'moreNav' }; render(); }
 window.__modalRenderers.moreNav = function () {
   return `
-    <div class="modal-head"><div class="modal-title">More</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">More</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="stack-gap-8">
       ${(typeof currentNavItems === 'function' ? currentNavItems() : NAV_ITEMS).filter(i => !i.phone).map(i => `
         <button class="more-row ${(typeof navItemActive === 'function' ? navItemActive(i) : ui.page === i.id) ? 'active' : ''}" onclick="${i.id === 'settings' ? "ui.modal=null;goPage('settings')" : `goPage('${i.id}')`}">${ic(i.icon, 20)}<span>${i.label}</span>${i.id === 'settings' ? navSyncBadgeHtml() : ''}<span class="more-chev">${ic('chevronRight', 16)}</span></button>`).join('')}

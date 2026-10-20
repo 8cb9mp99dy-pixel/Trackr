@@ -124,4 +124,4 @@ General AC for every item:
 - [ ] **Age of Money**, YNAB-style.
 - [x] **New-money planner** ("where should my next €250 go"). Done 20 Oct 2026 (Wealth → Compare).
 - [ ] **Read the market cache** (`get_market_cache`) before the live fetch.
-- [ ] **Accessibility:** clear the non-critical axe findings, which are listed in the Playwright report attachments.
+- [x] **Accessibility:** names on every icon button, focusable scroll areas, darker red/green/grey text (20 Oct 2026). Left: faded cents and a few chart labels, on purpose.

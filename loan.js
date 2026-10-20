@@ -328,7 +328,7 @@ window.__modalRenderers.loanPosition = function (p) {
   const L = loanById(p.loanId);
   const field = (id, label, value, opts) => `<label class="field ${opts && opts.span ? 'span-2' : ''}"><span class="label-text">${label}</span><input id="${id}" ${opts && opts.num ? 'inputmode="decimal"' : ''} ${opts && opts.list ? `list="${opts.list}"` : ''} value="${escHtml(String(value == null ? '' : value))}" placeholder="${escHtml((opts && opts.ph) || '')}" autocomplete="off"></label>`;
   return `
-    <div class="modal-head"><div class="modal-title">${p.id ? 'Edit' : 'Add'} loan position</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${p.id ? 'Edit' : 'Add'} loan position</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="form-grid">
       ${field('lp-broker', 'Broker', p.broker, { list: 'lp-broker-list', ph: 'Trading 212' })}
       <datalist id="lp-broker-list">${(L ? loanBrokerNames(L) : []).concat(['Trading 212', 'Trade Republic']).filter((v, i, a) => a.indexOf(v) === i).map(n => `<option value="${escHtml(n)}">`).join('')}</datalist>
@@ -342,7 +342,7 @@ window.__modalRenderers.loanPosition = function (p) {
       ${field('lp-return', 'Expected return (% per year)', p.expectedReturn, { num: true, ph: 'e.g. 7 — your 5-yr average' })}
       ${field('lp-qty', 'Quantity (optional)', p.quantity ? +loanNum(p.quantity, 0).toFixed(6) : '', { num: true, ph: 'worked out from the live price' })}
     </div>
-    <div style="font-size:11.5px;opacity:.55;line-height:1.5;">With an ISIN, the value then follows the live market price (the quantity is worked out from the value you type). Without one, update the value from your broker app now and then — "Update values" does all of them at once.</div>
+    <div style="font-size:11.5px;opacity:.65;line-height:1.5;">With an ISIN, the value then follows the live market price (the quantity is worked out from the value you type). Without one, update the value from your broker app now and then — "Update values" does all of them at once.</div>
     <div class="modal-actions">
       ${p.id ? `<button class="btn danger ghost" onclick="deleteLoanPosition('${p.loanId}','${p.id}')">Delete</button>` : ''}
       <button class="btn primary" onclick="saveLoanPosition()">Save</button>
@@ -392,10 +392,10 @@ window.__modalRenderers.loanValues = function (p) {
   const L = loanById(p.loanId);
   const list = L ? loanPositions(L) : [];
   return `
-    <div class="modal-head"><div class="modal-title">Update values</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Update values</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div style="font-size:12.5px;opacity:.65;margin-bottom:12px;line-height:1.5;">Type what your broker app shows today for each position. Positions with a live price already follow the market — typing a value re-aligns them.</div>
     <div class="stack-gap-12">${list.map(x => `
-      <label class="field"><span class="label-text">${escHtml(x.name)} <span style="opacity:.55;">· ${escHtml(x.broker || '')}${loanPosLive(x) ? ' · live' : x.valueDate ? ' · typed ' + fmtDay(x.valueDate) : ''}</span></span>
+      <label class="field"><span class="label-text">${escHtml(x.name)} <span style="opacity:.65;">· ${escHtml(x.broker || '')}${loanPosLive(x) ? ' · live' : x.valueDate ? ' · typed ' + fmtDay(x.valueDate) : ''}</span></span>
         <input id="lv-${x.id}" inputmode="decimal" value="${Math.round(loanPosValue(x) * 100) / 100}"></label>`).join('')}</div>
     <div class="modal-actions"><button class="btn primary" onclick="saveLoanValues('${p.loanId}')">Save</button></div>`;
 };
@@ -439,7 +439,7 @@ function loanPortfolioHtml(L, M) {
           ${assetLogoHtml(typeof builtinLogoFor === 'function' ? builtinLogoFor(p.name) : '', 'ETFs', 28)}
           <div style="min-width:0;">
             <div style="font-weight:600;font-size:13.5px;">${escHtml(p.name)}</div>
-            <div style="font-size:11.5px;opacity:.55;">${escHtml(p.group || '')}${p.isin ? ' · ' + escHtml(p.isin) : ''}${loanPosLive(p) ? ' · live price' : p.valueDate ? ' · value from ' + fmtDay(p.valueDate) : ''}</div>
+            <div style="font-size:11.5px;opacity:.65;">${escHtml(p.group || '')}${p.isin ? ' · ' + escHtml(p.isin) : ''}${loanPosLive(p) ? ' · live price' : p.valueDate ? ' · value from ' + fmtDay(p.valueDate) : ''}</div>
           </div>
         </div>
         <div style="text-align:right;flex:none;">
@@ -478,7 +478,7 @@ function loanPortfolioHtml(L, M) {
             <div class="row-flex" style="cursor:pointer;" onclick="toggleLoanBroker('${escHtml(b).replace(/'/g, "\\'")}')">
               <div style="display:flex;align-items:center;gap:10px;">${logoImg(typeof builtinLogoFor === 'function' ? builtinLogoFor(b) : '', 30)}<div>
                 <div style="font-weight:600;font-size:13.5px;">${escHtml(b)}</div>
-                <div style="font-size:11.5px;opacity:.55;">${ps.length} position${ps.length === 1 ? '' : 's'}</div></div></div>
+                <div style="font-size:11.5px;opacity:.65;">${ps.length} position${ps.length === 1 ? '' : 's'}</div></div></div>
               <div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13.5px;">${fmtMoney(bv)}</div><span style="opacity:.6;">${open ? '⌃' : '⌄'}</span></div>
             </div>
             ${open ? `<div class="stack-gap-8" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">${ps.map(row).join('') || '<div style="opacity:.5;font-size:13px;">No positions here yet.</div>'}</div>
@@ -497,7 +497,7 @@ function multiLineChartHtml(series, opts) {
   const H = opts.h || 260, plotH = H - 20, padT = 10, padB = 6, W = 1000;
   const visible = series.filter(s => !s.hidden && s.points.length);
   const all = visible.flatMap(s => s.points);
-  if (!all.length) return `<div style="opacity:.55;font-size:13px;padding:30px 0;text-align:center;">${escHtml(opts.empty || 'Nothing to show yet.')}</div>`;
+  if (!all.length) return `<div style="opacity:.65;font-size:13px;padding:30px 0;text-align:center;">${escHtml(opts.empty || 'Nothing to show yet.')}</div>`;
   const xMin = opts.xMin != null ? opts.xMin : Math.min(...all.map(p => p.x));
   const xMax = opts.xMax != null ? opts.xMax : Math.max(...all.map(p => p.x));
   let lo = Math.min(0, ...all.map(p => p.y)), hi = Math.max(...all.map(p => p.y), 1);
@@ -647,7 +647,7 @@ function loanGainChartHtml(L, G) {
     <div class="chip-scroll" style="margin:4px 0 10px;">${ranges.map(([k, l]) => `<span class="chip" style="cursor:pointer;font-size:12.5px;padding:7px 12px;${r === k ? 'background:var(--positive);border-color:var(--positive);color:#fff;' : ''}" onclick="setLoanRange('${k}')">${escHtml(l)}</span>`).join('')}</div>
     <div class="mlc-legend">${series.map(s => `<span class="mlc-chip" style="cursor:default;"><span style="${swatch(s)}"></span>${escHtml(s.label)}</span>`).join('')}</div>
     ${multiLineChartHtml(series, { xMin: ymdMs(G.start), xMax: ymdMs(end), markers, h: 260, empty: 'Add the loan details (pencil button) to see the chart.' })}
-    <div style="font-size:11.5px;opacity:.55;margin-top:8px;line-height:1.5;">Green = what your investments have earned. Orange = the interest the loan adds. ${G.spent ? 'When green gets above the red dashed line, the investments have paid for the interest and the money you spent.' : 'When green gets above orange, the investments have paid for the interest.'} Touch the chart to read the values.</div>`;
+    <div style="font-size:11.5px;opacity:.65;margin-top:8px;line-height:1.5;">Green = what your investments have earned. Orange = the interest the loan adds. ${G.spent ? 'When green gets above the red dashed line, the investments have paid for the interest and the money you spent.' : 'When green gets above orange, the investments have paid for the interest.'} Touch the chart to read the values.</div>`;
 }
 function loanStat(label, value, sub, cls) {
   return `<div class="loan-stat"><div class="eyebrow">${label}</div><div class="loan-stat-value ${cls || ''}">${value}</div>${sub ? `<div class="loan-stat-sub">${sub}</div>` : ''}</div>`;
@@ -706,7 +706,7 @@ window.__modalRenderers.loanDetails = function (p) {
   if (!L) return '';
   const s = loanSchedule(L);
   return `
-    <div class="modal-head"><div class="modal-title">Loan details</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Loan details</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="form-grid">
       ${loanField(L, 'name', 'Name')}
       ${loanField(L, 'principal', 'Amount borrowed (€)', { placeholder: '7097' })}
@@ -721,7 +721,7 @@ window.__modalRenderers.loanDetails = function (p) {
       ${loanField(L, 'investDate', 'Invested on', { type: 'date' })}
       ${loanField(L, 'scenarios', 'Return if positions have none (%/yr)', { placeholder: '5' })}
     </div>
-    <div style="font-size:11.5px;opacity:.55;line-height:1.5;">${s ? `Consolidation ${fmtDay(s.deferralEnd)}${s.N ? `, then ${s.N} payments of about ${fmtMoney(s.monthlyPayment)}` : ''}. ` : ''}When the bank changes the rate (it follows EURIBOR), update it here.</div>
+    <div style="font-size:11.5px;opacity:.65;line-height:1.5;">${s ? `Consolidation ${fmtDay(s.deferralEnd)}${s.N ? `, then ${s.N} payments of about ${fmtMoney(s.monthlyPayment)}` : ''}. ` : ''}When the bank changes the rate (it follows EURIBOR), update it here.</div>
     <div class="modal-actions">
       <button class="btn danger ghost" onclick="closeModal();deleteLoan('${L.id}')">Delete loan</button>
       <button class="btn primary" onclick="closeModal()">Done</button>
@@ -745,7 +745,7 @@ function loanDashboardHtml(netWorth) {
   const gross = rows.reduce((s, r) => s + r.gross + r.cash, 0), owed = rows.reduce((s, r) => s + r.owed, 0), net = gross - owed;
   return `
     <div class="card" style="margin-bottom:20px;cursor:pointer;" onclick="ui.page='investments';ui.investmentsTab='loan';render();">
-      <div class="row-flex" style="margin-bottom:10px;"><div class="eyebrow">Loan — not your money</div><span style="font-size:12px;opacity:.55;">see details ›</span></div>
+      <div class="row-flex" style="margin-bottom:10px;"><div class="eyebrow">Loan — not your money</div><span style="font-size:12px;opacity:.65;">see details ›</span></div>
       <div class="grid-3">
         <div class="card-nested"><div class="eyebrow">Invested (gross)</div><div style="font-size:19px;font-weight:700;">${fmtMoney(gross)}</div></div>
         <div class="card-nested"><div class="eyebrow">Owed to the bank</div><div style="font-size:19px;font-weight:700;" class="negative">${fmtMoney(owed)}</div></div>

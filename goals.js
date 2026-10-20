@@ -172,7 +172,7 @@ function goalsTimelineHtml() {
         <div class="gt-line"></div>
         ${marks.map(m => `<span class="gt-mark ${m.status}" style="left:${at(m.date).toFixed(2)}%;" title="${escHtml(m.name)} · ${m.date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}">${escHtml(m.icon)}</span>`).join('')}
       </div>
-      ${marks.length ? '' : '<div style="font-size:12.5px;opacity:.55;margin-top:6px;">Your goals appear here on the year they should be reached.</div>'}
+      ${marks.length ? '' : '<div style="font-size:12.5px;opacity:.65;margin-top:6px;">Your goals appear here on the year they should be reached.</div>'}
     </div>`;
 }
 /* ---- Goals and pockets ----
@@ -297,7 +297,7 @@ window.__modalRenderers.goalView = function (p) {
         <div class="gv-actions">
           ${pk ? `<button class="btn primary" onclick="addMoneyToGoal('${g.id}')">${ic('plus', 15)} Add money</button>` : ''}
           <button class="btn" onclick="openGoalForm('${g.id}')">${ic('edit', 15)} Edit</button>
-          <button class="btn ghost" style="color:var(--negative);" onclick="deleteGoal('${g.id}')">${ic('trash', 15)}</button>
+          <button class="btn ghost" style="color:var(--negative);" onclick="deleteGoal('${g.id}')" aria-label="Delete">${ic('trash', 15)}</button>
         </div>
       </div>
     </div>`;
@@ -340,7 +340,7 @@ window.__modalRenderers.goal = function (p) {
   const nw = p.links.includes('nw');
   const accs = data.accounts || [];
   return `
-    <div class="modal-head"><div class="modal-title">${g ? 'Edit goal' : 'New goal'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${g ? 'Edit goal' : 'New goal'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="gf-photos">
       ${p.photos.map((ph, i) => { const u = photoUrl(ph.id); return `<div class="gf-ph ${i === 0 ? 'cover' : ''}">${u ? `<img src="${u}" alt="">` : `<span>${ic('photo', 18)}</span>`}
         ${i === 0 ? '<span class="gf-ph-tag">Cover</span>' : `<button class="gf-ph-btn star" title="Use as cover" onclick="goalFormRedraw(p=>p.photos.unshift(p.photos.splice(${i},1)[0]))">★</button>`}

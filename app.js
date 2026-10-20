@@ -2428,7 +2428,7 @@ function renderDashboard() {
       </div>
       ${typeof newNavOn === 'function' && newNavOn()
         ? `<button class="chip" style="cursor:pointer;" onclick="goPage('accounts')">${ic('bank', 15)} Cash in ${data.accounts.filter(a => a.visibleInTotals).length} account${data.accounts.filter(a => a.visibleInTotals).length === 1 ? '' : 's'} · <strong>${fmtMoney(bankTotal())}</strong> ${ic('chevronRight', 14)}</button>`
-        : `<div class="chip-scroll">${accountChips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>`}
+        : `<div class="chip-scroll" tabindex="0" role="group" aria-label="Filters">${accountChips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>`}
     </div>
 
     ${typeof loanDashboardHtml === 'function' ? loanDashboardHtml(netWorth) : ''}
@@ -2611,7 +2611,7 @@ function renderAccounts() {
         <div class="card-nested"><div class="eyebrow">Available</div><div style="font-size:18px;font-weight:700;" class="${avail >= 0 ? 'positive' : 'negative'}">${fmtMoney(avail)}</div></div>
         <div class="card-nested"><div class="eyebrow">In pockets</div><div style="font-size:18px;font-weight:700;color:var(--accent-1);">${fmtMoney(pockets)}</div></div>
       </div>
-      <div class="chip-scroll">${chips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>
+      <div class="chip-scroll" tabindex="0" role="group" aria-label="Filters">${chips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>
     </div>
 
     <button class="btn primary full" style="margin-bottom:22px;" onclick="openAccountForm()">+ &nbsp;Add account</button>
@@ -2636,9 +2636,9 @@ function accountCardHtml(acc) {
         </div>
       </div>
       <div style="display:flex;gap:2px;align-items:center;">
-        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="toggleAccountExpand('${acc.id}')">${expanded ? '⌃' : '⌄'}</button>
-        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="openAccountForm('${acc.id}')">${ic('edit')}</button>
-        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="deleteAccount('${acc.id}')">${ic('trash')}</button>
+        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="toggleAccountExpand('${acc.id}')" aria-label="${expanded ? 'Hide pockets' : 'Show pockets'}" aria-expanded="${expanded ? 'true' : 'false'}">${expanded ? '⌃' : '⌄'}</button>
+        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="openAccountForm('${acc.id}')" aria-label="Edit">${ic('edit')}</button>
+        <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="deleteAccount('${acc.id}')" aria-label="Delete">${ic('trash')}</button>
       </div>
     </div>
     <div class="row-flex" style="margin-top:14px;">
@@ -2690,8 +2690,8 @@ function pocketRowHtml(acc, p) {
         </div>
       </div>
       <div style="display:flex;gap:2px;">
-        <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="openPocketForm('${acc.id}','${p.id}')">${ic('edit')}</button>
-        <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="deletePocket('${acc.id}','${p.id}')">${ic('trash')}</button>
+        <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="openPocketForm('${acc.id}','${p.id}')" aria-label="Edit">${ic('edit')}</button>
+        <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="deletePocket('${acc.id}','${p.id}')" aria-label="Delete">${ic('trash')}</button>
       </div>
     </div>
     ${pct !== null ? `<div style="height:5px;border-radius:4px;background:var(--dark-border);overflow:hidden;margin-top:9px;"><div style="height:100%;width:${pct}%;background:${p.color};"></div></div>` : ''}
@@ -2717,7 +2717,7 @@ function openAccountForm(id) { ui.modal = { type: 'account', payload: { id: id |
 window.__modalRenderers.account = function (payload) {
   const acc = payload.id ? accountById(payload.id) : null;
   return `
-    <div class="modal-head"><div class="modal-title">${acc ? 'Edit account' : 'New account'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${acc ? 'Edit account' : 'New account'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="stack-gap-12">
       <label class="field"><span class="label-text">Icon</span><input id="af-icon" value="${escHtml(acc ? acc.icon : '🏦')}" maxlength="4"></label>
       <label class="field"><span class="label-text">Account name</span><input id="af-name" placeholder="Account name (e.g. Revolut, BNP...)" value="${escHtml(acc ? acc.name : '')}"></label>
@@ -2759,7 +2759,7 @@ function colorPickerHtml(current) {
         <label class="swatch-dot swatch-custom ${isCustom ? 'selected' : ''}" data-color="${isCustom ? current : '#6C63FF'}" style="${isCustom ? `background:${current};` : ''}" title="More colors…">
           <input type="color" value="${isCustom ? current : '#6C63FF'}" oninput="selectCustomSwatch(this)">
         </label>
-        <span style="font-size:11px;opacity:.55;align-self:center;">More colors…</span>
+        <span style="font-size:11px;opacity:.65;align-self:center;">More colors…</span>
       </div>
     </div>`;
 }
@@ -2805,7 +2805,7 @@ window.__modalRenderers.pocket = function (payload) {
   const acc = accountById(payload.accId);
   const pk = payload.pkId ? acc.pockets.find(p => p.id === payload.pkId) : null;
   return `
-    <div class="modal-head"><div class="modal-title">${pk ? 'Edit pocket' : 'Add pocket'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${pk ? 'Edit pocket' : 'Add pocket'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="stack-gap-12">
       <label class="field"><span class="label-text">Icon</span><input id="pf-icon" value="${escHtml(pk ? pk.icon : '🎯')}" maxlength="4"></label>
       <label class="field"><span class="label-text">Pocket name</span><input id="pf-name" value="${escHtml(pk ? pk.name : '')}"></label>
@@ -3026,7 +3026,7 @@ window.__modalRenderers.toReview = function () {
   const list = toReviewList();
   const why = t => t.toReview === 'partial' ? 'Guessed from a similar name' : t.toReview === 'none' ? 'No category found' : 'In "Other"';
   return `
-    <div class="modal-head"><div class="modal-title">To review</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">To review</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     ${list.length ? `<div style="font-size:13px;opacity:.7;margin-bottom:12px;">Categories Trackr wasn't sure about. Pick the right one, or keep it. Next time, that name gets the category you chose.</div>
     <div class="stack-gap-12">${list.slice(0, 60).map(t => `<div class="review-row">
       ${txAvatarHtml(t)}
@@ -3105,7 +3105,7 @@ function budgetRowHtml(c, st) {
     <div class="bl-row">
       <span class="totals-icon">${c.icon || ''}</span>
       <div style="flex:1;min-width:0;">
-        <div class="row-flex" style="gap:8px;"><span class="totals-name">${escHtml(c.name)}</span><span style="font-size:13px;"><strong>${fmtMoney(st.spent)}</strong> <span style="opacity:.55;">of</span> <input class="bl-input" inputmode="decimal" value="${st.limit}" onchange="setBudgetLimit('${c.id}',this.value)" aria-label="Monthly limit for ${escHtml(c.name)}"></span></div>
+        <div class="row-flex" style="gap:8px;"><span class="totals-name">${escHtml(c.name)}</span><span style="font-size:13px;"><strong>${fmtMoney(st.spent)}</strong> <span style="opacity:.65;">of</span> <input class="bl-input" inputmode="decimal" value="${st.limit}" onchange="setBudgetLimit('${c.id}',this.value)" aria-label="Monthly limit for ${escHtml(c.name)}"></span></div>
         <div class="totals-bar" style="height:7px;"><span style="width:${pctW.toFixed(1)}%;background:${budgetBarColor(st.level)};"></span></div>
         <div class="totals-sub">${Math.round(st.pct)}% used · ${status}${pace}</div>
       </div>
@@ -3125,20 +3125,20 @@ function budgetLimitsTab() {
     ${withLimit.length ? `
     <div class="card" style="margin-bottom:16px;">
       <div class="row-flex" style="align-items:baseline;"><div class="eyebrow">Planned this month</div><div style="font-size:13px;opacity:.7;">${over ? `<span class="negative">${over} over</span>` : 'all on track'}</div></div>
-      <div style="font-size:24px;font-weight:800;margin-top:4px;">${fmtMoney(spent)} <span style="font-size:15px;font-weight:500;opacity:.55;">of ${fmtMoney(planned)}</span></div>
+      <div style="font-size:24px;font-weight:800;margin-top:4px;">${fmtMoney(spent)} <span style="font-size:15px;font-weight:500;opacity:.65;">of ${fmtMoney(planned)}</span></div>
       <div class="totals-bar" style="height:8px;margin-top:8px;"><span style="width:${Math.min(100, planned ? spent / planned * 100 : 0).toFixed(1)}%;background:${budgetBarColor(spent > planned ? 'over' : spent > planned * 0.8 ? 'near' : 'ok')};"></span></div>
       <div class="totals-sub" style="margin-top:4px;">${planned - spent >= 0 ? `${fmtMoney(planned - spent)} left to spend in these categories` : `${fmtMoney(spent - planned)} over your plan`}</div>
     </div>
     <div class="card" style="margin-bottom:16px;"><div class="eyebrow" style="margin-bottom:8px;">Your budgets</div><div class="totals-list">${withLimit.map(x => budgetRowHtml(x.c, x.st)).join('')}</div>
-      <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Tap an amount to change it; empty it to remove the budget. Orange from 80%, red past 100%.</div></div>` : `
+      <div style="font-size:11.5px;opacity:.65;margin-top:8px;">Tap an amount to change it; empty it to remove the budget. Orange from 80%, red past 100%.</div></div>` : `
     <div class="card" style="margin-bottom:16px;"><div class="empty-state"><div class="emoji">🎯</div><div class="title">Set your monthly budgets</div>
       <div class="sub">Give a category a limit (e.g. €250 for groceries) and see how much is left as the month goes on.</div>
       <button class="btn primary" style="margin-top:14px;" onclick="suggestAllBudgets()">Suggest budgets from my spending</button></div></div>`}
     ${without.length ? `
     <div class="card">
       <div class="row-flex" style="margin-bottom:10px;"><div class="eyebrow">Add a budget</div>${withLimit.length ? `<button class="btn small" onclick="suggestAllBudgets()">Suggest the rest</button>` : ''}</div>
-      <div class="tx-chips">${without.map(c => { const sg = suggestedLimit(c.id, m); return `<button type="button" class="chip" style="cursor:pointer;" onclick="addBudgetFor('${c.id}', ${sg || 0})">${c.icon || ''} ${escHtml(c.name)}${sg ? ` <span style="opacity:.55;font-weight:500;">~${fmtMoney(sg)}</span>` : ''}</button>`; }).join('')}</div>
-      <div style="font-size:11.5px;opacity:.55;margin-top:8px;">The amount shown is your average over the last 3 months.</div>
+      <div class="tx-chips">${without.map(c => { const sg = suggestedLimit(c.id, m); return `<button type="button" class="chip" style="cursor:pointer;" onclick="addBudgetFor('${c.id}', ${sg || 0})">${c.icon || ''} ${escHtml(c.name)}${sg ? ` <span style="opacity:.65;font-weight:500;">~${fmtMoney(sg)}</span>` : ''}</button>`; }).join('')}</div>
+      <div style="font-size:11.5px;opacity:.65;margin-top:8px;">The amount shown is your average over the last 3 months.</div>
     </div>` : ''}`;
 }
 function addBudgetFor(catId, suggested) {
@@ -3153,8 +3153,8 @@ function budgetsGlanceHtml(m) {
   if (!list.length) return '';
   return `
     <div class="card" style="margin-bottom:20px;cursor:pointer;" onclick="setBudgetTab('budgets')">
-      <div class="row-flex" style="margin-bottom:8px;"><div class="eyebrow">Budgets</div><span style="font-size:12px;opacity:.55;">all budgets ›</span></div>
-      ${list.map(x => `<div style="margin-top:8px;"><div class="row-flex" style="font-size:13px;"><span>${x.c.icon || ''} ${escHtml(x.c.name)}</span><span><strong>${fmtMoney(x.st.spent)}</strong> <span style="opacity:.55;">/ ${fmtMoney(x.st.limit)}</span></span></div>
+      <div class="row-flex" style="margin-bottom:8px;"><div class="eyebrow">Budgets</div><span style="font-size:12px;opacity:.65;">all budgets ›</span></div>
+      ${list.map(x => `<div style="margin-top:8px;"><div class="row-flex" style="font-size:13px;"><span>${x.c.icon || ''} ${escHtml(x.c.name)}</span><span><strong>${fmtMoney(x.st.spent)}</strong> <span style="opacity:.65;">/ ${fmtMoney(x.st.limit)}</span></span></div>
         <div class="totals-bar" style="height:6px;margin-bottom:0;"><span style="width:${Math.min(100, x.st.pct).toFixed(1)}%;background:${budgetBarColor(x.st.level)};"></span></div></div>`).join('')}
     </div>`;
 }
@@ -3213,7 +3213,7 @@ window.__modalRenderers.recap = function (p) {
   const kept = R.budgets.filter(b => b.st.level !== 'over'), over = R.budgets.filter(b => b.st.level === 'over');
   const upcomingTotal = R.upcoming.reduce((s, u) => s + (u.x.model.type === 'expense' ? toEUR(u.x.model.amount, u.x.model.currency) : 0), 0);
   return `
-    <div class="modal-head"><div class="modal-title">${monthLabel(R.monthDate)}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${monthLabel(R.monthDate)}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     ${!R.count ? '<div style="opacity:.6;">Nothing logged that month.</div>' : `
     <div class="recap-stats">
       <div><div class="eyebrow">Received</div><div class="recap-num positive">${fmtMoney(R.income)}</div></div>
@@ -3320,7 +3320,7 @@ function budgetTotalsTab() {
   return `
     <div class="row-flex" style="margin-bottom:12px;flex-wrap:wrap;gap:10px;">
       <div class="chip-scroll" style="margin:0;">${periods.map(([k, l]) => `<span class="chip" style="cursor:pointer;${p === k ? 'background:var(--light-accent-1);border-color:var(--light-accent-1);color:#fff;' : ''}" onclick="setBudgetTotalsPeriod('${k}')">${l}</span>`).join('')}</div>
-      ${p !== 'all' ? `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? -12 : p === '3m' ? -3 : -1})">‹</button><div style="font-weight:700;">${escHtml(r.label)}</div><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? 12 : p === '3m' ? 3 : 1})">›</button></div>` : `<div style="font-weight:700;">All time</div>`}
+      ${p !== 'all' ? `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? -12 : p === '3m' ? -3 : -1})" aria-label="Previous">‹</button><div style="font-weight:700;">${escHtml(r.label)}</div><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? 12 : p === '3m' ? 3 : 1})" aria-label="Next">›</button></div>` : `<div style="font-weight:700;">All time</div>`}
     </div>
     <div class="grid-3" style="margin-bottom:20px;">
       <div class="card"><div class="eyebrow">Received</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(inc)}</div></div>
@@ -3330,7 +3330,7 @@ function budgetTotalsTab() {
     ${p === 'month' ? `<button class="btn full" style="margin-bottom:16px;" onclick="openRecap(${ui.budgetMonth.getFullYear()},${ui.budgetMonth.getMonth()})">${escHtml(monthLabel(ui.budgetMonth))} recap</button>` : ''}
     ${typeof cashflowCardHtml === 'function' ? cashflowCardHtml() : ''}
     ${typeof budgetTotalsTabsHtml === 'function' ? budgetTotalsTabsHtml() : budgetTotalsSectionHtml('expense') + budgetTotalsSectionHtml('income')}
-    <div style="font-size:12px;opacity:.55;">Tap a category to see its sub-categories. Transfers between your own accounts aren't counted.</div>`;
+    <div style="font-size:12px;opacity:.65;">Tap a category to see its sub-categories. Transfers between your own accounts aren't counted.</div>`;
 }
 /* "By category" on the Budget page: closed by default to a single line (the biggest spending
    category), and rolls down to the two donuts when you tap it. Open/closed is remembered on this
@@ -3441,7 +3441,7 @@ function investedCardHtml(monthDate) {
         <div class="inv-fade" style="min-width:0;">
           <div class="eyebrow">Invested · ${monthLabel(monthDate)}</div>
           <div id="inv-num" style="font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.15;">${fmtMoney(anim ? 0 : cur.net)}</div>
-          <div style="font-size:12px;opacity:.55;margin-top:2px;">${caption}</div>
+          <div style="font-size:12px;opacity:.65;margin-top:2px;">${caption}</div>
         </div>
         <div class="inv-bars" aria-hidden="true">
           ${series.map((x, i) => {
@@ -3661,7 +3661,7 @@ function txRowDisplayHtml(t) {
         ${txAvatarHtml(t)}
         <div>
           <div style="font-weight:600;font-size:14px;">${escHtml(t.comment || 'Transfer')}${t.nature === 'Fixed' ? ' <span class="tx-rec" title="Repeats every month">↻</span>' : ''}</div>
-          <div style="font-size:12px;opacity:.55;">${escHtml(fromLabel)} → ${escHtml(toLabel)}</div>
+          <div style="font-size:12px;opacity:.65;">${escHtml(fromLabel)} → ${escHtml(toLabel)}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
@@ -3683,7 +3683,7 @@ function txRowDisplayHtml(t) {
         ${txAvatarHtml(t)}
         <div>
           <div style="font-weight:600;font-size:14px;">${escHtml(label)}${t.nature === 'Fixed' ? ' <span class="tx-rec" title="Repeats every month">↻</span>' : ''}</div>
-          <div style="font-size:12px;opacity:.55;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}${acc ? ' · ' + escHtml(acc.name) : ''}</div>
+          <div style="font-size:12px;opacity:.65;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}${acc ? ' · ' + escHtml(acc.name) : ''}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
@@ -3900,9 +3900,9 @@ function openRecurringAmount(txId) {
 }
 window.__modalRenderers.recurringAmount = function (p) {
   const t = data.budgetTransactions.find(x => x.id === p.txId);
-  if (!t) return '<div class="modal-head"><div class="modal-title">Not found</div><button class="close-x" onclick="closeModal()">✕</button></div>';
+  if (!t) return '<div class="modal-head"><div class="modal-title">Not found</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>';
   return `
-    <div class="modal-head"><div class="modal-title">How much was it?</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">How much was it?</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div style="font-size:13px;opacity:.7;margin-bottom:12px;">${escHtml(t.comment || 'Recurring')} · ${escHtml(shortDay(t.date))} · usually ${fmtMoney(+t.amount || 0, t.currency)}</div>
     <label class="field"><span class="label-text">Amount (${escHtml(t.currency)})</span><input id="rec-amt" type="number" min="0" step="any" inputmode="decimal" value="${escHtml(p.amount)}" oninput="ui.modal.payload.amount=this.value"></label>
     <div class="seg-row" style="margin-top:12px;">
@@ -3951,7 +3951,7 @@ function budgetRecurringTab() {
   return `
     ${hasCal ? `<div class="row-flex" style="margin-bottom:14px;gap:10px;flex-wrap:wrap;">
       <div class="seg-row" style="margin:0;"><button class="seg ${view === 'calendar' ? 'on' : ''}" onclick="ui.recurringView='calendar';render()">${ic('calendar', 14)} Calendar</button><button class="seg ${view === 'list' ? 'on' : ''}" onclick="ui.recurringView='list';render()">${ic('list', 14)} List</button></div>
-      ${view === 'calendar' ? `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" onclick="shiftBudgetMonth(-1)">‹</button><div style="font-weight:700;min-width:120px;text-align:center;">${escHtml(monthLabel(ui.budgetMonth))}</div><button class="icon-btn-round" onclick="shiftBudgetMonth(1)">›</button></div>` : ''}
+      ${view === 'calendar' ? `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" onclick="shiftBudgetMonth(-1)" aria-label="Previous">‹</button><div style="font-weight:700;min-width:120px;text-align:center;">${escHtml(monthLabel(ui.budgetMonth))}</div><button class="icon-btn-round" onclick="shiftBudgetMonth(1)" aria-label="Next">›</button></div>` : ''}
     </div>` : ''}
     ${recurringMonthSummaryHtml(series, ym)}
     ${hasCal && view === 'calendar' ? `<div class="card" style="margin-bottom:20px;">${recurringCalendarHtml()}</div>` : ''}
@@ -3969,7 +3969,7 @@ function budgetRecurringTab() {
           <button class="btn small" onclick="stopRecurringSeries('${id}')">Stop</button>
         </div>
       </div>`).join('')}</div>
-      <div style="font-size:12px;opacity:.55;margin-top:10px;line-height:1.5;">Each one is added by itself on its day every month (not before). To change the amount or day from now on, tap it and edit. Logging or importing the real one for a month replaces the automatic one.</div>` : `
+      <div style="font-size:12px;opacity:.65;margin-top:10px;line-height:1.5;">Each one is added by itself on its day every month (not before). To change the amount or day from now on, tap it and edit. Logging or importing the real one for a month replaces the automatic one.</div>` : `
       <div class="card"><div class="empty-state"><div class="emoji">🔄</div><div class="title">No recurring items yet</div><div class="sub">Turn on "Repeats every month" when you add a payment, an income or a transfer (e.g. €200 into a pocket), and it is added by itself every month on the same day.</div></div></div>`}
     ${typeof expenseScannerHtml === 'function' ? expenseScannerHtml() : ''}`;
 }
@@ -4018,7 +4018,7 @@ function cashflowBarsHtml(monthDate) {
             <div style="width:12px;height:${Math.max(4, (x.income / maxVal) * 80)}px;background:var(--positive);border-radius:3px 3px 0 0;" title="Income ${fmtMoney(x.income)}"></div>
             <div style="width:12px;height:${Math.max(4, (x.expenses / maxVal) * 80)}px;background:var(--negative);border-radius:3px 3px 0 0;" title="Expenses ${fmtMoney(x.expenses)}"></div>
           </div>
-          <div style="font-size:10px;opacity:.55;">${x.label}</div>
+          <div style="font-size:10px;opacity:.65;">${x.label}</div>
         </div>`).join('')}
     </div>
     <div style="display:flex;gap:16px;font-size:12px;opacity:.7;">
@@ -4209,8 +4209,8 @@ function categoryNodeRowHtml(kind, catId, subId) {
         <div style="display:flex;gap:2px;">
           ${editing
             ? `<button class="btn small primary" style="padding:4px 10px;" onclick="saveCategoryRename('${kind}','${catId}',${subId ? `'${subId}'` : 'null'})">Save</button>`
-            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="toggleCategoryRename('${key}')">${ic('edit')}</button>`}
-          <button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="${subId ? `removeSubcategory('${kind}','${catId}','${subId}')` : `removeCategory('${kind}','${catId}')`}">${ic('trash')}</button>
+            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="toggleCategoryRename('${key}')" aria-label="Edit">${ic('edit')}</button>`}
+          <button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="${subId ? `removeSubcategory('${kind}','${catId}','${subId}')` : `removeCategory('${kind}','${catId}')`}" aria-label="Delete">${ic('trash')}</button>
         </div>
       </div>
       ${pickerOpen ? emojiPickerHtml(kind, catId, subId) : ''}
@@ -4309,8 +4309,8 @@ function paymentMethodRowHtml(pm) {
         <div style="display:flex;gap:2px;">
           ${editing
             ? `<button class="btn small primary" style="padding:4px 10px;" onclick="savePaymentMethodRename('${pm.id}')">Save</button>`
-            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="toggleCategoryRename('${key}')">${ic('edit')}</button>`}
-          <button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="removePaymentMethod('${pm.id}')">${ic('trash')}</button>
+            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="toggleCategoryRename('${key}')" aria-label="Edit">${ic('edit')}</button>`}
+          <button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="removePaymentMethod('${pm.id}')" aria-label="Delete">${ic('trash')}</button>
         </div>
       </div>
       ${pickerOpen ? `
@@ -4404,7 +4404,7 @@ window.__modalRenderers.tx = function (p) {
       <label class="field"><span class="label-text">From</span>${endpointSelect('from', p.from)}</label>
       <div style="text-align:center;font-size:20px;opacity:.5;margin:2px 0;">↓</div>
       <label class="field"><span class="label-text">To</span>${endpointSelect('to', p.to)}</label>
-      <div style="font-size:12px;opacity:.55;margin-top:10px;line-height:1.5;">Moves your own money between two places (bank, pocket, broker or exchange cash) — it isn't counted as income or spending. Currencies are converted automatically.</div>`;
+      <div style="font-size:12px;opacity:.65;margin-top:10px;line-height:1.5;">Moves your own money between two places (bank, pocket, broker or exchange cash) — it isn't counted as income or spending. Currencies are converted automatically.</div>`;
   } else if (step === 2) {
     body = `
       ${summary()}
@@ -4443,7 +4443,7 @@ window.__modalRenderers.tx = function (p) {
         <div><div style="font-weight:600;">Repeats every month</div><div style="font-size:12px;opacity:.6;">Rent, subscriptions, salary… added by itself on the same day each month</div></div>
         <div class="toggle ${p.nature === 'Fixed' ? 'on' : ''}"></div>
       </div>
-      <button type="button" class="tx-more-btn" onclick="ui.modal.payload._more=!${more};render();">${more ? '▴ Fewer options' : '▾ More options'} <span style="opacity:.55;">${isTransfer ? 'note' : 'note, place, logo, personal impact'}</span></button>
+      <button type="button" class="tx-more-btn" onclick="ui.modal.payload._more=!${more};render();">${more ? '▴ Fewer options' : '▾ More options'} <span style="opacity:.65;">${isTransfer ? 'note' : 'note, place, logo, personal impact'}</span></button>
       ${more ? `
         <label class="field"><span class="label-text">Note</span><input value="${escHtml(p.description || '')}" placeholder="Any extra detail" onchange="updateTxField('description',this.value)"></label>
         ${isTransfer ? '' : `
@@ -4460,7 +4460,7 @@ window.__modalRenderers.tx = function (p) {
         </label>`}` : ''}`;
   }
   return `
-    <div class="modal-head"><div class="modal-title">${isEdit ? 'Edit transaction' : 'New transaction'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${isEdit ? 'Edit transaction' : 'New transaction'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="tx-steps">${steps.map(([l, n]) => `<button type="button" class="tx-step ${step === n ? 'on' : ''} ${n < 3 && done[n] ? 'done' : ''}" onclick="txGo(${n})" ${n > 1 && !done[1] && !isEdit ? 'disabled' : ''}><span>${n < 3 && done[n] && step !== n ? '✓' : n}</span>${l}</button>`).join('')}</div>
     <div class="tx-body">${body}</div>
     <div class="tx-footer">
@@ -4660,7 +4660,7 @@ function renderInvestments() {
       <div class="eyebrow">Total value — whole portfolio (${data.settings.defaultCurrency})</div>
       <div class="big-number">${fmtMoney(value)}</div>
       <div class="perf ${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
-      <div style="font-size:12.5px;opacity:.55;">Invested: ${fmtMoney(invested)} · EUR/USD: ${eurUsd().toFixed(4)}</div>
+      <div style="font-size:12.5px;opacity:.65;">Invested: ${fmtMoney(invested)} · EUR/USD: ${eurUsd().toFixed(4)}</div>
     </div>
 
     ${typeof allocationCardHtml === 'function'
@@ -4704,9 +4704,9 @@ function investedByTypeCardHtml() {
   return `
     <div class="card-dark" style="margin-bottom:20px;">
       <div style="font-weight:700;margin-bottom:4px;">Invested by type</div>
-      <div style="font-size:12px;opacity:.55;margin-bottom:12px;">Set each investment's type and 5-year average return in its edit form.</div>
+      <div style="font-size:12px;opacity:.65;margin-bottom:12px;">Set each investment's type and 5-year average return in its edit form.</div>
       <div style="overflow-x:auto;">
-        <table class="data-table">
+        <table class="data-table" tabindex="0">
           <thead><tr><th>Type</th><th class="num">Invested</th><th class="num">Share</th><th class="num">Value now</th><th class="num">Gain / loss</th>${anyRet ? '<th class="num">5-yr avg</th>' : ''}</tr></thead>
           <tbody>
             ${rows.map(r => `<tr>
@@ -4767,7 +4767,7 @@ function brokersCardHtml(opts) {
             <div class="row-flex">
               <div style="display:flex;align-items:center;gap:10px;">${logoImg(b.logo, 30)}<div>
                 <div style="font-weight:600;font-size:13.5px;">${escHtml(b.name)}</div>
-                <div style="font-size:11.5px;opacity:.55;">
+                <div style="font-size:11.5px;opacity:.65;">
                   ${positions.length} asset${positions.length !== 1 ? 's' : ''}${hasCash ? ` · ${fmtMoney(brokerCash(b), brokerCashCurrency(b))} cash${linkedAccountForBroker(b) ? ' · linked' : ''}` : ''}
                   ${hasCash && b.cashInterestBearing ? `<span class="badge" style="background:rgba(34,181,115,0.18);color:var(--positive);margin-left:4px;">${b.cashInterestRate}% APY</span>` : ''}
                 </div>
@@ -4781,7 +4781,7 @@ function brokersCardHtml(opts) {
             </div>
             ${expanded ? `
               <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--dark-border);">
-                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div><div style="font-weight:600;font-size:13px;">Cash</div>${linkedAccountForBroker(b) ? `<div style="font-size:11px;opacity:.55;">Same as your ${escHtml(linkedAccountForBroker(b).name)} bank account</div>` : ''}</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(brokerCash(b), brokerCashCurrency(b))}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" aria-label="Edit cash" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>` : ''}</div></div></div>` : ''}
+                ${hasCash ? `<div class="card-nested" style="margin-bottom:8px;"><div class="row-flex"><div><div style="font-weight:600;font-size:13px;">Cash</div>${linkedAccountForBroker(b) ? `<div style="font-size:11px;opacity:.65;">Same as your ${escHtml(linkedAccountForBroker(b).name)} bank account</div>` : ''}</div><div style="display:flex;align-items:center;gap:8px;"><div style="font-weight:700;font-size:13px;">${fmtMoney(brokerCash(b), brokerCashCurrency(b))}</div>${showAddBroker ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit cash" aria-label="Edit cash" onclick="openBrokerForm('${b.id}')">${ic('edit')}</button>` : ''}</div></div></div>` : ''}
                 <div class="stack-gap-8">
                   ${positions.map(p => positionRowHtml(p)).join('') || '<div style="opacity:.5;font-size:13px;">No positions here yet.</div>'}
                 </div>
@@ -4807,7 +4807,7 @@ function positionsSummaryCardHtml(label, positions) {
       <div class="eyebrow">Total value — ${escHtml(label)}</div>
       <div class="big-number">${fmtMoney(value)}</div>
       <div class="perf ${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
-      <div style="font-size:12.5px;opacity:.55;">Invested: ${fmtMoney(cost)}</div>
+      <div style="font-size:12.5px;opacity:.65;">Invested: ${fmtMoney(cost)}</div>
     </div>`;
 }
 function renderStocksEtfTab() {
@@ -4845,7 +4845,7 @@ function categoryPositionsCard(x) {
     <div class="row-flex" style="margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="width:32px;height:32px;border-radius:9px;background:${assetTypeColor(x.type)}22;display:flex;align-items:center;justify-content:center;">${assetTypeEmoji(x.type)}</span>
-        <div><div style="font-weight:700;font-size:14px;">${escHtml(x.type)}</div><div style="font-size:11.5px;opacity:.55;">${x.positions.length} position${x.positions.length !== 1 ? 's' : ''}</div></div>
+        <div><div style="font-weight:700;font-size:14px;">${escHtml(x.type)}</div><div style="font-size:11.5px;opacity:.65;">${x.positions.length} position${x.positions.length !== 1 ? 's' : ''}</div></div>
       </div>
       <div style="text-align:right;">
         <div style="font-weight:700;">${fmtMoney(total)}</div>
@@ -4878,8 +4878,8 @@ function positionRowHtml(p) {
       <div style="display:flex;align-items:center;gap:10px;">
         ${assetLogoHtml(p.logo, p.assetType, 28)}
         <div>
-          <div style="font-weight:600;font-size:13.5px;">${escHtml(p.ticker)} <span style="opacity:.55;font-weight:400;">${escHtml(p.name)}</span></div>
-          <div style="font-size:11.5px;opacity:.55;">${fmtQty(p.quantity)} · avg <span style="opacity:.85;">${fmtMoney(p.avgPrice, p.currency)}</span> · now <span class="${priceUp ? 'positive' : 'negative'}" style="font-weight:700;">${curPrice != null ? fmtMoney(curPrice, p.currency) : '—'}</span> ${broker ? `· <span class="badge" style="background:var(--dark-card-2);">${escHtml(broker.name)}</span>` : ''}</div>
+          <div style="font-weight:600;font-size:13.5px;">${escHtml(p.ticker)} <span style="opacity:.65;font-weight:400;">${escHtml(p.name)}</span></div>
+          <div style="font-size:11.5px;opacity:.65;">${fmtQty(p.quantity)} · avg <span style="opacity:.85;">${fmtMoney(p.avgPrice, p.currency)}</span> · now <span class="${priceUp ? 'positive' : 'negative'}" style="font-weight:700;">${curPrice != null ? fmtMoney(curPrice, p.currency) : '—'}</span> ${broker ? `· <span class="badge" style="background:var(--dark-card-2);">${escHtml(broker.name)}</span>` : ''}</div>
         </div>
       </div>
       <div style="text-align:right;">
@@ -4956,7 +4956,7 @@ window.__modalRenderers.position = function (payload) {
   const s = assetStats(a.id);
   const rows = entriesFor(a.id).slice().sort((x, y) => (y.quantity * y.price) - (x.quantity * x.price));
   return `
-    <div class="modal-head"><div class="modal-title">Edit ${escHtml(a.ticker)}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Edit ${escHtml(a.ticker)}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="form-grid" style="margin-bottom:16px;">
       <label class="field"><span class="label-text">Ticker</span><input id="pf-ticker" value="${escHtml(a.ticker)}"></label>
       <label class="field"><span class="label-text">Full name</span><input id="pf-name" value="${escHtml(a.name)}"></label>
@@ -5020,7 +5020,7 @@ function assetEntryRowHtml(entry) {
       <td class="num"><input id="entryrow-qty-${entry.id}" type="number" step="any" value="${entry.quantity}" style="width:90px;" oninput="onEntryInput('${entry.id}','quantity',this.value)" onblur="onEntryBlur()"></td>
       <td class="num"><input id="entryrow-price-${entry.id}" type="number" step="any" value="${entry.price}" style="width:90px;" oninput="onEntryInput('${entry.id}','price',this.value)" onblur="onEntryBlur()"></td>
       <td class="num mono" id="entryrow-invested-${entry.id}">${fmtMoney(entry.quantity * entry.price, entry.currency)}</td>
-      <td class="num"><button type="button" class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteAssetEntryRow('${entry.id}')">${ic('trash')}</button></td>
+      <td class="num"><button type="button" class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteAssetEntryRow('${entry.id}')" aria-label="Delete">${ic('trash')}</button></td>
     </tr>`;
 }
 /* Live path: patch only this asset's summary numbers on every keystroke (no full render() →
@@ -5168,7 +5168,7 @@ function renderCryptoTab() {
       <div class="eyebrow">Total value — crypto</div>
       <div class="big-number" id="crypto-total-value">${fmtMoney(t.value)}</div>
       <div id="crypto-total-pl" class="perf ${t.pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${t.pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(t.pl))} (${fmtPct(Math.abs(t.plPct), false)})</div>
-      <div style="font-size:12.5px;opacity:.55;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <div style="font-size:12.5px;opacity:.65;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         <span>Invested: <span id="crypto-total-invested">${fmtMoney(t.invested)}</span></span>
         ${t.cash > 0 ? `<span>·</span><span>Cash: <span id="crypto-total-cash">${fmtMoney(t.cash)}</span></span>` : ''}
         <span>·</span>
@@ -5207,7 +5207,7 @@ function renderCryptoTab() {
             <div class="row-flex">
               <div style="display:flex;align-items:center;gap:10px;">${logoImg(x.logo, 30)}<div>
                 <div style="font-weight:600;font-size:13.5px;">${escHtml(x.name)}</div>
-                <div style="font-size:11.5px;opacity:.55;">
+                <div style="font-size:11.5px;opacity:.65;">
                   ${x.holdings.length} coin${x.holdings.length !== 1 ? 's' : ''}${hasCash ? ` · ${fmtMoney(cashEntry.amount, cashEntry.currency)} cash` : ''}
                   ${hasCash && cashEntry.interestBearing ? `<span class="badge" style="background:rgba(34,181,115,0.18);color:var(--positive);margin-left:4px;">${cashEntry.interestRate}% APY</span>` : ''}
                 </div>
@@ -5250,7 +5250,7 @@ window.__modalRenderers.cryptoAssetEdit = function (payload) {
   const s = cryptoAssetStats(asset.symbol);
   const sym = asset.symbol;
   return `
-    <div class="modal-head"><div class="modal-title">Edit ${escHtml(sym)}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Edit ${escHtml(sym)}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="form-grid" style="margin-bottom:16px;">
       <label class="field"><span class="label-text">Symbol</span><input id="ca-edit-symbol" value="${escHtml(sym)}"></label>
       <label class="field"><span class="label-text">Full name</span><input id="ca-edit-name" value="${escHtml(asset.name)}"></label>
@@ -5328,7 +5328,7 @@ function openCryptoExchangeCashForm(exchangeName) {
 window.__modalRenderers.cryptoExchangeCash = function (payload) {
   const existing = payload.exchange ? cryptoExchangeCashFor(payload.exchange) : null;
   return `
-    <div class="modal-head"><div class="modal-title">${existing ? 'Edit' : 'Add'} exchange cash</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${existing ? 'Edit' : 'Add'} exchange cash</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="form-grid" style="margin-bottom:16px;">
       <label class="field span-2"><span class="label-text">Exchange</span><input id="cec-exchange" list="crypto-broker-list" value="${escHtml(payload.exchange || '')}" placeholder="e.g. Binance"></label>
       <label class="field"><span class="label-text">Amount</span><input id="cec-amount" type="number" step="0.01" value="${existing ? existing.amount : ''}"></label>
@@ -5397,7 +5397,7 @@ function snapshotRowHtml(symbol, row) {
       <td class="num"><input id="snaprow-qty-${row.id}" type="number" step="any" value="${row.quantity}" style="width:100px;" oninput="onSnapRowInput('${symbol}','${row.id}','quantity',this.value)" onblur="onSnapRowBlur()"></td>
       <td class="num"><input id="snaprow-price-${row.id}" type="number" step="any" value="${row.price}" style="width:100px;" oninput="onSnapRowInput('${symbol}','${row.id}','price',this.value)" onblur="onSnapRowBlur()"></td>
       <td class="num mono" id="snaprow-invested-${row.id}">${fmtMoney(row.quantity * row.price, row.currency)}</td>
-      <td class="num"><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteSnapshotRow('${symbol}','${row.id}')">${ic('trash')}</button></td>
+      <td class="num"><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteSnapshotRow('${symbol}','${row.id}')" aria-label="Delete">${ic('trash')}</button></td>
     </tr>`;
 }
 function onSnapRowInput(symbol, rowId, field, value) {
@@ -5543,7 +5543,7 @@ function lotRowHtml(lot) {
       <td class="num"><input id="lot-amount-${lot.id}" type="number" step="any" value="${lot.amountPaid}" style="width:100px;" oninput="onLotInput('${lot.id}','amountPaid',this.value)" onblur="onLotBlur()"></td>
       <td class="num"><input id="lot-qty-${lot.id}" type="number" step="any" value="${lot.quantity}" style="width:100px;" oninput="onLotInput('${lot.id}','quantity',this.value)" onblur="onLotBlur()"></td>
       <td class="num"><input id="lot-price-${lot.id}" type="number" step="any" value="${price ? +price.toFixed(8) : ''}" style="width:100px;" oninput="onLotInput('${lot.id}','price',this.value)" onblur="onLotBlur()"></td>
-      <td class="num"><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteCryptoLot('${lot.id}')">${ic('trash')}</button></td>
+      <td class="num"><button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" onclick="deleteCryptoLot('${lot.id}')" aria-label="Delete">${ic('trash')}</button></td>
     </tr>`;
 }
 
@@ -5621,7 +5621,7 @@ window.__modalRenderers.cryptoAsset = function (payload) {
     ...data.cryptoAssets.flatMap(c => (c.snapshots || []).map(r => r.broker)),
   ].filter(Boolean)));
   return `
-    <div class="modal-head"><div class="modal-title">Add crypto</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Add crypto</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div style="font-size:12px;opacity:.6;margin-bottom:14px;">Enter the coin's symbol, then how much you hold and at what price — same coin at the same exchange updates that holding directly, no buy/sell history.</div>
     <datalist id="crypto-exchange-list">${exchangeSuggestions.map(b => `<option value="${escHtml(b)}">`).join('')}</datalist>
     <div class="form-grid">
@@ -5699,7 +5699,7 @@ window.__modalRenderers.broker = function (payload) {
   const linkedAcc = b ? linkedAccountForBroker(b) : null;
   const interestOn = b ? b.cashInterestBearing : false;
   return `
-    <div class="modal-head"><div class="modal-title">${b ? 'Edit broker' : 'Add broker'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${b ? 'Edit broker' : 'Add broker'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="stack-gap-12">
       <label class="field"><span class="label-text">Broker name</span><input id="bf-name" placeholder="e.g. Interactive Brokers" value="${escHtml(b ? b.name : '')}"></label>
       <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(optional: a link, or a file from your folders)</span></span>
@@ -5711,7 +5711,7 @@ window.__modalRenderers.broker = function (payload) {
         <label class="field"><span class="label-text">Cash held here</span><input id="bf-cash" type="number" step="0.01" value="${b ? brokerCash(b) : ''}" placeholder="0"></label>
         <label class="field"><span class="label-text">Currency</span><select id="bf-cash-currency" ${linkedAcc ? 'disabled' : ''}>${CURRENCIES.map(c => `<option ${(b ? brokerCashCurrency(b) : 'EUR') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       </div>
-      ${linkedAcc ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">Same cash as your <strong>${escHtml(linkedAcc.name)}</strong> bank account — changing it here changes the account's balance too.</div>` : `<div style="font-size:12px;opacity:.55;margin-top:-4px;">Tip: give it the same name as one of your bank accounts and both will always share one cash balance.</div>`}
+      ${linkedAcc ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">Same cash as your <strong>${escHtml(linkedAcc.name)}</strong> bank account — changing it here changes the account's balance too.</div>` : `<div style="font-size:12px;opacity:.65;margin-top:-4px;">Tip: give it the same name as one of your bank accounts and both will always share one cash balance.</div>`}
       <div class="row-flex">
         <span class="label-text" style="font-size:13px;">This cash earns interest</span>
         <div class="toggle ${interestOn ? 'on' : ''}" id="bf-cash-interest-on" onclick="this.classList.toggle('on'); document.getElementById('bf-cash-rate').disabled = !this.classList.contains('on');"></div>
@@ -5758,7 +5758,7 @@ function saveBrokerForm(id) {
 function openTxnForm(brokerId) { ui.modal = { type: 'txn', payload: { brokerId: brokerId || null } }; render(); }
 window.__modalRenderers.txn = function (payload) {
   return `
-    <div class="modal-head"><div class="modal-title">Add / update position</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Add / update position</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div style="font-size:12px;opacity:.6;margin-bottom:14px;">Enter the ticker's details, then how much you hold and at what price — same coin/ticker at the same broker updates that position directly, no buy/sell history.</div>
     <div class="form-grid">
       <label class="field"><span class="label-text">Ticker</span>
@@ -5778,7 +5778,7 @@ window.__modalRenderers.txn = function (payload) {
       <label class="field"><span class="label-text">Broker</span>
         <select id="tn-broker">${data.brokers.map(b => `<option value="${b.id}" ${payload.brokerId === b.id ? 'selected' : ''}>${escHtml(b.name)}</option>`).join('')}</select>
       </label>
-      <div class="span-2" style="font-size:11px;opacity:.55;">Adding crypto? Use "+ Add crypto" in the Crypto tab instead — it tracks live prices via CoinGecko.</div>
+      <div class="span-2" style="font-size:11px;opacity:.65;">Adding crypto? Use "+ Add crypto" in the Crypto tab instead — it tracks live prices via CoinGecko.</div>
       <label class="field"><span class="label-text">Quantity owned</span><input id="tn-qty" type="number" step="any"></label>
       <label class="field"><span class="label-text">Price</span><input id="tn-price" type="number" step="any"></label>
       <label class="field"><span class="label-text">Currency</span><select id="tn-currency">${CURRENCIES.map(c => `<option ${c === 'EUR' ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
@@ -5931,12 +5931,12 @@ function renderManualPrices() {
     </div>
     ${livePricesStatusCardHtml()}
     <div class="card-dark">
-      <table class="data-table">
+      <table class="data-table" tabindex="0">
         <thead><tr><th>Ticker / Name</th><th class="num">Auto price</th><th class="num">Manual price</th><th></th></tr></thead>
         <tbody>
           ${allPriceableHoldings().map(h => `
             <tr>
-              <td><div style="display:flex;align-items:center;gap:8px;">${assetLogoHtml(h.logo, h.assetType, 22)}<span>${escHtml(h.ticker)} <span style="opacity:.55;">${escHtml(h.name)}</span>${h.kind === 'crypto' ? ` <span class="badge" style="background:${assetTypeColor('Crypto')}22;color:${assetTypeColor('Crypto')};">crypto</span>` : ''}</span></div></td>
+              <td><div style="display:flex;align-items:center;gap:8px;">${assetLogoHtml(h.logo, h.assetType, 22)}<span>${escHtml(h.ticker)} <span style="opacity:.65;">${escHtml(h.name)}</span>${h.kind === 'crypto' ? ` <span class="badge" style="background:${assetTypeColor('Crypto')}22;color:${assetTypeColor('Crypto')};">crypto</span>` : ''}</span></div></td>
               <td class="num mono">${fmtMoney(h.livePrice, h.currency)}</td>
               <td class="num"><input style="width:110px;display:inline-block;" type="number" step="any" id="mp-${h.kind}-${h.key}" value="${h.manualPrice != null ? h.manualPrice : ''}" placeholder="—"></td>
               <td class="num">
@@ -6077,8 +6077,8 @@ function tradeRowHtml(t) {
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="width:32px;height:32px;border-radius:9px;background:${dirColor}22;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;">${t.direction === 'Short' ? '▼' : '▲'}</span>
         <div>
-          <div style="font-weight:600;font-size:13.5px;">${escHtml(t.instrument)} <span style="opacity:.55;font-weight:400;">${escHtml(t.tradeType)}</span></div>
-          <div style="font-size:11.5px;opacity:.55;">
+          <div style="font-weight:600;font-size:13.5px;">${escHtml(t.instrument)} <span style="opacity:.65;font-weight:400;">${escHtml(t.tradeType)}</span></div>
+          <div style="font-size:11.5px;opacity:.65;">
             <span style="color:${dirColor};font-weight:600;">${t.direction}</span> · ${fmtQty(t.quantity)} · entry ${fmtMoney(t.entryPrice, t.currency)}
             ${t.status === 'closed' ? ` · closed ${t.closePrice != null ? fmtMoney(t.closePrice, t.currency) : '—'}` : ` · now <span style="font-weight:700;">${t.currentPrice != null ? fmtMoney(t.currentPrice, t.currency) : '—'}</span>`}
             ${t.platform ? ` · <span class="badge" style="background:var(--dark-card-2);">${escHtml(t.platform)}</span>` : ''}
@@ -6090,7 +6090,7 @@ function tradeRowHtml(t) {
         <div class="${pl != null && pl >= 0 ? 'positive' : 'negative'}" style="font-size:11.5px;">${pl != null ? `${pl >= 0 ? '▲' : '▼'}${plPct != null ? ' ' + fmtPct(Math.abs(plPct), false) : ''}` : ''}</div>
       </div>
     </div>
-    <div style="font-size:11px;opacity:.55;margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;">
+    <div style="font-size:11px;opacity:.65;margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;">
       <span>Collateral: <strong style="opacity:.9;">${fmtMoney(t.collateral || 0, t.currency)}</strong>${t.leverage ? ` (${t.leverage}x)` : ''}</span>
       ${t.takeProfit != null ? `<span>TP ${fmtMoney(t.takeProfit, t.currency)} → potential <strong class="positive">${fmtMoney(Math.abs(tpPotential), t.currency)}</strong></span>` : ''}
       ${t.stopLoss != null ? `<span>SL ${fmtMoney(t.stopLoss, t.currency)} → potential <strong class="negative">${fmtMoney(Math.abs(slPotential), t.currency)}</strong></span>` : ''}
@@ -6130,7 +6130,7 @@ function openTradeForm(id) {
 window.__modalRenderers.trade = function (payload) {
   const isEdit = !!payload.id;
   return `
-    <div class="modal-head"><div class="modal-title">${isEdit ? 'Edit trade' : 'Add trade'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${isEdit ? 'Edit trade' : 'Add trade'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="form-grid">
       <label class="field span-2"><span class="label-text">Instrument / symbol</span><input id="tr-instrument" value="${escHtml(payload.instrument || '')}" placeholder="e.g. BTC/USD, NVDA, EUR/USD"></label>
       <label class="field"><span class="label-text">Trade type</span><input id="tr-type" list="trade-type-list" value="${escHtml(payload.tradeType || '')}" placeholder="e.g. Futures, CFD"></label>
@@ -6307,18 +6307,18 @@ function settingsDisplayHtml() {
       ${boolSettingRow('Show cents (decimals)', 'showCents')}
       ${boolSettingRow('Show performance indicators', 'showPerformanceIndicators', 'Gains and losses on your investments (P&amp;L, ▲ ▼ %, the Performance card). Off: only what things are worth.')}
       ${boolSettingRow('Compact mode', 'compactMode', 'Tighter spacing and smaller headline numbers, so more fits on the screen.')}
-      <div class="row-flex"><div><div style="font-size:13.5px;">Dutch box 3 estimate</div><div style="font-size:12px;opacity:.55;margin-top:2px;">A card in Analysis estimating the Dutch wealth tax from your 1 January figures (2026 rules, editable). An estimate, not tax advice.</div></div><div class="toggle ${data.settings.box3 && data.settings.box3.enabled ? 'on' : ''}" style="flex:none;" onclick="setBox3('enabled', !(data.settings.box3 && data.settings.box3.enabled))"></div></div>
+      <div class="row-flex"><div><div style="font-size:13.5px;">Dutch box 3 estimate</div><div style="font-size:12px;opacity:.65;margin-top:2px;">A card in Analysis estimating the Dutch wealth tax from your 1 January figures (2026 rules, editable). An estimate, not tax advice.</div></div><div class="toggle ${data.settings.box3 && data.settings.box3.enabled ? 'on' : ''}" style="flex:none;" onclick="setBox3('enabled', !(data.settings.box3 && data.settings.box3.enabled))"></div></div>
       ${boolSettingRow('New navigation (beta)', 'newNav', 'Home · Money · Wealth (overview, cash, investments, debts) · Plan (goals, emergency, insights). Same pages, grouped differently — switch back any time.')}
       ${boolSettingRow('Update holdings when I record a trade', 'applyTradesToHoldings', 'After Buy / Sell / Convert (or a plan) on an account page, show how quantities, average price and cash would change, and apply it if you confirm. Never places a real order.')}
       ${boolSettingRow('Category budgets (beta)', 'budgetLimitsBeta', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}
-      <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.55;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
+      <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.65;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
       <label class="field"><span class="label-text">Twelve Data API key <span style="opacity:.6;">(ticker search &amp; live prices)</span></span>
         <input id="settings-twelvedata-key" value="${escHtml(s.twelveDataApiKey || '')}" placeholder="Paste your free API key from twelvedata.com" onchange="updateSetting('twelveDataApiKey', this.value.trim())">
       </label>
     </div>`;
 }
 function boolSettingRow(label, key, desc) {
-  return `<div class="row-flex"><div><div style="font-size:13.5px;">${label}</div>${desc ? `<div style="font-size:12px;opacity:.55;margin-top:2px;">${desc}</div>` : ''}</div><div class="toggle ${data.settings[key] ? 'on' : ''}" onclick="toggleSetting('${key}')" style="flex:none;"></div></div>`;
+  return `<div class="row-flex"><div><div style="font-size:13.5px;">${label}</div>${desc ? `<div style="font-size:12px;opacity:.65;margin-top:2px;">${desc}</div>` : ''}</div><div class="toggle ${data.settings[key] ? 'on' : ''}" onclick="toggleSetting('${key}')" style="flex:none;"></div></div>`;
 }
 function toggleSetting(key) { data.settings[key] = !data.settings[key]; save(); render(); }
 function updateSetting(key, value) { data.settings[key] = value; save(); render(); }
@@ -6327,7 +6327,7 @@ function settingsAssetCategoriesHtml() {
   return `
     <div style="font-weight:700;margin-bottom:10px;">Asset categories</div>
     <div class="chip-scroll" style="flex-wrap:wrap;">
-      ${data.categories.asset.map(c => `<span class="chip">${escHtml(c.name)} <button class="close-x" style="font-size:12px;padding:0;" onclick="removeCategory('asset','${c.id}')">✕</button></span>`).join('')}
+      ${data.categories.asset.map(c => `<span class="chip">${escHtml(c.name)} <button class="close-x" aria-label="Close" style="font-size:12px;padding:0;" onclick="removeCategory('asset','${c.id}')">✕</button></span>`).join('')}
     </div>
     <div style="display:flex;gap:8px;margin-top:10px;">
       <input id="new-asset-cat" placeholder="Add asset category…">
@@ -6355,7 +6355,7 @@ function settingsLogosHtml() {
       ${items.map(it => `
         <div class="card-nested" style="display:flex;align-items:center;gap:10px;">
           ${logoImg(it.logo, 34)}
-          <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;">${escHtml(it.name)}</div><div style="font-size:11px;opacity:.55;">${escHtml(it.type)}${isRemoteLogo(it.logo) ? ' · <span style="color:var(--manual-accent);opacity:1;">remote link</span>' : ''}</div></div>
+          <div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:13px;">${escHtml(it.name)}</div><div style="font-size:11px;opacity:.65;">${escHtml(it.type)}${isRemoteLogo(it.logo) ? ' · <span style="color:var(--manual-accent);opacity:1;">remote link</span>' : ''}</div></div>
           <button class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;" title="Copy URL" onclick="copyLogoUrl(this,'${escHtml(it.logo).replace(/'/g, "\\'")}')">${ic('copy')}</button>
           <a class="icon-btn-round" style="width:30px;height:30px;background:none;border:none;text-decoration:none;" href="${escHtml(it.logo)}" download="${escHtml(it.name)}.png" title="Download">⬇</a>
         </div>`).join('') || '<div style="opacity:.5;font-size:13px;">No logos yet.</div>'}
@@ -6436,10 +6436,10 @@ function settingsBackupRestoreHtml() {
       <button class="btn" onclick="exportForAI()" title="One Excel file with all your data, explained, for an AI to analyse">${ic('download', 15)} Export for AI</button>
       <button class="btn" onclick="document.getElementById('import-excel-backup').click()">Restore from Excel</button>
     </div>
-    <div style="font-size:11.5px;opacity:.55;margin-bottom:14px;">The Excel backup has one readable sheet per part of the app, plus a "Restore" sheet with everything, checked by a fingerprint before any restore. Keep it private: it holds all your financial data. "Export for AI" is made for reading: a guide sheet, a summary, monthly totals, every transaction in EUR and everything you own, so an AI can analyse it (it can't be restored).</div>
+    <div style="font-size:11.5px;opacity:.65;margin-bottom:14px;">The Excel backup has one readable sheet per part of the app, plus a "Restore" sheet with everything, checked by a fingerprint before any restore. Keep it private: it holds all your financial data. "Export for AI" is made for reading: a guide sheet, a summary, monthly totals, every transaction in EUR and everything you own, so an AI can analyse it (it can't be restored).</div>
     <input type="file" id="import-backup-file" accept="application/json,.json" style="display:none;" onchange="handleImportBackupFile(this.files[0])">
     <input type="file" id="import-excel-backup" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none;" onchange="restoreExcelBackup(this.files[0]);this.value=''">
-    <div style="font-size:11.5px;opacity:.55;">Restoring replaces everything currently in this browser. You'll see exactly what's in the file — and what it would overwrite — and have to confirm, before anything changes.</div>    ${typeof emergencyPackHtml === 'function' ? emergencyPackHtml() : ''}
+    <div style="font-size:11.5px;opacity:.65;">Restoring replaces everything currently in this browser. You'll see exactly what's in the file — and what it would overwrite — and have to confirm, before anything changes.</div>    ${typeof emergencyPackHtml === 'function' ? emergencyPackHtml() : ''}
   `;
 }
 async function exportFullBackup() {
@@ -6824,7 +6824,7 @@ function importAssetPricesExcel(file) {
 function settingsAboutHtml() {
   const bytes = new Blob([JSON.stringify(data)]).size;
   return `
-    <table class="data-table">
+    <table class="data-table" tabindex="0">
       <tbody>
         <tr><td style="opacity:.6;">Version</td><td style="text-align:right;">1.0.0</td></tr>
         <tr><td style="opacity:.6;">Application</td><td style="text-align:right;font-weight:700;">Trackr</td></tr>
@@ -7209,7 +7209,7 @@ function settingsSupabaseSyncHtml() {
         </ol>
         <button class="btn small" onclick="copySupabaseSetupCode()">Copy setup code</button>
         ${ui.supabaseShowCode ? `<textarea readonly onclick="this.select()" style="width:100%;margin-top:10px;font-size:11px;min-height:70px;word-break:break-all;">${escHtml(supabaseSetupCode(cfg))}</textarea>` : ''}
-        <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Keep this code private — like a password, it gives access to your data.</div>
+        <div style="font-size:11.5px;opacity:.65;margin-top:8px;">Keep this code private — like a password, it gives access to your data.</div>
       </div>
       ${syncState.legacy ? `
       <div class="card-nested" style="margin-bottom:16px;">
@@ -7388,7 +7388,7 @@ function syncStatusState() {
 function syncStatusIndicatorHtml() {
   const state = syncStatusState();
   if (!state) return `
-    <button class="sync-indicator-sidebar" onclick="goPage('settings');ui.settingsOpenSections={supabasesync:true};render();" title="This copy of Trackr isn't connected to sync — its data stays here only" style="display:flex;align-items:center;gap:7px;width:100%;background:transparent;border:none;padding:6px 4px;margin-bottom:2px;cursor:pointer;font-family:inherit;font-size:11.5px;opacity:.55;color:inherit;text-align:left;">
+    <button class="sync-indicator-sidebar" onclick="goPage('settings');ui.settingsOpenSections={supabasesync:true};render();" title="This copy of Trackr isn't connected to sync — its data stays here only" style="display:flex;align-items:center;gap:7px;width:100%;background:transparent;border:none;padding:6px 4px;margin-bottom:2px;cursor:pointer;font-family:inherit;font-size:11.5px;opacity:.65;color:inherit;text-align:left;">
       <span style="width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:#8A8DA0;"></span>
       <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Sync off — this device only</span>
     </button>`;
@@ -7434,7 +7434,7 @@ window.__modalRenderers.syncStatus = function () {
   if (state === 'conflict') {
     const unverified = syncState.conflict.reason === 'unverified';
     return `
-      <div class="modal-head"><div class="modal-title">${unverified ? 'Which data do you want to keep?' : 'Both devices were changed'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+      <div class="modal-head"><div class="modal-title">${unverified ? 'Which data do you want to keep?' : 'Both devices were changed'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
       <div style="font-size:13px;opacity:.75;line-height:1.6;margin-bottom:16px;">${syncConflictExplanationHtml()}</div>
       <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
         <button class="btn primary" onclick="ui.modal=null;resolveSyncConflictUseRemote();">Use the cloud's version</button>
@@ -7447,7 +7447,7 @@ window.__modalRenderers.syncStatus = function () {
       <div style="opacity:.7;">${escHtml(syncState.lastError.message || 'Unknown error')}</div>
     </div>` : '';
   return `
-    <div class="modal-head"><div class="modal-title">${state === 'warning' ? 'Sync issue' : 'Sync status'}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${state === 'warning' ? 'Sync issue' : 'Sync status'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div style="font-size:13px;opacity:.75;line-height:1.6;">
       Last successful sync: ${escHtml(syncState.lastSuccessAt ? timeAgo(syncState.lastSuccessAt) : 'never')}${syncState.consecutiveFailures ? ` · ${syncState.consecutiveFailures} failed attempt${syncState.consecutiveFailures === 1 ? '' : 's'} in a row` : ''}
     </div>

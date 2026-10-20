@@ -79,7 +79,7 @@ function passphraseDialog(opts) {
 }
 window.__modalRenderers.passphrase = function (p) {
   return `
-    <div class="modal-head"><div class="modal-title">${escHtml(p.title)}</div><button class="close-x" onclick="passphraseDone(false)">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${escHtml(p.title)}</div><button class="close-x" aria-label="Close" onclick="passphraseDone(false)">✕</button></div>
     <div class="stack-gap-12">
       ${p.text ? `<div style="font-size:13px;opacity:.7;line-height:1.5;">${escHtml(p.text)}</div>` : ''}
       <label class="field"><span class="label-text">Passphrase</span><input id="pp-1" type="password" autocomplete="${p.confirm ? 'new-password' : 'current-password'}" onkeydown="if(event.key==='Enter'){event.preventDefault();passphraseDone(true);}"></label>

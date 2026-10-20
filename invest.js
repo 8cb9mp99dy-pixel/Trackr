@@ -420,7 +420,7 @@ window.__modalRenderers.deposit = function () {
   if (!acc) return '';
   const banks = data.accounts || [];
   return `
-    <div class="modal-head"><div class="modal-title">Deposit to ${escHtml(acc.name)}</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Deposit to ${escHtml(acc.name)}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     ${banks.length ? `
     <div style="font-size:12.5px;opacity:.65;margin-bottom:14px;">Records a transfer: the bank account goes down, ${escHtml(acc.name)}'s cash goes up. It also shows in Budget as a transfer.</div>
     <div class="form-grid">
@@ -472,7 +472,7 @@ window.__modalRenderers.exchange = function (p) {
   const cash = cryptoExchangeCashFor(p.name);
   const logo = (data.exchangeLogos || {})[p.name.trim().toLowerCase()] || '';
   return `
-    <div class="modal-head"><div class="modal-title">Edit exchange</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Edit exchange</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="stack-gap-12">
       <label class="field"><span class="label-text">Name</span><input id="ex-name" value="${escHtml(p.name)}" autocomplete="off"></label>
       <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(optional: a link, or a file from your folders)</span></span>
@@ -651,15 +651,15 @@ function tradeEffects(rec) {
 function openApplyTrade(id) { ui.modal = { type: 'applyTrade', payload: { id } }; render(); }
 window.__modalRenderers.applyTrade = function (p) {
   const rec = (data.investmentTransactions || []).find(x => x.id === p.id);
-  if (!rec) return '<div class="modal-head"><div class="modal-title">Trade not found</div><button class="close-x" onclick="closeModal()">✕</button></div>';
+  if (!rec) return '<div class="modal-head"><div class="modal-title">Trade not found</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>';
   const E = tradeEffects(rec);
-  const row = (l, a, b) => `<div class="row-flex" style="font-size:13.5px;padding:6px 0;border-bottom:1px solid var(--light-border);"><span>${l}</span><span><span style="opacity:.55;">${a}</span> → <strong>${b}</strong></span></div>`;
+  const row = (l, a, b) => `<div class="row-flex" style="font-size:13.5px;padding:6px 0;border-bottom:1px solid var(--light-border);"><span>${l}</span><span><span style="opacity:.65;">${a}</span> → <strong>${b}</strong></span></div>`;
   return `
-    <div class="modal-head"><div class="modal-title">Update your holdings?</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">Update your holdings?</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div style="font-size:13px;opacity:.7;margin-bottom:10px;">${escHtml(rec.action)} ${escHtml(rec.ticker)}${rec.toTicker ? ' → ' + escHtml(rec.toTicker) : ''} · ${fmtMoney(rec.amount)} — recorded. Apply it to Trackr only once it's done at your ${escHtml(rec.account)} account.</div>
     <div>${E.ops.map(o => o.type === 'cash' || o.type === 'xcash' ? row(escHtml(o.label), fmtMoney(o.c0, o.ccy), fmtMoney(o.c1, o.ccy))
       : row(escHtml(o.label), `${fmtQty(o.q0)}${o.p0 != null && o.type !== 'lotAdd' && o.type !== 'lotTake' ? ` @ ${fmtMoney(o.p0, o.ccy)}` : ''}`, `${fmtQty(o.q1)}${o.p1 != null && o.type !== 'lotAdd' && o.type !== 'lotTake' ? ` @ ${fmtMoney(o.p1, o.ccy)}` : ''}${o.type === 'lotAdd' ? ' (new dated purchase)' : ''}`)).join('')}</div>
-    ${E.realised != null ? `<div style="margin-top:10px;font-size:13.5px;">Realised ${E.realised >= 0 ? 'gain' : 'loss'}: <strong class="${E.realised >= 0 ? 'positive' : 'negative'}">${E.realised >= 0 ? '+' : '−'}${fmtMoney(Math.abs(E.realised))}</strong> <span style="opacity:.55;">(price recorded vs your average buy price)</span></div>` : ''}
+    ${E.realised != null ? `<div style="margin-top:10px;font-size:13.5px;">Realised ${E.realised >= 0 ? 'gain' : 'loss'}: <strong class="${E.realised >= 0 ? 'positive' : 'negative'}">${E.realised >= 0 ? '+' : '−'}${fmtMoney(Math.abs(E.realised))}</strong> <span style="opacity:.65;">(price recorded vs your average buy price)</span></div>` : ''}
     ${E.problems.length ? `<div class="info-box" style="margin-top:10px;color:var(--negative);">${E.problems.map(escHtml).join('<br>')}</div>` : ''}
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">Only record it</button>

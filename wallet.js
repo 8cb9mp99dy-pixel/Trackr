@@ -66,7 +66,7 @@ function walletSectionHtml() {
           ${accountIconHtml(w, 30)}
           <div style="min-width:0;">
             <div style="font-weight:700;font-size:15px;">${escHtml(w.name)} <span class="badge" style="background:var(--dark-card-2);color:var(--dark-text-dim);margin-left:4px;">Cash</span></div>
-            <div style="font-size:12px;opacity:.55;">${counted ? `Counted ${escHtml(counted)} · ` : ''}follows what you add, spend and withdraw</div>
+            <div style="font-size:12px;opacity:.65;">${counted ? `Counted ${escHtml(counted)} · ` : ''}follows what you add, spend and withdraw</div>
           </div>
         </div>
         <div style="display:flex;gap:2px;align-items:center;">
@@ -96,7 +96,7 @@ function openWalletModal(mode) {
 window.__modalRenderers.wallet = function (p) {
   const w = cashWallet();
   const ccy = w ? w.currency : data.settings.defaultCurrency;
-  const head = t => `<div class="modal-head"><div class="modal-title">${t}</div><button class="close-x" onclick="closeModal()">✕</button></div>`;
+  const head = t => `<div class="modal-head"><div class="modal-title">${t}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>`;
   const amount = (label, placeholder) => `<label class="field"><span class="label-text">${label} (${escHtml(ccy)})</span><input id="wl-amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="${escHtml(placeholder || '0.00')}" value="${escHtml(p.amount || '')}" oninput="walletAmountInput(this.value)" onkeydown="if(event.key==='Enter')saveWalletModal()"></label>`;
   if (p.mode === 'setup') {
     return `${head('Cash in your wallet')}
@@ -123,7 +123,7 @@ window.__modalRenderers.wallet = function (p) {
       ${amount('Amount')}
       <div class="tx-label">Where from?</div>
       <div class="tx-chips">${WALLET_REASONS.map(r => `<button type="button" class="tx-chip ${p.reason === r.key ? 'on' : ''}" onclick="ui.modal.payload.reason='${r.key}';render();">${escHtml(r.label)}</button>`).join('')}</div>
-      <label class="field"><span class="label-text">Name <span style="opacity:.55;">(optional)</span></span><input id="wl-name" value="${escHtml(p.name || '')}" placeholder="${escHtml((WALLET_REASONS.find(r => r.key === p.reason) || {}).label || 'Cash')}" oninput="ui.modal.payload.name=this.value"></label>
+      <label class="field"><span class="label-text">Name <span style="opacity:.65;">(optional)</span></span><input id="wl-name" value="${escHtml(p.name || '')}" placeholder="${escHtml((WALLET_REASONS.find(r => r.key === p.reason) || {}).label || 'Cash')}" oninput="ui.modal.payload.name=this.value"></label>
       <label class="field"><span class="label-text">Date</span><input id="wl-date" type="date" value="${escHtml(p.date || today)}" max="${today}" onchange="ui.modal.payload.date=this.value"></label>
       <div style="font-size:12px;opacity:.6;">Logged as income paid in cash, so it shows in your budget too.</div>
       <button class="btn primary full" onclick="saveWalletModal()">Add to wallet</button>
