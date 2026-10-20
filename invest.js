@@ -45,8 +45,8 @@ function tradeableAssets(acc) {
   const held = investHoldings(acc);
   const list = held.map(h => ({ key: h.key, label: `${h.name} (${h.ticker})`, price: h.price, crypto: h.crypto, ticker: h.ticker }));
   const has = new Set(list.map(x => x.key));
-  if (acc.kind === 'broker') (data.assets || []).forEach(a => { if (!has.has('a:' + a.id) && assetHasPrice(a)) list.push({ key: 'a:' + a.id, label: `${a.name || a.ticker} (${a.ticker})`, price: toEUR(assetPrice(a), a.priceCurrency), crypto: false, ticker: a.ticker }); });
-  (data.cryptoAssets || []).forEach(c => { const p = cryptoMarketPrice(c.symbol, 'EUR'); if (!has.has('c:' + c.symbol) && p) list.push({ key: 'c:' + c.symbol, label: `${c.name || c.symbol} (${c.symbol})`, price: p, crypto: true, ticker: c.symbol }); });
+  if (acc.kind === 'broker') (data.assets || []).forEach(a => { if (!has.has('a:' + a.id)) list.push({ key: 'a:' + a.id, label: `${a.name || a.ticker} (${a.ticker})`, price: assetHasPrice(a) ? toEUR(assetPrice(a), a.priceCurrency) : 0, crypto: false, ticker: a.ticker }); });
+  (data.cryptoAssets || []).forEach(c => { const p = cryptoMarketPrice(c.symbol, 'EUR') || 0; if (!has.has('c:' + c.symbol)) list.push({ key: 'c:' + c.symbol, label: `${c.name || c.symbol} (${c.symbol})`, price: p, crypto: true, ticker: c.symbol }); });
   return list;
 }
 
@@ -125,96 +125,229 @@ function cryptoLockNote(symbol, accName) {
   return q > 0 ? `<span class="dim">${fmtQty(+q.toFixed(8))} staked</span>` : '';
 }
 
-/* ---- Buy / Sell / Convert (records only) ---- */
-function startTrade(side, key) { ui.investMenu = null; ui.modal = null; ui.trade = { side, from: key, to: '', amount: '' }; ui.investTab = 'trade'; render(); }
+/* ---- Buy / Sell / Convert (records only) ----
+   Every number can be typed: the money, the quantity and the price per unit. Type any two and
+   the third follows (the two typed last win); the price starts at the live price. Convert has a
+   second leg (what you get): type its quantity or its price, the other follows. Fee, date and a
+   note sit under "Details". A recorded trade reopens here from the Transactions tab to be edited
+   (once applied to holdings, only its date and note can change). */
+function tradeBlank() { return { amount: '', qty: '', price: '', toQty: '', toPrice: '', fee: '', date: '', note: '', locks: ['amount', 'price'], toLock: 'toPrice', editId: null, details: false }; }
+function startTrade(side, key) { ui.investMenu = null; ui.modal = null; ui.trade = Object.assign(tradeBlank(), { side, from: key, to: '' }); ui.investTab = 'trade'; render(); }
 function tradeState(acc) {
-  const t = ui.trade || (ui.trade = { side: 'buy', from: '', to: '', amount: '' });
+  const t = ui.trade || (ui.trade = Object.assign(tradeBlank(), { side: 'buy', from: '', to: '' }));
+  const blank = tradeBlank();
+  Object.keys(blank).forEach(k => { if (t[k] === undefined) t[k] = blank[k]; });
   const assets = tradeableAssets(acc), held = investHoldings(acc);
-  if (t.side === 'buy') { if (!assets.some(a => a.key === t.from)) t.from = assets[0] ? assets[0].key : ''; }
-  else { const pool = t.side === 'convert' ? held.filter(h => h.crypto) : held; if (!pool.some(h => h.key === t.from)) t.from = pool[0] ? pool[0].key : ''; }
-  if (t.side === 'convert') { const tos = assets.filter(a => a.crypto && a.key !== t.from); if (!tos.some(a => a.key === t.to)) t.to = tos[0] ? tos[0].key : ''; }
+  if (!t.editId) {
+    if (t.side === 'buy') { if (!assets.some(a => a.key === t.from)) t.from = assets[0] ? assets[0].key : ''; }
+    else { const pool = t.side === 'convert' ? held.filter(h => h.crypto) : held; if (!pool.some(h => h.key === t.from)) t.from = pool[0] ? pool[0].key : ''; }
+    if (t.side === 'convert') { const tos = assets.filter(a => a.crypto && a.key !== t.from); if (!tos.some(a => a.key === t.to)) t.to = tos[0] ? tos[0].key : ''; }
+  }
   return { t, assets, held };
 }
-function tradePanelHtml(acc) {
-  const { t, assets, held } = tradeState(acc);
-  const cash = investCash(acc);
-  const holding = key => held.find(h => h.key === key);
-  const pctBase = t.side === 'buy' ? cash : (holding(t.from) || {}).value || 0;
-  const sel = (id, list, val, onch) => `<select class="mini-select" style="width:100%;" id="${id}" onchange="${onch}">${list.map(o => `<option value="${o.key}" ${o.key === val ? 'selected' : ''}>${escHtml(o.label)}</option>`).join('')}</select>`;
-  const fromList = t.side === 'buy' ? assets : (t.side === 'convert' ? held.filter(h => h.crypto) : held).map(h => ({ key: h.key, label: `${h.name} · ${fmtMoney(h.value)}` }));
-  const { target, price, ready, get, label } = tradeQuote(acc);
-  return `
-    <div class="trade-tabs">${[['buy', 'Buy'], ['sell', 'Sell'], ['convert', 'Convert']].map(([k, l]) => `<button class="${t.side === k ? 'on' : ''}" onclick="ui.trade.side='${k}';ui.trade.amount='';render()">${l}</button>`).join('')}</div>
-    ${!fromList.length ? `<div class="dim" style="padding:16px 0;">${t.side === 'buy' ? 'No asset with a price to buy yet.' : t.side === 'convert' ? 'No crypto held here to convert.' : 'Nothing held here to sell.'}</div>` : `
-    <div class="trade-box">
-      <div class="trade-lbl">${t.side === 'buy' ? 'I want to invest' : t.side === 'sell' ? 'I want to sell' : 'I convert'}</div>
-      ${t.side === 'buy' ? '' : sel('tr-from', fromList, t.from, "ui.trade.from=this.value;ui.trade.amount='';render()")}
-      <div class="trade-amt"><input id="tr-amount" type="number" min="0" step="any" inputmode="decimal" placeholder="0" value="${escHtml(String(t.amount))}" oninput="setTradeAmount(this.value)"><span>EUR</span></div>
-      ${pctBase > 0 ? `<div class="trade-pcts">${[25, 50, 100].map(p => `<button onclick="setTradeAmount('${(pctBase * p / 100).toFixed(2)}', true)">${p}%</button>`).join('')}<span class="dim">of ${t.side === 'buy' ? 'cash' : 'the holding'} (${fmtMoney(pctBase)})</span></div>` : ''}
-    </div>
-    <div class="trade-swap">${ic('swap', 16)}</div>
-    <div class="trade-box">
-      <div class="trade-lbl">${t.side === 'sell' ? 'I get' : 'I get'}</div>
-      ${t.side === 'buy' ? sel('tr-asset', assets, t.from, "ui.trade.from=this.value;render()") : t.side === 'convert' ? sel('tr-to', assets.filter(a => a.crypto && a.key !== t.from), t.to, "ui.trade.to=this.value;render()") : ''}
-      <div class="trade-get" id="tr-get">${get}</div>
-      ${target && price ? `<div class="dim">1 ${escHtml(target.ticker)} ≈ ${fmtMoney(price)} · live price</div>` : ''}
-    </div>
-    <button class="btn primary full" id="tr-confirm" ${ready ? '' : 'disabled'} onclick="confirmTrade()">${label}</button>
-    <div class="dim" style="margin-top:8px;line-height:1.45;">Only recorded in Trackr — no real order is placed. ${data.settings.applyTradesToHoldings ? 'You\'ll then see how your quantities and cash would change, and choose to apply it.' : 'Your quantities and cash don\'t change.'}</div>
-    <label class="switch-row" style="margin-top:10px;font-size:12.5px;"><button class="toggle ${data.settings.applyTradesToHoldings ? 'on' : ''}" onclick="data.settings.applyTradesToHoldings=!data.settings.applyTradesToHoldings;save();render()" aria-label="Also update holdings and cash"></button><span>Also update my holdings and cash (asks first)</span></label>`}`;
+/* An asset by key, even one no longer held or without a live price (when editing an old trade). */
+function tradeAsset(key, assets, held) {
+  if (!key) return null;
+  const found = held.find(h => h.key === key) || assets.find(a => a.key === key);
+  if (found) return found;
+  const [k, ref] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+  if (k === 'a') { const a = assetById(ref); return a ? { key, ticker: a.ticker, name: a.name || a.ticker, price: assetHasPrice(a) ? toEUR(assetPrice(a), a.priceCurrency) : 0, crypto: false } : null; }
+  const c = cryptoAssetBySymbol(ref); return c ? { key, ticker: c.symbol, name: c.name || c.symbol, price: cryptoMarketPrice(c.symbol, 'EUR') || 0, crypto: true } : null;
 }
-/* Typing only updates the "I get" line and the button (no redraw), so the cursor never moves.
-   The % buttons redraw, which also fills the field. */
-function tradeQuote(acc) {
+const tradeNum = v => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) ? n : null; };
+/* The numbers of the trade being typed: two of amount / quantity / price come from what you
+   typed (or the live price), the third is worked out. */
+function tradeCalc(acc) {
   const { t, assets, held } = tradeState(acc);
-  const amt = parseFloat(String(t.amount).replace(',', '.')) || 0;
-  const target = t.side === 'convert' ? assets.find(a => a.key === t.to) : assets.find(a => a.key === t.from) || held.find(h => h.key === t.from);
-  const price = target ? target.price : 0;
-  const ready = !!(amt > 0 && target && price > 0 && (t.side !== 'convert' || t.to));
-  const get = t.side === 'sell' ? fmtMoney(amt) : `${price && amt ? fmtQty(+(amt / price).toFixed(8)) : '—'} ${target ? target.ticker : ''}`;
-  const label = ready ? (t.side === 'buy' ? 'Record the buy' : t.side === 'sell' ? 'Record the sale' : 'Record the conversion') : 'Enter an amount';
-  return { t, amt, target, price, ready, get, label };
+  const from = tradeAsset(t.from, assets, held);
+  const to = t.side === 'convert' ? tradeAsset(t.to, assets, held) : null;
+  const live = from ? from.price || 0 : 0, toLive = to ? to.price || 0 : 0;
+  let amount = tradeNum(t.amount), qty = tradeNum(t.qty), price = t.price === '' ? (live || null) : tradeNum(t.price);
+  const derived = ['amount', 'qty', 'price'].find(f => !t.locks.includes(f)) || 'qty';
+  if (derived === 'qty') qty = amount > 0 && price > 0 ? amount / price : null;
+  else if (derived === 'amount') amount = qty > 0 && price > 0 ? qty * price : null;
+  else price = amount > 0 && qty > 0 ? amount / qty : null;
+  let toQty = null, toPrice = null;
+  if (t.side === 'convert') {
+    if (t.toLock === 'toQty') { toQty = tradeNum(t.toQty); toPrice = amount > 0 && toQty > 0 ? amount / toQty : null; }
+    else { toPrice = t.toPrice === '' ? (toLive || null) : tradeNum(t.toPrice); toQty = amount > 0 && toPrice > 0 ? amount / toPrice : null; }
+  }
+  const fee = Math.max(0, tradeNum(t.fee) || 0);
+  const ready = !!(from && amount > 0 && qty > 0 && price > 0 && (t.side !== 'convert' || (to && toQty > 0 && toPrice > 0)));
+  const verb = t.side === 'buy' ? 'buy' : t.side === 'sell' ? 'sale' : 'conversion';
+  const label = !ready ? (from && !(price > 0) && !(amount > 0 && qty > 0) ? 'Enter a price' : 'Enter an amount') : t.editId ? 'Save changes' : `Record the ${verb}`;
+  return { t, assets, held, from, to, live, toLive, amount, qty, price, toQty, toPrice, fee, derived, ready, label };
 }
-function setTradeAmount(v, redraw) {
-  ui.trade.amount = v;
+/* What an input shows: what you typed, or the worked-out number. */
+function tradeShown(c, f) {
+  const t = c.t;
+  const typed = f === 'toQty' || f === 'toPrice' ? t.toLock === f && t[f] !== '' : t.locks.includes(f) && t[f] !== '';
+  if (typed) return String(t[f]);
+  const n = c[f];
+  return n > 0 && isFinite(n) ? String(+n.toFixed(f === 'amount' ? 2 : f === 'qty' || f === 'toQty' ? 8 : 6)) : '';
+}
+const TRADE_INPUTS = { amount: 'tr-amount', qty: 'tr-qty', price: 'tr-price', toQty: 'tr-toqty', toPrice: 'tr-toprice' };
+/* Typing only rewrites the other numbers, the summary and the button (no redraw), so the
+   cursor never moves. The % buttons and "live price" redraw. */
+function tradeInput(f, v, redraw) {
+  const t = ui.trade; if (!t) return;
+  t[f] = v;
+  // The two numbers typed last win; an empty one gives way to the price (live, or typed).
+  if (f === 'amount' || f === 'qty' || f === 'price') {
+    const keep = [f].concat(t.locks.filter(x => x !== f && (x === 'price' || t[x] !== '')));
+    if (keep.length < 2 && !keep.includes('price')) keep.push('price');
+    t.locks = keep.slice(0, 2);
+  }
+  if (f === 'toQty' || f === 'toPrice') t.toLock = f;
   if (redraw) { render(); return; }
   const acc = investAccountByKey(ui.investAccount); if (!acc) return;
-  const q = tradeQuote(acc);
-  const get = document.getElementById('tr-get'), btn = document.getElementById('tr-confirm');
-  if (get) get.innerHTML = q.get;
-  if (btn) { btn.disabled = !q.ready; btn.textContent = q.label; }
+  const c = tradeCalc(acc);
+  Object.keys(TRADE_INPUTS).forEach(k => { const el = document.getElementById(TRADE_INPUTS[k]); if (el && el !== document.activeElement) el.value = tradeShown(c, k); });
+  const sum = document.getElementById('tr-sum'), btn = document.getElementById('tr-confirm');
+  if (sum) sum.innerHTML = tradeSummary(c);
+  if (btn) { btn.disabled = !c.ready; btn.textContent = c.label; }
+  ['tr-live', 'tr-tolive'].forEach(id => { const el = document.getElementById(id); if (el) el.outerHTML = id === 'tr-live' ? tradeLiveHtml(c, false) : tradeLiveHtml(c, true); });
+}
+function tradeUseLive(toLeg) {
+  const t = ui.trade; if (!t) return;
+  if (toLeg) { t.toPrice = ''; t.toLock = 'toPrice'; }
+  else { t.price = ''; t.locks = ['price'].concat(t.locks.filter(x => x !== 'price')).slice(0, 2); }
+  render();
+}
+/* The live-price hint under a price, with a way back to it once you've typed your own. */
+function tradeLiveHtml(c, toLeg) {
+  const live = toLeg ? c.toLive : c.live, p = toLeg ? c.toPrice : c.price, a = toLeg ? c.to : c.from;
+  const id = toLeg ? 'tr-tolive' : 'tr-live';
+  if (!a) return `<span id="${id}"></span>`;
+  if (!(live > 0)) return `<span id="${id}" class="dim">No live price: type the price you paid.</span>`;
+  const same = p > 0 && Math.abs(p - live) / live < 0.00005;
+  return `<span id="${id}" class="dim">Live ${fmtMoney(live)}${same ? '' : ` · <button class="link-btn" style="font-size:inherit;" onclick="tradeUseLive(${toLeg})">use it</button>`}</span>`;
+}
+function tradeSummary(c) {
+  if (!c.ready) return '';
+  const fee = c.fee > 0 ? ` (incl. ${fmtMoney(c.fee)} fee)` : '';
+  if (c.t.side === 'buy') return `Cash used: <b>${fmtMoney(c.amount + c.fee)}</b>${fee}`;
+  if (c.t.side === 'sell') return `Cash received: <b>${fmtMoney(c.amount - c.fee)}</b>${c.fee > 0 ? ` (after ${fmtMoney(c.fee)} fee)` : ''}`;
+  return c.fee > 0 ? `Fee: <b>${fmtMoney(c.fee)}</b>` : '';
+}
+function tradePanelHtml(acc) {
+  const c = tradeCalc(acc);
+  const { t, assets, held, from, to } = c;
+  const rec = t.editId ? (data.investmentTransactions || []).find(x => x.id === t.editId) : null;
+  if (t.editId && !rec) { ui.trade = null; return tradePanelHtml(acc); }
+  const locked = !!(rec && rec.applied);
+  const dis = locked ? 'disabled' : '';
+  const cash = investCash(acc);
+  const heldFrom = held.find(h => h.key === t.from);
+  const sel = (id, list, val, onch) => `<select class="mini-select" style="width:100%;" id="${id}" ${dis} onchange="${onch}">${list.some(o => o.key === val) || !val ? '' : `<option value="${escHtml(val)}" selected>${escHtml((val === t.from ? from : to) ? (val === t.from ? from : to).name : val)}</option>`}${list.map(o => `<option value="${escHtml(o.key)}" ${o.key === val ? 'selected' : ''}>${escHtml(o.label)}</option>`).join('')}</select>`;
+  const fromList = t.side === 'buy' ? assets : (t.side === 'convert' ? held.filter(h => h.crypto) : held).map(h => ({ key: h.key, label: `${h.name} · ${fmtQty(h.quantity)} ${h.ticker}` }));
+  const num = (f, cls, aria) => `<input id="${TRADE_INPUTS[f]}" class="${cls || ''}" type="number" min="0" step="any" inputmode="decimal" placeholder="0" aria-label="${aria}" ${dis} value="${escHtml(tradeShown(c, f))}" oninput="tradeInput('${f}', this.value)">`;
+  const big = (f, unit, aria) => `<div class="trade-amt">${num(f, '', aria)}<span>${escHtml(unit)}</span></div>`;
+  const priceRow = toLeg => {
+    const a = toLeg ? to : from; if (!a) return '';
+    return `<div class="trade-price"><span>1 ${escHtml(a.ticker)} =</span>${num(toLeg ? 'toPrice' : 'price', 'trade-mini', `Price per ${a.ticker}`)}<span>EUR</span>${tradeLiveHtml(c, toLeg)}</div>`;
+  };
+  const pcts = (base, f, what) => base > 0 && !locked ? `<div class="trade-pcts">${[25, 50, 100].map(p => `<button onclick="tradeInput('${f}','${f === 'amount' ? (base * p / 100).toFixed(2) : +(base * p / 100).toFixed(8)}', true)">${p}%</button>`).join('')}<span class="dim">${what}</span></div>` : '';
+  const tick = from ? from.ticker : '';
+  const box1 = t.side === 'buy'
+    ? `<div class="trade-lbl">I want to invest</div>${big('amount', 'EUR', 'Amount in EUR')}${pcts(cash, 'amount', `of cash (${fmtMoney(cash)})`)}`
+    : `<div class="trade-lbl">${t.side === 'sell' ? 'I want to sell' : 'I convert'}</div>
+       ${sel('tr-from', fromList, t.from, "ui.trade.from=this.value;ui.trade.qty='';ui.trade.amount='';ui.trade.price='';render()")}
+       ${big('qty', tick, `Quantity of ${tick}`)}
+       ${pcts(heldFrom ? heldFrom.quantity : 0, 'qty', `of the ${fmtQty(heldFrom ? heldFrom.quantity : 0)} held`)}
+       ${priceRow(false)}
+       ${t.side === 'convert' ? `<div class="trade-price"><span>Worth</span>${num('amount', 'trade-mini', 'Value in EUR')}<span>EUR</span></div>` : ''}`;
+  const box2 = t.side === 'buy'
+    ? `<div class="trade-lbl">I get</div>
+       ${sel('tr-asset', assets, t.from, "ui.trade.from=this.value;ui.trade.price='';render()")}
+       ${big('qty', tick, `Quantity of ${tick}`)}
+       ${priceRow(false)}`
+    : t.side === 'sell'
+      ? `<div class="trade-lbl">I get</div>${big('amount', 'EUR', 'Amount in EUR')}`
+      : `<div class="trade-lbl">I get</div>
+         ${sel('tr-to', assets.filter(a => a.crypto && a.key !== t.from), t.to, "ui.trade.to=this.value;ui.trade.toPrice='';ui.trade.toQty='';ui.trade.toLock='toPrice';render()")}
+         ${big('toQty', to ? to.ticker : '', `Quantity of ${to ? to.ticker : ''} received`)}
+         ${priceRow(true)}`;
+  const details = `<div class="trade-details">
+      <button class="link-btn" onclick="ui.trade.details=!ui.trade.details;render()">${ic(t.details ? 'chevronDown' : 'chevronRight', 14)} Details · fee, date, note</button>
+      ${t.details ? `<div class="trade-detail-grid">
+        <label class="field"><span class="label-text">Date</span><input type="date" value="${escHtml(t.date || todayYmd())}" onchange="ui.trade.date=this.value"></label>
+        <label class="field"><span class="label-text">Fee (EUR)</span><input id="tr-fee" type="number" min="0" step="any" inputmode="decimal" placeholder="0" ${dis} value="${escHtml(String(t.fee))}" oninput="tradeInput('fee', this.value)"></label>
+        <label class="field full"><span class="label-text">Note</span><input type="text" maxlength="200" placeholder="Optional" value="${escHtml(t.note || '')}" oninput="ui.trade.note=this.value"></label>
+      </div>` : ''}
+    </div>`;
+  const verb = t.side === 'buy' ? 'buy' : t.side === 'sell' ? 'sale' : 'conversion';
+  return `
+    ${rec ? `<div class="trade-editing"><span>Editing the ${verb} of ${escHtml(shortDay(rec.date))}</span><button class="link-btn" onclick="cancelTradeEdit()">Cancel</button></div>
+      ${locked ? '<div class="dim" style="margin-bottom:10px;">Already applied to your holdings, so only the date and note can change.</div>' : ''}`
+      : `<div class="trade-tabs">${[['buy', 'Buy'], ['sell', 'Sell'], ['convert', 'Convert']].map(([k, l]) => `<button class="${t.side === k ? 'on' : ''}" onclick="ui.trade=Object.assign(tradeBlank(),{side:'${k}',from:ui.trade.from,to:''});render()">${l}</button>`).join('')}</div>`}
+    ${!fromList.length && !rec ? `<div class="dim" style="padding:16px 0;">${t.side === 'buy' ? 'No asset to buy yet.' : t.side === 'convert' ? 'No crypto held here to convert.' : 'Nothing held here to sell.'}</div>` : `
+    <div class="trade-box">${box1}</div>
+    <div class="trade-swap">${ic('swap', 16)}</div>
+    <div class="trade-box">${box2}</div>
+    ${details}
+    <div class="trade-sum" id="tr-sum">${tradeSummary(c)}</div>
+    <button class="btn primary full" id="tr-confirm" ${c.ready ? '' : 'disabled'} onclick="confirmTrade()">${c.label}</button>
+    <div class="dim" style="margin-top:8px;line-height:1.45;">Only recorded in Trackr — no real order is placed. ${data.settings.applyTradesToHoldings ? 'You\'ll then see how your quantities and cash would change, and choose to apply it.' : 'Your quantities and cash don\'t change.'}</div>
+    ${rec ? '' : `<label class="switch-row" style="margin-top:10px;font-size:12.5px;"><button class="toggle ${data.settings.applyTradesToHoldings ? 'on' : ''}" onclick="data.settings.applyTradesToHoldings=!data.settings.applyTradesToHoldings;save();render()" aria-label="Also update holdings and cash"></button><span>Also update my holdings and cash (asks first)</span></label>`}`}`;
 }
 function confirmTrade() {
   const acc = investAccountByKey(ui.investAccount); if (!acc) return;
-  const { t, assets, held } = tradeState(acc);
-  const amt = parseFloat(String(t.amount).replace(',', '.'));
-  const from = assets.find(a => a.key === t.from) || held.find(h => h.key === t.from);
-  const to = t.side === 'convert' ? assets.find(a => a.key === t.to) : null;
-  const priced = t.side === 'convert' ? to : from;
-  if (!(amt > 0) || !priced || !(priced.price > 0)) return;
-  const fromPrice = from && from.price;
-  const rec = {
-    id: uid('itx'), date: todayYmd(), recordedAt: new Date().toISOString(), account: acc.name, accountKey: acc.kind + ':' + acc.id,
-    action: t.side === 'buy' ? 'Buy' : t.side === 'sell' ? 'Sell' : 'Convert', amount: amt, currency: 'EUR',
-    ticker: from ? from.ticker : '', quantity: fromPrice ? +(amt / fromPrice).toFixed(8) : null, unitPrice: fromPrice || null,
-  };
-  if (to) Object.assign(rec, { toTicker: to.ticker, toQuantity: +(amt / to.price).toFixed(8), toUnitPrice: to.price });
-  rec.assetKey = from ? from.key : ''; if (to) rec.toKey = to.key;
-  if (!Array.isArray(data.investmentTransactions)) data.investmentTransactions = [];
-  data.investmentTransactions.push(rec);
-  ui.trade.amount = '';
+  const c = tradeCalc(acc), t = c.t;
+  const old = t.editId ? (data.investmentTransactions || []).find(x => x.id === t.editId) : null;
+  if (old && old.applied) {
+    // Applied to holdings already: only the date and the note can change.
+    old.date = t.date || old.date;
+    if (t.note) old.note = t.note; else delete old.note;
+  } else {
+    if (!c.ready) return;
+    const rec = old || { id: uid('itx'), recordedAt: new Date().toISOString(), account: acc.name, accountKey: acc.kind + ':' + acc.id };
+    Object.assign(rec, {
+      date: t.date || (old && old.date) || todayYmd(), action: t.side === 'buy' ? 'Buy' : t.side === 'sell' ? 'Sell' : 'Convert',
+      amount: Math.round(c.amount * 100) / 100, currency: 'EUR', ticker: c.from.ticker,
+      quantity: +c.qty.toFixed(8), unitPrice: +c.price.toFixed(6), assetKey: c.from.key,
+    });
+    if (c.to) Object.assign(rec, { toTicker: c.to.ticker, toQuantity: +c.toQty.toFixed(8), toUnitPrice: +c.toPrice.toFixed(6), toKey: c.to.key });
+    if (c.fee > 0) rec.fee = Math.round(c.fee * 100) / 100; else delete rec.fee;
+    if (t.note) rec.note = t.note; else delete rec.note;
+    if (!old) {
+      if (!Array.isArray(data.investmentTransactions)) data.investmentTransactions = [];
+      data.investmentTransactions.push(rec);
+    }
+    ui.trade = Object.assign(tradeBlank(), { side: t.side, from: t.from, to: t.to });
+    ui.investTab = 'txns';
+    save(); render();
+    // Settings: "Update holdings when I record a trade": show what would change, apply on confirm.
+    if (!old && data.settings.applyTradesToHoldings) openApplyTrade(rec.id);
+    return;
+  }
+  ui.trade = Object.assign(tradeBlank(), { side: t.side, from: t.from, to: t.to });
   ui.investTab = 'txns';
   save(); render();
-  // Settings: "Update holdings when I record a trade" — show what would change, apply on confirm.
-  if (data.settings.applyTradesToHoldings) openApplyTrade(rec.id);
 }
+/* Reopens a recorded trade in the panel, every number filled in as it was recorded. */
+function editInvestTxn(id) {
+  const x = (data.investmentTransactions || []).find(r => r.id === id); if (!x) return;
+  const side = x.action === 'Sell' ? 'sell' : x.action === 'Convert' ? 'convert' : 'buy';
+  const s = v => (v == null || v === '' ? '' : String(v));
+  ui.trade = Object.assign(tradeBlank(), {
+    side, from: x.assetKey || '', to: x.toKey || '', editId: x.id,
+    amount: s(x.amount), qty: s(x.quantity), price: s(x.unitPrice), locks: ['amount', 'qty'],
+    toQty: s(x.toQuantity), toLock: x.toQuantity ? 'toQty' : 'toPrice',
+    fee: s(x.fee), date: x.date || '', note: x.note || '', details: !!(x.fee || x.note),
+  });
+  if (!(+x.quantity > 0)) ui.trade.locks = ['amount', 'price'];
+  ui.investTab = 'trade'; render(); window.scrollTo(0, 0);
+}
+function cancelTradeEdit() { const t = ui.trade || {}; ui.trade = Object.assign(tradeBlank(), { side: t.side || 'buy', from: '', to: '' }); ui.investTab = 'txns'; render(); }
 function txnsTabHtml(acc) {
   const list = (data.investmentTransactions || []).filter(x => x.accountKey === acc.kind + ':' + acc.id || (!x.accountKey && x.account && txNameKey(x.account) === txNameKey(acc.name))).slice().sort((a, b) => (b.recordedAt || b.date || '').localeCompare(a.recordedAt || a.date || ''));
   return `<div class="card">${list.length ? `<div class="stack-gap-8">${list.map(x => `<div class="inv-row">
       <span class="txn-badge ${x.action.toLowerCase()}">${x.action}</span>
-      <div class="nm"><div class="nm-1">${escHtml(x.ticker || '')}${x.toTicker ? ` → ${escHtml(x.toTicker)}` : ''}</div><div class="nm-2">${escHtml(shortDay(x.date))}${x.quantity ? ` · ${fmtQty(x.quantity)} ${escHtml(x.ticker)}` : ''}${x.unitPrice ? ` at ${fmtMoney(x.unitPrice)}` : ''}${x.toQuantity ? ` → ${fmtQty(x.toQuantity)} ${escHtml(x.toTicker)}` : ''}${x.plan ? ' · plan' : ''}${x.applied ? ' · applied to holdings' : ''}${x.realisedGain != null ? ` · <span class="${x.realisedGain >= 0 ? 'positive' : 'negative'}">${x.realisedGain >= 0 ? '+' : '−'}${fmtMoney(Math.abs(x.realisedGain))} realised</span>` : ''}</div></div>
+      <div class="nm"><div class="nm-1">${escHtml(x.ticker || '')}${x.toTicker ? ` → ${escHtml(x.toTicker)}` : ''}</div><div class="nm-2">${escHtml(shortDay(x.date))}${x.quantity ? ` · ${fmtQty(x.quantity)} ${escHtml(x.ticker)}` : ''}${x.unitPrice ? ` at ${fmtMoney(x.unitPrice)}` : ''}${x.toQuantity ? ` → ${fmtQty(x.toQuantity)} ${escHtml(x.toTicker)}` : ''}${x.fee ? ` · ${fmtMoney(x.fee)} fee` : ''}${x.plan ? ' · plan' : ''}${x.note ? ` · ${escHtml(x.note)}` : ''}${x.applied ? ' · applied to holdings' : ''}${x.realisedGain != null ? ` · <span class="${x.realisedGain >= 0 ? 'positive' : 'negative'}">${x.realisedGain >= 0 ? '+' : '−'}${fmtMoney(Math.abs(x.realisedGain))} realised</span>` : ''}</div></div>
       ${!x.applied && data.settings.applyTradesToHoldings ? `<button class="btn small" onclick="openApplyTrade('${x.id}')">Apply</button>` : ''}
       <div class="inv-val"><b>${fmtMoney(x.amount || 0)}</b></div>
+      ${x.assetKey ? `<button class="dots-btn" title="Edit" aria-label="Edit" onclick="editInvestTxn('${x.id}')">${ic('edit', 16)}</button>` : ''}
       <button class="dots-btn" title="Delete" onclick="deleteInvestTxn('${x.id}')">${ic('trash', 16)}</button>
     </div>`).join('')}</div>` : `<div class="empty-state"><div class="title">No transactions yet</div><div class="sub">What you record with Buy, Sell, Convert or a plan shows up here.</div></div>`}</div>`;
 }
@@ -453,7 +586,9 @@ function tradeEffects(rec) {
   const acc = investAccountByKey(rec.accountKey);
   if (!acc) return { ops: [], problems: ['This account no longer exists.'] };
   const ops = [], problems = [];
-  const leg = (key, side, qty, priceEUR, amtEUR) => {
+  const fee = +rec.fee || 0;
+  // A fee is part of what a buy costs (it raises the average buy price) and lowers what a sale brings.
+  const leg = (key, side, qty, priceEUR, amtEUR, feeEUR) => {
     if (!key || !(qty > 0)) { problems.push('Missing quantity or price.'); return 0; }
     const [k, ref] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
     if (k === 'a') {
@@ -463,7 +598,7 @@ function tradeEffects(rec) {
       const ccy = e ? e.currency || 'EUR' : a.priceCurrency || 'EUR';
       const q0 = e ? +e.quantity || 0 : 0, p0 = e ? +e.price || 0 : 0;
       const px = convertCurrency(priceEUR, 'EUR', ccy);
-      if (side === 'buy') { const q1 = q0 + qty; ops.push({ type: 'entry', label: a.name || a.ticker, assetId: ref, brokerId: acc.id, ccy, q0, q1, p0, p1: (q0 * p0 + qty * px) / q1 }); return 0; }
+      if (side === 'buy') { const q1 = q0 + qty; ops.push({ type: 'entry', label: a.name || a.ticker, assetId: ref, brokerId: acc.id, ccy, q0, q1, p0, p1: (q0 * p0 + qty * px + convertCurrency(feeEUR || 0, 'EUR', ccy)) / q1 }); return 0; }
       const sold = Math.min(qty, q0);
       if (sold < qty - 1e-9) problems.push(`You hold ${fmtQty(q0)} ${a.ticker} here — only that much can be sold.`);
       ops.push({ type: 'entry', label: a.name || a.ticker, assetId: ref, brokerId: acc.id, ccy, q0, q1: q0 - sold, p0, p1: p0 });
@@ -475,7 +610,7 @@ function tradeEffects(rec) {
       if (c.mode === 'snapshot') {
         const r = (c.snapshots || []).find(x => (x.broker || '').trim().toLowerCase() === ex.trim().toLowerCase());
         const ccy = r ? r.currency || 'EUR' : 'EUR', q0 = r ? +r.quantity || 0 : 0, p0 = r ? +r.price || 0 : 0, px = convertCurrency(priceEUR, 'EUR', ccy);
-        if (side === 'buy') { const q1 = q0 + qty; ops.push({ type: 'snap', label: c.name || c.symbol, symbol: c.symbol, exchange: ex, ccy, q0, q1, p0, p1: (q0 * p0 + qty * px) / q1 }); return 0; }
+        if (side === 'buy') { const q1 = q0 + qty; ops.push({ type: 'snap', label: c.name || c.symbol, symbol: c.symbol, exchange: ex, ccy, q0, q1, p0, p1: (q0 * p0 + qty * px + convertCurrency(feeEUR || 0, 'EUR', ccy)) / q1 }); return 0; }
         const sold = Math.min(qty, q0);
         if (sold < qty - 1e-9) problems.push(`You hold ${fmtQty(q0)} ${c.symbol} here.`);
         ops.push({ type: 'snap', label: c.name || c.symbol, symbol: c.symbol, exchange: ex, ccy, q0, q1: q0 - sold, p0, p1: p0 });
@@ -483,7 +618,7 @@ function tradeEffects(rec) {
       }
       const lots = lotsFor(c.symbol).filter(l => (l.broker || '').trim().toLowerCase() === ex.trim().toLowerCase()).sort((x, y) => ((x.date || '') < (y.date || '') ? -1 : 1));
       const q0 = lots.reduce((s2, l) => s2 + (+l.quantity || 0), 0);
-      if (side === 'buy') { ops.push({ type: 'lotAdd', label: c.name || c.symbol, symbol: c.symbol, exchange: ex, q0, q1: q0 + qty, qty, paid: amtEUR }); return 0; }
+      if (side === 'buy') { ops.push({ type: 'lotAdd', label: c.name || c.symbol, symbol: c.symbol, exchange: ex, q0, q1: q0 + qty, qty, paid: amtEUR + (feeEUR || 0), date: rec.date || todayYmd() }); return 0; }
       let left = Math.min(qty, q0), cost = 0; const takes = [];
       lots.forEach(l => { if (left <= 1e-12) return; const q = +l.quantity || 0, take = Math.min(q, left); const part = q ? take / q : 0; cost += toEUR((+l.amountPaid || 0) * part, l.currency); takes.push({ id: l.id, take, part }); left -= take; });
       if (qty > q0 + 1e-9) problems.push(`You hold ${fmtQty(q0)} ${c.symbol} here.`);
@@ -495,18 +630,18 @@ function tradeEffects(rec) {
   };
   let realised = 0;
   const qty = +rec.quantity || 0, px = +rec.unitPrice || 0, amt = +rec.amount || 0;
-  if (rec.action === 'Buy') leg(rec.assetKey, 'buy', qty, px, amt);
-  else if (rec.action === 'Sell') realised = leg(rec.assetKey, 'sell', qty, px, amt);
-  else if (rec.action === 'Convert') { realised = leg(rec.assetKey, 'sell', qty, px, amt); leg(rec.toKey, 'buy', +rec.toQuantity || 0, +rec.toUnitPrice || 0, amt); }
+  if (rec.action === 'Buy') leg(rec.assetKey, 'buy', qty, px, amt, fee);
+  else if (rec.action === 'Sell') realised = leg(rec.assetKey, 'sell', qty, px, amt) - fee;
+  else if (rec.action === 'Convert') { realised = leg(rec.assetKey, 'sell', qty, px, amt) - fee; leg(rec.toKey, 'buy', +rec.toQuantity || 0, +rec.toUnitPrice || 0, amt); }
   // Cash: a buy takes it, a sale adds it; a convert doesn't touch it.
   if (rec.action !== 'Convert') {
-    const sign = rec.action === 'Buy' ? -1 : 1;
+    const sign = rec.action === 'Buy' ? -1 : 1, move = rec.action === 'Buy' ? amt + fee : amt - fee;
     if (acc.kind === 'broker') {
-      const b = brokerById(acc.id), ccy = brokerCashCurrency(b), c0 = brokerCash(b), c1 = c0 + sign * convertCurrency(amt, 'EUR', ccy);
+      const b = brokerById(acc.id), ccy = brokerCashCurrency(b), c0 = brokerCash(b), c1 = c0 + sign * convertCurrency(move, 'EUR', ccy);
       if (c1 < -0.005) problems.push(`${b.name} only has ${fmtMoney(c0, ccy)} in cash — the cash would go below zero.`);
       ops.push({ type: 'cash', label: `${b.name} cash`, brokerId: b.id, ccy, c0, c1 });
     } else {
-      const ce = cryptoExchangeCashFor(acc.name), ccy = ce ? ce.currency : 'EUR', c0 = ce ? +ce.amount || 0 : 0, c1 = c0 + sign * convertCurrency(amt, 'EUR', ccy);
+      const ce = cryptoExchangeCashFor(acc.name), ccy = ce ? ce.currency : 'EUR', c0 = ce ? +ce.amount || 0 : 0, c1 = c0 + sign * convertCurrency(move, 'EUR', ccy);
       if (c1 < -0.005) problems.push(`${acc.name} only has ${fmtMoney(c0, ccy)} in cash.`);
       ops.push({ type: 'xcash', label: `${acc.name} cash`, exchange: acc.name, ccy, c0, c1 });
     }
@@ -549,7 +684,7 @@ function applyTradeToHoldings(id) {
       if (r && o.q1 <= 1e-12) c.snapshots = c.snapshots.filter(x => x !== r);
       else if (r) { r.quantity = +o.q1.toFixed(10); r.price = +o.p1.toFixed(6); }
     } else if (o.type === 'lotAdd') {
-      data.cryptoLots.push({ id: uid('lot'), symbol: o.symbol, broker: o.exchange, date: todayYmd(), quantity: +o.qty.toFixed(10), amountPaid: +o.paid.toFixed(2), currency: 'EUR' });
+      data.cryptoLots.push({ id: uid('lot'), symbol: o.symbol, broker: o.exchange, date: o.date || todayYmd(), quantity: +o.qty.toFixed(10), amountPaid: +o.paid.toFixed(2), currency: 'EUR' });
     } else if (o.type === 'lotTake') {
       o.takes.forEach(t => {
         const l = data.cryptoLots.find(x => x.id === t.id); if (!l) return;

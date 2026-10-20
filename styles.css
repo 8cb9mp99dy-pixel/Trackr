@@ -840,6 +840,18 @@ table.data-table th.num, table.data-table td.num { text-align: right; }
 .trade-swap { display: flex; justify-content: center; margin: -4px 0; position: relative; z-index: 1; }
 .trade-swap .ic { background: var(--light-card); border: 1px solid var(--light-border); border-radius: 50%; padding: 6px; width: 30px; height: 30px; }
 .trade-get { font-size: 20px; font-weight: 700; }
+.trade-amt input { min-width: 0; flex: 1; }
+.trade-price { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--light-text-dim); }
+.trade-price .trade-mini { width: 110px; padding: 4px 8px; font-size: 13px; font-weight: 600; color: var(--light-text); }
+.trade-price .link-btn { padding: 0; }
+.trade-details { margin-top: 10px; }
+.trade-details > .link-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.trade-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.trade-detail-grid .full { grid-column: 1 / -1; }
+.trade-sum { font-size: 13px; margin: 10px 0 8px; min-height: 1em; }
+.trade-sum:empty { margin: 4px 0; }
+.trade-editing { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-1); font-size: 13px; font-weight: 600; }
+.trade-amt input:disabled, .trade-price input:disabled { opacity: .6; }
 #tr-confirm { margin-top: 14px; }
 #tr-confirm:disabled { opacity: .45; cursor: not-allowed; }
 .txn-badge { font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 6px; background: var(--dark-card-2); }
