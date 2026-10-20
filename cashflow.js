@@ -221,7 +221,8 @@ function categoryTargetNote(catId, spent, months) {
 function recurringForMonth(monthDate) {
   const y = monthDate.getFullYear(), m = monthDate.getMonth(), last = new Date(y, m + 1, 0).getDate();
   const out = [];
-  activeRecurringSeries().forEach(x => out.push({ day: Math.min(x.st.day, last), model: x.model, kind: 'series' }));
+  const ym = `${y}-${String(m + 1).padStart(2, '0')}`;
+  activeRecurringSeries().forEach(x => { const st = typeof recurringMonthState === 'function' ? recurringMonthState(x, ym) : null; out.push({ day: Math.min(x.st.day, last), model: x.model, kind: 'series', state: st ? st.state : '' }); });
   detectRecurring().forEach(d => out.push({ day: Math.min(d.day, last), model: d.model, kind: 'detected', name: d.name, avg: d.avg }));
   return out;
 }
@@ -235,14 +236,14 @@ function recurringCalendarHtml() {
   for (let i = 0; i < lead; i++) cells.push('<div class="cal-cell empty"></div>');
   for (let d = 1; d <= days; d++) {
     const here = items.filter(it => it.day === d);
-    cells.push(`<div class="cal-cell ${isThis && today.getDate() === d ? 'today' : ''}"><span class="cal-d">${d}</span><div class="cal-marks">${here.slice(0, 3).map(it => `<span class="cal-mark ${it.kind}" title="${escHtml((it.model.comment || it.name || '') + ' · ' + (it.kind === 'detected' ? 'detected, not recurring yet' : 'recurring'))}">${txAvatarHtml(it.model)}</span>`).join('')}${here.length > 3 ? `<span class="cal-more">+${here.length - 3}</span>` : ''}</div></div>`);
+    cells.push(`<div class="cal-cell ${isThis && today.getDate() === d ? 'today' : ''}"><span class="cal-d">${d}</span><div class="cal-marks">${here.slice(0, 3).map(it => `<span class="cal-mark ${it.kind} ${it.state || ''}" title="${escHtml((it.model.comment || it.name || '') + ' · ' + (it.kind === 'detected' ? 'detected, not recurring yet' : (it.state && typeof RECURRING_STATE_LABEL !== 'undefined' ? RECURRING_STATE_LABEL[it.state] : 'recurring')))}">${txAvatarHtml(it.model)}</span>`).join('')}${here.length > 3 ? `<span class="cal-more">+${here.length - 3}</span>` : ''}</div></div>`);
   }
   return `
     <div class="cal">
       <div class="cal-head">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => `<span>${d}</span>`).join('')}</div>
       <div class="cal-grid">${cells.join('')}</div>
     </div>
-    <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Solid: your recurring items. Dashed: detected in your history, not recurring yet.</div>`;
+    <div style="font-size:11.5px;opacity:.55;margin-top:8px;">Solid: your recurring items (green ring: paid, red: missed, faded: coming). Dashed: detected in your history, not recurring yet.</div>`;
 }
 /* Payments seen in at least 3 different months (last 6) at a similar amount (within 25 % of the
    usual one), under the same name, that aren't recurring items yet and that you didn't dismiss. */

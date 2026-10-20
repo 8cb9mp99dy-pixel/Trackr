@@ -3661,7 +3661,33 @@ function recurringDueDate(ym, day) {
   return `${ym}-${String(Math.min(day, last)).padStart(2, '0')}`;
 }
 function recurringSeriesKey(t) {
+  // A transfer is known by where the money goes (two pockets can share a name).
+  if (t.type === 'transfer') return 'rs_transfer_' + txNameKey('' + t.from + '_' + t.to) + (txNameKey(t.comment) ? '_' + txNameKey(t.comment) : '');
   return 'rs_' + t.type + '_' + (txNameKey(t.comment) || t.categoryId || 'none');
+}
+/* The entry a series repeats: its newest one, skipping amounts changed "for this month only". */
+function recurringModel(id) {
+  const occ = recurringOccurrences(id).filter(t => t.nature === 'Fixed');
+  return occ.filter(t => !t.oneOff).pop() || occ.pop() || null;
+}
+/* One month's automatic entry, built only from the series (same result on every device). */
+function recurringEntry(id, model, ym, day) {
+  const entry = {
+    id: `${id}_${ym}`, date: recurringDueDate(ym, day), type: model.type, categoryId: model.categoryId || null, subCategoryId: model.subCategoryId || null,
+    nature: 'Fixed', paymentMethodId: model.paymentMethodId || null, accountId: model.accountId || null,
+    currency: model.currency, amount: model.amount, comment: model.comment || '', location: model.location || '',
+    description: model.description || '', logo: model.logo || '', impact: model.impact || '',
+    recurringId: id, auto: true,
+  };
+  if (model.type === 'transfer') Object.assign(entry, { from: model.from, to: model.to, fromLabel: model.fromLabel || '', toLabel: model.toLabel || '' });
+  return entry;
+}
+/* A recurring transfer only happens if the pocket / broker / exchange it takes from holds enough. */
+function recurringEntryFits(entry) {
+  if (entry.type !== 'transfer') return true;
+  const src = transferEndpoint(entry.from), dst = transferEndpoint(entry.to);
+  if (!src || !dst) return false;
+  return !src.floor || src.get() + 0.005 >= convertCurrency(entry.amount, entry.currency, src.ccy);
 }
 function recurringOccurrences(seriesId) {
   return data.budgetTransactions.filter(t => t.recurringId === seriesId).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
@@ -3671,7 +3697,7 @@ function recurringOccurrences(seriesId) {
    The series keeps its day (bank dates shift around weekends) unless opts.setDay — editing the
    newest entry by hand, which is how you move it to another day. */
 function attachToRecurringSeries(record, opts) {
-  if (!record || record.type === 'transfer') return;
+  if (!record) return;
   if (record.nature !== 'Fixed') { delete record.recurringId; delete record.auto; return; }
   if (!data.recurring) data.recurring = {};
   const id = record.recurringId || recurringSeriesKey(record);
@@ -3695,8 +3721,7 @@ function runRecurring() {
   Object.keys(data.recurring).forEach(id => {
     const st = data.recurring[id];
     if (!st || st.stopped) return;
-    const occ = recurringOccurrences(id).filter(t => t.nature === 'Fixed');
-    const model = occ[occ.length - 1];
+    const model = recurringModel(id);
     if (!model) return;
     let guard = 0;
     for (let ym = nextYm(st.lastMonth); ym <= thisMonth && guard < 24; ym = nextYm(ym), guard++) {
@@ -3704,13 +3729,8 @@ function runRecurring() {
       if (date > today) break; // not yet — it appears on its day
       st.lastMonth = ym;
       if (data.budgetTransactions.some(t => t.recurringId === id && ymOf(t.date) === ym)) continue; // already logged by hand
-      const entry = {
-        id: `${id}_${ym}`, date, type: model.type, categoryId: model.categoryId, subCategoryId: model.subCategoryId || null,
-        nature: 'Fixed', paymentMethodId: model.paymentMethodId || null, accountId: model.accountId || null,
-        currency: model.currency, amount: model.amount, comment: model.comment || '', location: model.location || '',
-        description: model.description || '', logo: model.logo || '', impact: model.impact || '',
-        recurringId: id, auto: true,
-      };
+      const entry = recurringEntry(id, model, ym, st.day);
+      if (!recurringEntryFits(entry)) continue; // not enough in the pocket: shows as missed
       data.budgetTransactions.push(entry);
       applyTxToAccountBalance(entry, 1);
       added++;
@@ -3765,36 +3785,137 @@ function ordinalDay(n) { const r = n % 100; return n + ((r >= 11 && r <= 13) ? '
 function activeRecurringSeries() {
   return Object.keys(data.recurring || {}).map(id => {
     const st = data.recurring[id];
-    const model = recurringOccurrences(id).filter(t => t.nature === 'Fixed').pop();
+    const model = recurringModel(id);
     if (!st || st.stopped || !model) return null;
     return { id, st, model, next: recurringDueDate(nextYm(st.lastMonth), st.day) };
   }).filter(Boolean).sort((a, b) => a.next < b.next ? -1 : a.next > b.next ? 1 : 0);
+}
+/* ---- Was it paid? One month of a series ----
+   paid: logged or imported (or the automatic entry confirmed) at about the usual amount;
+   different: paid, but more than 7.5 % away from the month before; expected: the app added it
+   on its day and you haven't confirmed it; missed: marked missed, deleted, or a transfer the
+   pocket couldn't cover; upcoming: its day hasn't come yet. st.missed = ['YYYY-MM', …]. */
+const RECURRING_TOLERANCE = 0.075;
+function recurringMonthState(x, ym) {
+  const st = x.st, due = recurringDueDate(ym, st.day), occ = recurringOccurrences(x.id);
+  if (!occ.length || ym < ymOf(occ[0].date)) return null;
+  if ((st.missed || []).includes(ym)) return { state: 'missed', due, ym };
+  const here = occ.filter(t => ymOf(t.date) === ym);
+  if (!here.length) return due > todayYmd() || ym > st.lastMonth ? { state: 'upcoming', due, ym } : { state: 'missed', due, ym };
+  const t = here[here.length - 1];
+  if (t.auto && !t.confirmed) return { state: 'expected', due, ym, t };
+  const prev = occ.filter(o => ymOf(o.date) < ym).pop();
+  const ref = prev ? toEUR(+prev.amount || 0, prev.currency) : 0, amt = toEUR(+t.amount || 0, t.currency);
+  if (ref > 0 && Math.abs(amt - ref) > ref * RECURRING_TOLERANCE) return { state: 'different', due, ym, t, ref };
+  return { state: 'paid', due, ym, t };
+}
+const RECURRING_STATE_LABEL = { paid: 'Paid', different: 'Paid, different amount', expected: 'To confirm', missed: 'Missed', upcoming: 'Coming' };
+function recurringConfirm(txId) {
+  const t = data.budgetTransactions.find(x => x.id === txId); if (!t) return;
+  t.confirmed = true;
+  save(); render();
+}
+/* The automatic entry goes (its money back where it was); the month stays marked missed. */
+function recurringMarkMissed(id, ym) {
+  const st = data.recurring && data.recurring[id]; if (!st) return;
+  data.budgetTransactions.filter(t => t.recurringId === id && t.auto && ymOf(t.date) === ym).forEach(t => {
+    applyTxToAccountBalance(t, -1);
+    data.budgetTransactions = data.budgetTransactions.filter(x => x !== t);
+  });
+  st.missed = (st.missed || []).filter(m => m !== ym).concat([ym]);
+  save(); render();
+}
+/* "It was paid after all": back to the usual entry for that month. */
+function recurringUnmiss(id, ym) {
+  const st = data.recurring && data.recurring[id]; if (!st) return;
+  st.missed = (st.missed || []).filter(m => m !== ym);
+  const model = recurringModel(id);
+  if (model && recurringDueDate(ym, st.day) <= todayYmd() && !data.budgetTransactions.some(t => t.recurringId === id && ymOf(t.date) === ym)) {
+    const entry = Object.assign(recurringEntry(id, model, ym, st.day), { confirmed: true });
+    if (!recurringEntryFits(entry)) { alert('There isn\'t enough in the place it comes from for this transfer.'); return; }
+    data.budgetTransactions.push(entry);
+    applyTxToAccountBalance(entry, 1);
+  }
+  save(); render();
+}
+function openRecurringAmount(txId) {
+  const t = data.budgetTransactions.find(x => x.id === txId); if (!t) return;
+  ui.modal = { type: 'recurringAmount', payload: { txId, amount: String(t.amount), scope: 'month' } };
+  render();
+}
+window.__modalRenderers.recurringAmount = function (p) {
+  const t = data.budgetTransactions.find(x => x.id === p.txId);
+  if (!t) return '<div class="modal-head"><div class="modal-title">Not found</div><button class="close-x" onclick="closeModal()">✕</button></div>';
+  return `
+    <div class="modal-head"><div class="modal-title">How much was it?</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    <div style="font-size:13px;opacity:.7;margin-bottom:12px;">${escHtml(t.comment || 'Recurring')} · ${escHtml(shortDay(t.date))} · usually ${fmtMoney(+t.amount || 0, t.currency)}</div>
+    <label class="field"><span class="label-text">Amount (${escHtml(t.currency)})</span><input id="rec-amt" type="number" min="0" step="any" inputmode="decimal" value="${escHtml(p.amount)}" oninput="ui.modal.payload.amount=this.value"></label>
+    <div class="seg-row" style="margin-top:12px;">
+      <button class="seg ${p.scope === 'month' ? 'on' : ''}" onclick="ui.modal.payload.scope='month';render()">Only this month</button>
+      <button class="seg ${p.scope === 'ahead' ? 'on' : ''}" onclick="ui.modal.payload.scope='ahead';render()">From now on</button>
+    </div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveRecurringAmount()">Save</button></div>`;
+};
+function saveRecurringAmount() {
+  const p = ui.modal && ui.modal.payload; if (!p) return;
+  const t = data.budgetTransactions.find(x => x.id === p.txId); if (!t) { closeModal(); return; }
+  const amt = parseFloat(String(p.amount).replace(',', '.'));
+  if (!(amt > 0)) { alert('Enter an amount greater than zero.'); return; }
+  applyTxToAccountBalance(t, -1);
+  const before = t.amount;
+  t.amount = Math.round(amt * 100) / 100;
+  if (t.type === 'transfer' && !recurringEntryFits(t)) { t.amount = before; applyTxToAccountBalance(t, 1); alert('There isn\'t enough in the place it comes from for that amount.'); return; }
+  applyTxToAccountBalance(t, 1);
+  t.confirmed = true;
+  if (p.scope === 'month') t.oneOff = true; else delete t.oneOff;
+  save(); closeModal();
+}
+function recurringStateChipHtml(x, s) {
+  if (!s) return '';
+  const acts = [];
+  if (s.state === 'expected') acts.push(`<button class="btn small primary" onclick="recurringConfirm('${s.t.id}')">Paid</button>`, `<button class="btn small" onclick="openRecurringAmount('${s.t.id}')">Other amount</button>`, `<button class="btn small ghost" onclick="recurringMarkMissed('${x.id}','${s.ym}')">Missed</button>`);
+  else if (s.state === 'missed' && s.due <= todayYmd()) acts.push(`<button class="btn small ghost" onclick="recurringUnmiss('${x.id}','${s.ym}')">It was paid</button>`);
+  const note = s.state === 'different' ? ` · usually ${fmtMoney(s.ref)}` : '';
+  return `<div class="rec-state-row"><span class="rec-state ${s.state}">${RECURRING_STATE_LABEL[s.state]}${note}</span>${acts.join('')}</div>`;
+}
+/* "This month: 3 paid · 1 to confirm · 1 missed · 2 coming" */
+function recurringMonthSummaryHtml(series, ym) {
+  const n = {};
+  series.forEach(x => { const s = recurringMonthState(x, ym); if (s) n[s.state] = (n[s.state] || 0) + 1; });
+  const parts = [['paid', 'paid'], ['different', 'paid a different amount'], ['expected', 'to confirm'], ['missed', 'missed'], ['upcoming', 'coming']]
+    .filter(([k]) => n[k]).map(([k, l]) => `<span class="rec-state ${k}">${n[k]} ${l}</span>`);
+  return parts.length ? `<div class="rec-summary"><span class="eyebrow" style="margin:0;">${escHtml(monthLabel(ymdToDate(ym + '-01')))}</span>${parts.join('')}</div>` : '';
 }
 function budgetRecurringTab() {
   const series = activeRecurringSeries();
   const perMonth = type => series.filter(x => x.model.type === type).reduce((s, x) => s + toEUR(x.model.amount, x.model.currency), 0);
   const view = ui.recurringView || 'calendar';
+  const ym = ymOf(dateToYmd(ui.budgetMonth || appToday()));
+  const moved = perMonth('transfer');
   const hasCal = typeof recurringCalendarHtml === 'function';
   return `
     ${hasCal ? `<div class="row-flex" style="margin-bottom:14px;gap:10px;flex-wrap:wrap;">
       <div class="seg-row" style="margin:0;"><button class="seg ${view === 'calendar' ? 'on' : ''}" onclick="ui.recurringView='calendar';render()">${ic('calendar', 14)} Calendar</button><button class="seg ${view === 'list' ? 'on' : ''}" onclick="ui.recurringView='list';render()">${ic('list', 14)} List</button></div>
       ${view === 'calendar' ? `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" onclick="shiftBudgetMonth(-1)">‹</button><div style="font-weight:700;min-width:120px;text-align:center;">${escHtml(monthLabel(ui.budgetMonth))}</div><button class="icon-btn-round" onclick="shiftBudgetMonth(1)">›</button></div>` : ''}
     </div>` : ''}
+    ${recurringMonthSummaryHtml(series, ym)}
     ${hasCal && view === 'calendar' ? `<div class="card" style="margin-bottom:20px;">${recurringCalendarHtml()}</div>` : ''}
-    <div class="grid-2" style="margin-bottom:20px;">
+    <div class="${moved ? 'grid-3' : 'grid-2'}" style="margin-bottom:20px;">
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed income / month</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(perMonth('income'))}</div></div></div></div>
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed expenses / month</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(perMonth('expense'))}</div></div></div></div>
+      ${moved ? `<div class="card"><div class="row-flex"><div><div class="eyebrow">Moved / month</div><div style="font-size:20px;font-weight:700;">${fmtMoney(moved)}</div></div></div></div>` : ''}
     </div>
     ${series.length ? `<div class="card stack-gap-16">${series.map(({ id, st, model, next }) => `
       <div>
         ${txRowDisplayHtml(model)}
+        ${recurringStateChipHtml({ id, st, model }, recurringMonthState({ id, st, model }, ym))}
         <div class="row-flex" style="margin-top:6px;padding-left:50px;gap:10px;">
           <div style="font-size:12px;opacity:.6;">Every month on the ${ordinalDay(st.day)} · next: ${escHtml(ymdToDate(next).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))}</div>
           <button class="btn small" onclick="stopRecurringSeries('${id}')">Stop</button>
         </div>
       </div>`).join('')}</div>
       <div style="font-size:12px;opacity:.55;margin-top:10px;line-height:1.5;">Each one is added by itself on its day every month (not before). To change the amount or day from now on, tap it and edit. Logging or importing the real one for a month replaces the automatic one.</div>` : `
-      <div class="card"><div class="empty-state"><div class="emoji">🔄</div><div class="title">No recurring items yet</div><div class="sub">Mark a transaction "Fixed / Recurring" and it will be added by itself every month on the same day.</div></div></div>`}
+      <div class="card"><div class="empty-state"><div class="emoji">🔄</div><div class="title">No recurring items yet</div><div class="sub">Turn on "Repeats every month" when you add a payment, an income or a transfer (e.g. €200 into a pocket), and it is added by itself every month on the same day.</div></div></div>`}
     ${typeof expenseScannerHtml === 'function' ? expenseScannerHtml() : ''}`;
 }
 

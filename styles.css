@@ -1292,3 +1292,15 @@ html.compact .tab-row { margin-bottom: 12px; }
 .bt-charts-body { margin-top: 16px; }
 .bt-charts-body > .card { box-shadow: none; border: 1px solid var(--dark-border); }
 @media (max-width: 640px) { .bt-actions .btn.primary { flex: 1 1 100%; } .bt-actions .btn:not(.primary) { flex: 1 1 0; } }
+
+/* ---- Recurring: paid / different / to confirm / missed / coming ---- */
+.rec-state-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; padding-left: 50px; }
+.rec-state { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: var(--dark-card-2); color: var(--light-text-dim); }
+.rec-state.paid { background: rgba(31,157,85,.12); color: var(--positive); }
+.rec-state.different { background: rgba(214,140,20,.14); color: #B26B00; }
+.rec-state.expected { background: var(--accent-soft); color: var(--accent-1); }
+.rec-state.missed { background: rgba(220,53,69,.12); color: var(--negative); }
+.rec-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 14px; }
+.cal-mark.series.paid, .cal-mark.series.different { border-radius: 50%; outline: 2px solid var(--positive); outline-offset: -1px; }
+.cal-mark.series.missed { border-radius: 50%; outline: 2px solid var(--negative); outline-offset: -1px; opacity: .6; }
+.cal-mark.series.upcoming { opacity: .45; }

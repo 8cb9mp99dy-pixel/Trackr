@@ -117,8 +117,8 @@ General AC for every item:
 - [ ] **Historical FX**, as described above.
 - [ ] **Server-side snapshots, app side.** Read `get_server_snapshots` and fill in missing days in `data.history`; see `docs/integrations/server-snapshot/README.md`.
 - [ ] **`tools/backup.js` (the Mac's daily Excel backup) should include goal photos.** They live in the cloud's `trackr_images` table. Not done: building and checking it means connecting to the real Supabase, which was off-limits tonight.
-- [ ] **Recurring transfers** (monthly money into a pocket). Today a recurring series is income or expense only.
-- [ ] **Recurring calendar states** (paid / different amount / missed), and amount tolerance (±7.5 %) on series.
+- [x] **Recurring transfers** (monthly money into a pocket). Done 20 Oct 2026.
+- [x] **Recurring calendar states** (paid / different amount / to confirm / missed / coming, ±7.5 %). Done 20 Oct 2026.
 - [ ] **Confidence score on learned categories**, with a "To review" list.
 - [ ] **Year in review** (swipeable cards).
 - [ ] **Age of Money**, YNAB-style.

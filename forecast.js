@@ -78,9 +78,18 @@ if (typeof window !== 'undefined') {
     const events = [];
     activeRecurringSeries().forEach(x => {
       const t = x.model;
-      if (t.type !== 'income' && t.type !== 'expense') return;
-      if (!inScope(t.accountId)) return;
-      const amt = toEUR(+t.amount || 0, t.currency) * (t.type === 'income' ? 1 : -1);
+      let amt;
+      if (t.type === 'transfer') {
+        // Only the bank balances count here: money into one counts +, out of one counts −.
+        const bank = ref => { const p = parseTransferRef(ref); return !!(p && p.kind === 'acc' && accs.some(a => a.id === p.accountId)); };
+        const sign = (bank(t.to) ? 1 : 0) - (bank(t.from) ? 1 : 0);
+        if (!sign) return;
+        amt = toEUR(+t.amount || 0, t.currency) * sign;
+      } else {
+        if (t.type !== 'income' && t.type !== 'expense') return;
+        if (!inScope(t.accountId)) return;
+        amt = toEUR(+t.amount || 0, t.currency) * (t.type === 'income' ? 1 : -1);
+      }
       // From the first month not logged yet (the series' lastMonth is already in your list).
       const [y, m] = x.st.lastMonth.split('-').map(Number);
       const firstYm = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
