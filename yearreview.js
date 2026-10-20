@@ -44,7 +44,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = { yearReview };
 } else {
   const monthName = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLocaleDateString('en-GB', { month: 'long' });
-  const isInvestRef = ref => /^(brk|cx):/.test(ref || '');
+  const isInvestRef = ref => isInvestingEndpoint(ref);
   window.yearReviewRows = function () {
     return (data.budgetTransactions || []).filter(t => t.date && t.date <= todayYmd()).map(t => {
       const eur = toEUR(+t.amount || 0, t.currency);

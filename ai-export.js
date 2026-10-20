@@ -30,7 +30,7 @@
   }
   const placeLabel = ref => { if (!ref) return ''; const e = transferEndpoint(ref); return e ? e.label : ref; };
   const signedEUR = t => (t.type === 'transfer' ? 0 : toEUR(t.type === 'income' ? +t.amount || 0 : -(+t.amount || 0), t.currency));
-  const isInvestRef = ref => /^(brk|cx):/.test(ref || '');
+  const isInvestRef = ref => isInvestingEndpoint(ref);
 
   function transactionsSheet(txs) {
     const pm = id => ((data.paymentMethods || []).find(p => p.id === id) || {}).name || '';

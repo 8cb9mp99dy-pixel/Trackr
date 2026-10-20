@@ -2739,6 +2739,10 @@ window.__modalRenderers.account = function (payload) {
         <span class="label-text" style="font-size:13px;">Visible in totals &amp; dashboard</span>
         <div class="toggle ${!acc || acc.visibleInTotals ? 'on' : ''}" id="af-visible" onclick="this.classList.toggle('on')"></div>
       </div>
+      <div class="row-flex" style="padding-top:4px;gap:10px;">
+        <span class="label-text" style="font-size:13px;">Money moved here counts as invested <span style="display:block;font-weight:400;opacity:.65;font-size:12px;">For an account where you invest or save long-term. Applies to every transfer to it, past ones too.</span></span>
+        <div class="toggle ${acc && acc.countsAsInvestment ? 'on' : ''}" id="af-invest" onclick="this.classList.toggle('on')"></div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn primary" onclick="saveAccountForm('${acc ? acc.id : ''}')">Save</button>
@@ -2786,15 +2790,16 @@ function saveAccountForm(id) {
   const selectedSwatch = document.querySelector('#app .modal .swatch-dot.selected');
   const color = selectedSwatch ? selectedSwatch.dataset.color : ACCOUNT_COLORS[0];
   const visibleInTotals = document.getElementById('af-visible').classList.contains('on');
+  const countsAsInvestment = !!(document.getElementById('af-invest') || { classList: { contains: () => false } }).classList.contains('on');
 
   if (id) {
     const acc = accountById(id);
     acc.balanceCheckedAt = new Date().toISOString(); // saving the form = you just looked at this balance
-    Object.assign(acc, { name, balance, icon, currency, description, color, visibleInTotals });
+    Object.assign(acc, { name, balance, icon, currency, description, color, visibleInTotals, countsAsInvestment });
     if (logo) { acc.logo = logo; acc.logoKind = 'image'; } else { acc.logoKind = 'emoji'; }
   } else {
     const newLogo = logo || builtinLogoFor(name); // a brand-new account picks up its bundled logo automatically
-    data.accounts.push({ id: uid('acc'), icon, name, currency, balance, description, logo: newLogo || '', logoKind: newLogo ? 'image' : 'emoji', color, visibleInTotals, pockets: [], balanceCheckedAt: new Date().toISOString() });
+    data.accounts.push({ id: uid('acc'), icon, name, currency, balance, description, logo: newLogo || '', logoKind: newLogo ? 'image' : 'emoji', color, visibleInTotals, countsAsInvestment, pockets: [], balanceCheckedAt: new Date().toISOString() });
   }
   save(); closeModal();
 }
@@ -3393,7 +3398,26 @@ function categoryDonutCardHtml(title, segments, emptyText, animate) {
    money was already invested. (Stock/ETF holdings have no purchase date in this app, so buys
    themselves can't be dated; the money you send to the broker is the honest monthly signal.) */
 const INVESTED_SUBCATEGORY_IDS = ['sc_investmentcontrib', 'sc_cryptobuy'];
-function isInvestingEndpoint(ref) { const k = (parseTransferRef(ref) || {}).kind; return k === 'brk' || k === 'cx'; }
+/* Money sent here counts as invested: a broker, an exchange, or a bank account you marked
+   "Money moved here counts as invested" (its form, or the transfer form). It's worked out each
+   time, so marking an account changes every past transfer to it too. */
+function isInvestingEndpoint(ref) {
+  const p = parseTransferRef(ref) || {};
+  if (p.kind === 'brk' || p.kind === 'cx') return true;
+  if (p.kind === 'acc' || p.kind === 'pk') { const a = accountById(p.accountId); return !!(a && a.countsAsInvestment); }
+  return false;
+}
+/* In the transfer form, when the money goes to a bank account: count it as investing? */
+function transferInvestToggleHtml(p) {
+  const tp = parseTransferRef(p.to) || {};
+  const a = tp.kind === 'acc' && accountById(tp.accountId);
+  if (!a) return '';
+  const on = p._invest != null ? !!p._invest : !!a.countsAsInvestment;
+  return `<div class="tx-toggle-row" onclick="updateTxField('_invest', ${on ? 'false' : 'true'})">
+    <div><div style="font-weight:600;">Count as investing</div><div style="font-size:12px;opacity:.65;">Every transfer to ${escHtml(a.name)}, past ones too, counts as money invested (Budget, Totals, exports).</div></div>
+    <div class="toggle ${on ? 'on' : ''}"></div>
+  </div>`;
+}
 function monthInvested(monthDate) {
   let sent = 0, withdrawn = 0, contributions = 0;
   monthTransactions(monthDate).forEach(t => {
@@ -3633,6 +3657,7 @@ function transferEmoji(t) {
 }
 function txAvatarHtml(t) {
   if (t.type === 'transfer') {
+    if (t.logo) return `<div style="position:relative;width:38px;height:38px;flex:none;"><img src="${escHtml(t.logo)}" alt="" style="width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--accent-soft);" onerror="this.style.visibility='hidden'"><span aria-hidden="true" style="position:absolute;right:-3px;bottom:-3px;display:flex;width:17px;height:17px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:10px;border:2px solid var(--dark-card);">⇄</span></div>`;
     const emoji = transferEmoji(t);
     if (emoji) {
       return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--accent-soft);align-items:center;justify-content:center;font-size:17px;">${escHtml(emoji)}</span><span aria-hidden="true" style="position:absolute;right:-3px;bottom:-3px;display:flex;width:17px;height:17px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:10px;border:2px solid var(--dark-card);">⇄</span></div>`;
@@ -4405,6 +4430,8 @@ window.__modalRenderers.tx = function (p) {
       <label class="field"><span class="label-text">From</span>${endpointSelect('from', p.from)}</label>
       <div style="text-align:center;font-size:20px;opacity:.5;margin:2px 0;">↓</div>
       <label class="field"><span class="label-text">To</span>${endpointSelect('to', p.to)}</label>
+      ${transferInvestToggleHtml(p)}
+      <label class="field"><span class="label-text">Name <span style="opacity:.6;">(optional)</span></span><input id="tx-name" value="${escHtml(p.comment || '')}" placeholder="e.g. Monthly savings" autocomplete="off" onchange="updateTxField('comment',this.value)"></label>
       <div style="font-size:12px;opacity:.65;margin-top:10px;line-height:1.5;">Moves your own money between two places (bank, pocket, broker or exchange cash) — it isn't counted as income or spending. Currencies are converted automatically.</div>`;
   } else if (step === 2) {
     body = `
@@ -4444,10 +4471,14 @@ window.__modalRenderers.tx = function (p) {
         <div><div style="font-weight:600;">Repeats every month</div><div style="font-size:12px;opacity:.6;">Rent, subscriptions, salary… added by itself on the same day each month</div></div>
         <div class="toggle ${p.nature === 'Fixed' ? 'on' : ''}"></div>
       </div>
-      <button type="button" class="tx-more-btn" onclick="ui.modal.payload._more=!${more};render();">${more ? '▴ Fewer options' : '▾ More options'} <span style="opacity:.65;">${isTransfer ? 'note' : 'note, place, logo, personal impact'}</span></button>
+      <button type="button" class="tx-more-btn" onclick="ui.modal.payload._more=!${more};render();">${more ? '▴ Fewer options' : '▾ More options'} <span style="opacity:.65;">${isTransfer ? 'note, logo' : 'note, place, logo, personal impact'}</span></button>
       ${more ? `
         <label class="field"><span class="label-text">Note</span><input value="${escHtml(p.description || '')}" placeholder="Any extra detail" onchange="updateTxField('description',this.value)"></label>
-        ${isTransfer ? '' : `
+        ${isTransfer ? `
+        <label class="field"><span class="label-text">Logo <span style="opacity:.6;">(a link, or a file from your folders)</span></span>
+          <div style="display:flex;gap:6px;align-items:center;"><input id="tf-logo" style="flex:1;" value="${escHtml(p.logo || '')}" placeholder="Paste a link, or pick a file" onchange="updateTxField('logo',this.value)">${logoPickerButtonHtml('tf-logo')}</div>
+          ${logoPickerPopoverHtml('tf-logo')}
+        </label>` : `
         <label class="field"><span class="label-text">Place</span><input value="${escHtml(p.location || '')}" placeholder="e.g. Maastricht" onchange="updateTxField('location',this.value)"></label>
         <div class="tx-label">Personal impact</div>
         <div class="tx-chips">
@@ -4536,6 +4567,7 @@ function updateTxField(field, value) {
   const p = ui.modal.payload;
   if (field === 'type') { p.categoryId = ''; p.subCategoryId = ''; }
   if (field === 'categoryId') { p.subCategoryId = ''; }
+  if (field === 'to') delete p._invest; // the switch belongs to the account it showed
   // "Paid with: Cash" and the cash wallet pick each other (wallet.js).
   if (typeof walletLinkTxField === 'function') walletLinkTxField(p, field, value);
   // Default the amount's currency to whatever the money is leaving, so a transfer out of a EUR
@@ -4600,7 +4632,7 @@ function saveTxForm() {
   const record = {
     id: p.id || uid('tx'), date: p.date, type: p.type, categoryId: isTransfer ? null : p.categoryId, subCategoryId: isTransfer ? null : (p.subCategoryId || null),
     nature: p.nature, paymentMethodId: isTransfer ? null : (p.paymentMethodId || null), accountId: isTransfer ? null : (p.accountId || null), currency: p.currency, amount: Math.abs(parseFloat(p.amount)),
-    comment, location: isTransfer ? '' : (p.location || '').trim(), description: (p.description || '').trim(), logo: isTransfer ? '' : logo, impact: isTransfer ? '' : (p.impact || ''),
+    comment, location: isTransfer ? '' : (p.location || '').trim(), description: (p.description || '').trim(), logo, impact: isTransfer ? '' : (p.impact || ''),
   };
   if (p.recurringId) record.recurringId = p.recurringId;
   // Edited by hand: its category is yours now (off the "To review" list).
@@ -4628,7 +4660,8 @@ function saveTxForm() {
   if (prior) data.budgetTransactions[idx] = record;
   else data.budgetTransactions.push(record);
   applyTxToAccountBalance(record, 1);
-  if (!isTransfer && record.logo) shareTxLogoByName(record.comment, record.logo);
+  if (record.logo && record.comment) shareTxLogoByName(record.comment, record.logo);
+  if (isTransfer && p._invest != null) { const tp = parseTransferRef(record.to) || {}; const ta = tp.kind === 'acc' && accountById(tp.accountId); if (ta) ta.countsAsInvestment = !!p._invest; }
   attachToRecurringSeries(record, { setDay: !!prior && prior.nature === 'Fixed' });
   runRecurring();
   save(); closeModal();
