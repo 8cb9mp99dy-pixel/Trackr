@@ -2927,6 +2927,7 @@ function budgetTransactionsTab() {
       <div><div class="eyebrow">Invested</div><b style="color:var(--accent-1);">${fmtMoney(invested)}</b></div>
     </div>
     ${budgetsGlanceHtml(m)}
+    ${toReviewBannerHtml()}
 
     <div class="bt-actions">
       <button class="btn primary" onclick="openTxForm()">${ic('plus', 15)} Add transaction</button>
@@ -2988,6 +2989,60 @@ function learnedTxFor(name, type) {
   let best = null, bestLen = 0;
   pool.forEach(t => { const pk = txNameKey(t.comment); if (pk.length >= 4 && pk.length > bestLen && k.includes(pk)) { best = t; bestLen = pk.length; } });
   return best;
+}
+
+/* ===================== To review =====================
+   Transactions whose category is only a guess: imported with a category learned from a similar
+   name (part of the name matched) or with none at all ("Other"), plus anything left in "Other"
+   over the last 90 days. Changing the category, or "Looks right", takes it off the list — and
+   the category you pick is the one learned for that name next time. */
+const REVIEW_OTHER_DAYS = 90;
+function isToReview(t) {
+  if (!t || t.type === 'transfer' || t.reviewed) return false;
+  if (t.toReview) return true;
+  if (!['exp_other', 'inc_other'].includes(t.categoryId)) return false;
+  return t.date >= dateToYmd(new Date(appToday().getTime() - REVIEW_OTHER_DAYS * 86400000)) && t.date <= todayYmd();
+}
+function toReviewList() {
+  return (data.budgetTransactions || []).filter(isToReview).sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+function openToReview() { ui.modal = { type: 'toReview' }; render(); }
+function reviewSetCategory(id, catId) {
+  const t = data.budgetTransactions.find(x => x.id === id); if (!t || !catId) return;
+  t.categoryId = catId; t.subCategoryId = null;
+  delete t.toReview; t.reviewed = true;
+  save(); render();
+}
+function reviewLooksRight(id) {
+  const t = data.budgetTransactions.find(x => x.id === id); if (!t) return;
+  delete t.toReview; t.reviewed = true;
+  save(); render();
+}
+function reviewAllRight() {
+  toReviewList().forEach(t => { delete t.toReview; t.reviewed = true; });
+  save(); closeModal();
+}
+window.__modalRenderers.toReview = function () {
+  const list = toReviewList();
+  const why = t => t.toReview === 'partial' ? 'Guessed from a similar name' : t.toReview === 'none' ? 'No category found' : 'In "Other"';
+  return `
+    <div class="modal-head"><div class="modal-title">To review</div><button class="close-x" onclick="closeModal()">✕</button></div>
+    ${list.length ? `<div style="font-size:13px;opacity:.7;margin-bottom:12px;">Categories Trackr wasn't sure about. Pick the right one, or keep it. Next time, that name gets the category you chose.</div>
+    <div class="stack-gap-12">${list.slice(0, 60).map(t => `<div class="review-row">
+      ${txAvatarHtml(t)}
+      <div class="nm"><div class="nm-1">${escHtml(t.comment || '—')}</div><div class="nm-2">${escHtml(shortDay(t.date))} · <span class="${t.type === 'income' ? 'positive' : 'negative'}">${t.type === 'income' ? '+' : '−'}${fmtMoney(Math.abs(t.amount), t.currency)}</span> · ${why(t)}</div></div>
+      <div class="review-acts">
+        <select class="mini-select" aria-label="Category for ${escHtml(t.comment || 'this transaction')}" onchange="reviewSetCategory('${t.id}', this.value)">${(data.categories[t.type] || []).map(c => `<option value="${escHtml(c.id)}" ${c.id === t.categoryId ? 'selected' : ''}>${escHtml((c.icon ? c.icon + ' ' : '') + c.name)}</option>`).join('')}</select>
+        <button class="btn small" onclick="reviewLooksRight('${t.id}')">Looks right</button>
+      </div>
+    </div>`).join('')}</div>
+    ${list.length > 60 ? `<div class="dim" style="margin-top:10px;">And ${list.length - 60} more.</div>` : ''}
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Later</button><button class="btn primary" onclick="reviewAllRight()">All look right</button></div>`
+    : '<div class="empty-state"><div class="title">Nothing to review</div><div class="sub">Every category is one you chose or confirmed.</div></div>'}`;
+};
+function toReviewBannerHtml() {
+  const n = toReviewList().length;
+  return n ? `<button class="review-banner" onclick="openToReview()"><span>${n} transaction${n > 1 ? 's' : ''} to review</span><span class="dim">Categories Trackr wasn't sure about</span>${ic('chevronRight', 15)}</button>` : '';
 }
 
 /* ===================== Budgets per category =====================
@@ -4547,6 +4602,8 @@ function saveTxForm() {
     comment, location: isTransfer ? '' : (p.location || '').trim(), description: (p.description || '').trim(), logo: isTransfer ? '' : logo, impact: isTransfer ? '' : (p.impact || ''),
   };
   if (p.recurringId) record.recurringId = p.recurringId;
+  // Edited by hand: its category is yours now (off the "To review" list).
+  if (p.id) { const was = data.budgetTransactions.find(t => t.id === p.id); if (was && (was.reviewed || isToReview(was))) record.reviewed = true; }
   if (isTransfer) {
     // Snapshot the labels too, so the entry stays readable if a pocket/broker is later deleted.
     Object.assign(record, { from: p.from, to: p.to, fromLabel: transferEndpoint(p.from).label, toLabel: transferEndpoint(p.to).label });

@@ -86,6 +86,11 @@ function actionItems() {
       detail: `${fmtMoney(t.amount, t.currency)} on ${shortDay(t.date)} — not split yet`,
       actions: [{ label: 'Split', onclick: `closeModal();openIncomeSplit('${t.id}')`, primary: true }, { label: 'Not this one', onclick: `skipIncomeSplit('${t.id}')` }] }));
   }
+  // Categories Trackr only guessed (Budget → To review), one line.
+  if (typeof toReviewList === 'function') {
+    const n = toReviewList().length;
+    if (n) attention.push({ key: 'review', icon: `<span class="add-ic" style="width:30px;height:30px;">${ic('list', 16)}</span>`, name: 'Transactions to review', detail: `${n} with a category Trackr wasn't sure about`, actions: [{ label: 'Review', onclick: 'openToReview()', primary: true }] });
+  }
   // Recurring items the app added by itself a few days ago: were they really paid? (one line)
   if (typeof recurringMonthState === 'function') {
     const ym = todayYmd().slice(0, 7), cut = dateToYmd(new Date(appToday().getTime() - 2 * 86400000));

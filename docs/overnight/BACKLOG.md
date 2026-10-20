@@ -119,7 +119,7 @@ General AC for every item:
 - [ ] **`tools/backup.js` (the Mac's daily Excel backup) should include goal photos.** They live in the cloud's `trackr_images` table. Not done: building and checking it means connecting to the real Supabase, which was off-limits tonight.
 - [x] **Recurring transfers** (monthly money into a pocket). Done 20 Oct 2026.
 - [x] **Recurring calendar states** (paid / different amount / to confirm / missed / coming, ±7.5 %). Done 20 Oct 2026.
-- [ ] **Confidence score on learned categories**, with a "To review" list.
+- [x] **"To review" list** for guessed categories (partial name match, none found, recent "Other"). Done 20 Oct 2026.
 - [ ] **Year in review** (swipeable cards).
 - [ ] **Age of Money**, YNAB-style.
 - [x] **New-money planner** ("where should my next €250 go"). Done 20 Oct 2026 (Wealth → Compare).

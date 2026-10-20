@@ -605,7 +605,7 @@ function biParseRows(picked, opts) {
     const catRaw = catSaysTransfer ? '' : str('category'), subRaw = catSaysTransfer ? '' : str('subcategory');
     let cat = biResolveCategory(type, catRaw, subRaw);
     // Your rules (Budget → Categories → Rules) come before the learned categories.
-    let ruleName = '', ruleRecurring = false, ruleCat = false;
+    let ruleName = '', ruleRecurring = false, ruleCat = false, guess = '';
     const rule = !catRaw && !subRaw && name0 && typeof ruleForTx === 'function' ? ruleForTx({ name: name0, amount: Math.abs(amount), type, accountId: account ? account.id : null }) : null;
     if (rule) {
       const ch = ruleChanges(rule, type), rc = ch.categoryId && categoryById(type, ch.categoryId);
@@ -625,7 +625,9 @@ function biParseRows(picked, opts) {
       if (pc) {
         const ps = past.subCategoryId ? (pc.subcategories || []).find(x => x.id === past.subCategoryId) : null;
         cat = { categoryId: pc.id, categoryName: pc.name, newCategory: false, subCategoryId: ps ? ps.id : null, subName: ps ? ps.name : '', newSub: false, notes: ['Category from your past transactions'] };
-      }
+        // Only part of the name matched ("ALBERT HEIJN 1234" ← "Albert Heijn"): worth a look.
+        if (txNameKey(past.comment) !== txNameKey(name0)) guess = 'partial';
+      } else guess = 'none'; // no category in the file, no rule, never seen: "Other"
     }
     const pmRaw = str('paymentMethod');
     const pm = pmRaw ? data.paymentMethods.find(p => biNorm(p.name) === biNorm(pmRaw)) : null;
@@ -644,6 +646,7 @@ function biParseRows(picked, opts) {
       categoryId: cat.categoryId, categoryName: cat.categoryName, newCategory: cat.newCategory,
       subCategoryId: cat.subCategoryId, subName: cat.subName, newSub: cat.newSub,
       notes: notes.concat(cat.notes), duplicate: false, included: !pending, pending, sheetName,
+      guess, guessCat: cat.categoryId,
     };
     // Kept to go back to income / expense ("Not a transfer" in the preview).
     row.plain = { type, categoryId: cat.categoryId, categoryName: cat.categoryName, newCategory: cat.newCategory, subCategoryId: cat.subCategoryId, subName: cat.subName, newSub: cat.newSub, notes: row.notes.slice() };
@@ -1169,6 +1172,8 @@ async function biApply() {
       nature: r.recurring ? 'Fixed' : 'Variable', paymentMethodId: r.paymentMethodId || null, accountId: r.accountId || (accountById(st.defaultAccountId) ? st.defaultAccountId : null),
       currency: r.currency, amount: r.amount, comment: r.name, location: r.location, description: r.description, logo, impact: r.impact,
     };
+    // A guessed category you didn't change in the preview goes on the "To review" list.
+    if (r.guess && r.categoryId === r.guessCat) record.toReview = r.guess;
     const auto = r.replacesAuto && data.budgetTransactions.find(t => t.id === r.replacesAuto.id);
     if (auto) {
       // The real entry takes the automatic one's place: same series, and its effect on the

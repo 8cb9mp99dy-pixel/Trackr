@@ -63,7 +63,7 @@ const UNDO_ACTIONS = {
   loanMoveHoldings: 'Positions moved to the loan', biApply: 'Transactions imported', applyExcelImport: 'Positions imported',
   resolveSyncConflictUseRemote: "Switched to the cloud's data", resolveSyncConflictKeepLocal: "Kept this device's data",
   pushSupabaseSyncOverwrite: 'Cloud replaced with this device', saveTxForm: null,
-  recurringConfirm: 'Marked paid', recurringMarkMissed: 'Marked missed', recurringUnmiss: 'Marked paid', saveRecurringAmount: 'Amount changed', saveWalletModal: 'Wallet updated', applyIncomeSplit: 'Income split', skipIncomeSplit: 'Income left as it is', deleteLiability: 'Debt removed', deleteCryptoAtExchange: 'Holding removed', deleteGoal: 'Goal deleted', confirmTrade: 'Trade recorded',
+  reviewSetCategory: 'Category changed', reviewLooksRight: 'Kept', reviewAllRight: 'All kept', recurringConfirm: 'Marked paid', recurringMarkMissed: 'Marked missed', recurringUnmiss: 'Marked paid', saveRecurringAmount: 'Amount changed', saveWalletModal: 'Wallet updated', applyIncomeSplit: 'Income split', skipIncomeSplit: 'Income left as it is', deleteLiability: 'Debt removed', deleteCryptoAtExchange: 'Holding removed', deleteGoal: 'Goal deleted', confirmTrade: 'Trade recorded',
   deleteInvestPlan: 'Plan deleted', deleteStake: 'Stake removed', saveStake: 'Stake saved', recordPlanNow: 'Plan recorded', confirmDeposit: 'Deposit recorded', makeRecurringFromDetected: 'Recurring item added', applyTradeImport: 'Trades imported', saveExchangeForm: 'Exchange updated', deleteScenario: 'What-if deleted', saveTxRule: 'Rule saved', applyTradeToHoldings: 'Holdings updated', deleteRule: 'Rule deleted',
 };
 Object.keys(UNDO_ACTIONS).forEach(name => {
