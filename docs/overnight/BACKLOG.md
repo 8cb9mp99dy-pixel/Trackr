@@ -122,6 +122,6 @@ General AC for every item:
 - [ ] **Confidence score on learned categories**, with a "To review" list.
 - [ ] **Year in review** (swipeable cards).
 - [ ] **Age of Money**, YNAB-style.
-- [ ] **New-money planner** ("where should my next €250 go").
+- [x] **New-money planner** ("where should my next €250 go"). Done 20 Oct 2026 (Wealth → Compare).
 - [ ] **Read the market cache** (`get_market_cache`) before the live fetch.
 - [ ] **Accessibility:** clear the non-critical axe findings, which are listed in the Playwright report attachments.

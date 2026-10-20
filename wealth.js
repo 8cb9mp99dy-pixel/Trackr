@@ -255,6 +255,7 @@ function wealthCompareHtml(rows) {
         </div>`;
       }).join('')}
       <div style="font-size:12px;opacity:.6;margin-top:8px;">${targetSum ? `Targets add up to ${targetSum}%${Math.abs(targetSum - 100) > 0.5 ? ' — they should make 100%.' : '.'} Gap = what to add (+) or take out (−) to match.` : 'Type the % you aim for per type (e.g. 65 for ETFs). The gap says how much to add or take out.'}</div>
+      ${typeof newMoneyPlannerHtml === 'function' ? newMoneyPlannerHtml(rows) : ''}
     </div>`;
 }
 function setTargetAllocation(type, v) {

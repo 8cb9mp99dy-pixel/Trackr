@@ -1304,3 +1304,12 @@ html.compact .tab-row { margin-bottom: 12px; }
 .cal-mark.series.paid, .cal-mark.series.different { border-radius: 50%; outline: 2px solid var(--positive); outline-offset: -1px; }
 .cal-mark.series.missed { border-radius: 50%; outline: 2px solid var(--negative); outline-offset: -1px; opacity: .6; }
 .cal-mark.series.upcoming { opacity: .45; }
+
+/* ---- New-money planner (planner.js) ---- */
+.nm-plan { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--light-border); display: flex; flex-direction: column; gap: 10px; }
+.nm-amount { display: flex; align-items: center; gap: 8px; font-size: 13.5px; flex-wrap: wrap; }
+.nm-input { display: inline-flex; align-items: center; gap: 2px; font-weight: 700; }
+.nm-input input { width: 96px; padding: 5px 8px; font-weight: 700; }
+.nm-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; font-size: 13.5px; }
+.nm-line b { color: var(--positive); }
+.nm-where { grid-column: 1 / -1; font-size: 12px; color: var(--light-text-dim); padding-left: 18px; }
