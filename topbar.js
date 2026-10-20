@@ -206,5 +206,6 @@ window.__modalRenderers.moreNav = function () {
         <button class="more-row ${(typeof navItemActive === 'function' ? navItemActive(i) : ui.page === i.id) ? 'active' : ''}" onclick="${i.id === 'settings' ? "ui.modal=null;goPage('settings')" : `goPage('${i.id}')`}">${ic(i.icon, 20)}<span>${i.label}</span>${i.id === 'settings' ? navSyncBadgeHtml() : ''}<span class="more-chev">${ic('chevronRight', 16)}</span></button>`).join('')}
     </div>
     <div style="margin-top:14px;">${syncStatusIndicatorHtml()}</div>
+    <button class="btn full" style="margin-top:10px;" onclick="exportForAI()">${ic('download', 16)} All my data in Excel (for AI)</button>
     <button class="btn full" style="margin-top:10px;" onclick="exportFullBackup()">${ic('download', 16)} Download a backup (JSON)</button>`;
 };

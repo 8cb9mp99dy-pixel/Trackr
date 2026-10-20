@@ -6433,9 +6433,10 @@ function settingsBackupRestoreHtml() {
     </div>
     <div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-bottom:8px;">
       <button class="btn primary" onclick="exportExcelBackup()">${ic('download', 15)} Excel backup</button>
+      <button class="btn" onclick="exportForAI()" title="One Excel file with all your data, explained, for an AI to analyse">${ic('download', 15)} Export for AI</button>
       <button class="btn" onclick="document.getElementById('import-excel-backup').click()">Restore from Excel</button>
     </div>
-    <div style="font-size:11.5px;opacity:.55;margin-bottom:14px;">The Excel backup has one readable sheet per part of the app, plus a "Restore" sheet with everything, checked by a fingerprint before any restore. Keep it private: it holds all your financial data.</div>
+    <div style="font-size:11.5px;opacity:.55;margin-bottom:14px;">The Excel backup has one readable sheet per part of the app, plus a "Restore" sheet with everything, checked by a fingerprint before any restore. Keep it private: it holds all your financial data. "Export for AI" is made for reading: a guide sheet, a summary, monthly totals, every transaction in EUR and everything you own, so an AI can analyse it (it can't be restored).</div>
     <input type="file" id="import-backup-file" accept="application/json,.json" style="display:none;" onchange="handleImportBackupFile(this.files[0])">
     <input type="file" id="import-excel-backup" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none;" onchange="restoreExcelBackup(this.files[0]);this.value=''">
     <div style="font-size:11.5px;opacity:.55;">Restoring replaces everything currently in this browser. You'll see exactly what's in the file — and what it would overwrite — and have to confirm, before anything changes.</div>    ${typeof emergencyPackHtml === 'function' ? emergencyPackHtml() : ''}
