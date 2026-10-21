@@ -58,7 +58,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `budget-import.js` / `rules.js` / `excel-import.js` / `trade-import.js` | Excel/CSV imports (transfers included); transaction rules engine; positions import; trades import |
 | `notify.js` / `insights.js` / `palette.js` / `quickadd.js` / `emergency.js` | alerts and notification centre, weekly summary and `.ics`; Overview insights; Cmd+K palette; Apple Pay quick-add link; emergency pack |
 | `ticker.js`, `report.js`, `motion.js`, `backup-excel.js`, `safety.js`, `sw.js` | live price bar, PDF/share, animations, Excel backup, undo/restore points/offline, service worker |
-| `nav.js` (branch `overnight/navigation`) | New navigation (beta) |
+| `nav.js` | Navigation: grouped by default (Home · Money: budget, receipts, freelance · Wealth: overview, cash, investments, watchlist, debts · Plan: goals, future, emergency, insights) with section tabs; Settings → Display → "Classic navigation" brings back every page in the side bar |
 
 Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js` and `receipts.js` is exported with `module.exports` and unit-tested in Node.
 

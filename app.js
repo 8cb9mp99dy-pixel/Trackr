@@ -392,7 +392,8 @@ function defaultData() {
       showPerformanceIndicators: true,
       compactMode: false,
       budgetLimitsBeta: false, // Settings → Display → "Category budgets (beta)"
-      newNav: false, // Settings → Display → "New navigation (beta)" (nav.js)
+      newNav: false, // the beta's switch, no longer read (nav.js)
+      classicNav: false, // Settings → Display → "Classic navigation": every page in the side bar (nav.js)
       applyTradesToHoldings: false, // Investments → an account → Buy: "Also update my holdings and cash"
       privacyMode: false,
       eurUsdRate: 1.08, // used to blend USD crypto purchases into one EUR average price
@@ -2890,7 +2891,7 @@ function renderBudget() {
   <div class="page surface-light">
     <div class="page-head">
       <div><h1 class="page-title">Budget</h1><div class="page-subtitle">${data.budgetTransactions.length} transaction${data.budgetTransactions.length !== 1 ? 's' : ''} logged</div></div>
-      ${typeof renderReceipts === 'function' ? `<button class="btn" onclick="goPage('receipts')" title="Receipts and warranties of what you bought">${ic('file', 15)} Receipts</button>` : ''}
+      ${typeof renderReceipts === 'function' && !(typeof newNavOn === 'function' && newNavOn()) ? `<button class="btn" onclick="goPage('receipts')" title="Receipts and warranties of what you bought">${ic('file', 15)} Receipts</button>` : ''}
     </div>
     <div class="tab-row budget-tabs">
       ${budgetGroups().map(g => `<button class="tab-btn ${group.id === g.id ? 'active' : ''}" onclick="setBudgetGroup('${g.id}')">${g.label}</button>`).join('')}
@@ -4711,7 +4712,7 @@ function renderInvestments() {
     <div class="page-head">
       <div><h1 class="page-title">Portfolio</h1><div class="page-subtitle">Investment overview</div></div>
       <div class="row-flex" style="gap:8px;">
-        <button class="btn" onclick="goPage('watchlist')" title="Prices you follow without owning them, with alerts">${ic('eye', 15)} Watchlist</button>
+        ${typeof newNavOn === 'function' && newNavOn() ? '' : `<button class="btn" onclick="goPage('watchlist')" title="Prices you follow without owning them, with alerts">${ic('eye', 15)} Watchlist</button>`}
         <button class="btn" onclick="refreshPrices()" title="Fetch the latest live price for every Stock/ETF/other asset (by ISIN) and every crypto holding">${ui.assetPriceFetching || ui.cryptoPriceFetching ? '…' : '↻'} Refresh</button>
       </div>
     </div>
@@ -6368,7 +6369,7 @@ function settingsDisplayHtml() {
       ${boolSettingRow('Show performance indicators', 'showPerformanceIndicators', 'Gains and losses on your investments (P&amp;L, ▲ ▼ %, the Performance card). Off: only what things are worth.')}
       ${boolSettingRow('Compact mode', 'compactMode', 'Tighter spacing and smaller headline numbers, so more fits on the screen.')}
       <div class="row-flex"><div><div style="font-size:13.5px;">Dutch box 3 estimate</div><div style="font-size:12px;opacity:.65;margin-top:2px;">A card in Analysis estimating the Dutch wealth tax from your 1 January figures (2026 rules, editable). An estimate, not tax advice.</div></div><div class="toggle ${data.settings.box3 && data.settings.box3.enabled ? 'on' : ''}" style="flex:none;" onclick="setBox3('enabled', !(data.settings.box3 && data.settings.box3.enabled))"></div></div>
-      ${boolSettingRow('New navigation (beta)', 'newNav', 'Home · Money · Wealth (overview, cash, investments, debts) · Plan (goals, emergency, insights). Same pages, grouped differently — switch back any time.')}
+      ${boolSettingRow('Classic navigation', 'classicNav', 'Every page in the side bar, as before. Off: Home · Money (budget, receipts, freelance) · Wealth (overview, cash, investments, watchlist, debts) · Plan (goals, future, emergency, insights). Same pages, grouped differently.')}
       ${boolSettingRow('Update holdings when I record a trade', 'applyTradesToHoldings', 'After Buy / Sell / Convert (or a plan) on an account page, show how quantities, average price and cash would change, and apply it if you confirm. Never places a real order.')}
       ${boolSettingRow('Category budgets (beta)', 'budgetLimitsBeta', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}
       <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.65;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
