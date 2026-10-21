@@ -11,6 +11,7 @@ function paletteItems() {
     .forEach(([id, l, icn]) => add('Pages', l, '', () => goPage(id), icn));
   [['transactions', 'Transactions'], ['recurring', 'Recurring'], ['forecast', 'Forecast'], ['totals', 'Totals'], ['categories', 'Categories & rules'], ['import', 'Import']]
     .forEach(([t, l]) => add('Pages', `Budget › ${l}`, '', () => { goPage('budget'); setBudgetTab(t); }, 'receipt'));
+  add('Pages', 'Budget › Receipts & warranties', '', () => goPage('receipts'), 'file');
   add('Pages', 'Investments › Watchlist', '', () => goPage('watchlist'), 'trend');
   add('Pages', 'Goals › Emergency savings', '', () => { ui.goalsTab = 'emergency'; goPage('goals'); }, 'target');
   add('Pages', 'Wealth › Liabilities', '', () => { ui.wealthTab = 'liabilities'; goPage('wealth'); }, 'pie');

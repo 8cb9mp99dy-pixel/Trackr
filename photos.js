@@ -1,4 +1,4 @@
-/* ===================== Photos (goals) =====================
+/* ===================== Photos (goals) and receipts =====================
  * Its own file, loaded after app.js (shares its globals: data, loadSupabaseSyncConfig,
  * supabaseRpc, renderWhenIdle, uid…).
  *
@@ -95,6 +95,8 @@ function photoUrl(id) {
       }
       if (rec) {
         photoUrls.set(id, URL.createObjectURL(dataUrlToBlob(rec.data)));
+        // Receipt thumbnails (receipts.js) are filled in where they are, so an open form keeps what's typed.
+        document.querySelectorAll(`[data-photo="${CSS.escape(id)}"]`).forEach(el => { el.innerHTML = `<img src="${photoUrls.get(id)}" alt="Receipt">`; });
         // A goal's window has no typed text to lose (its form keeps what's typed): show it now.
         if (ui.modal && ui.modal.type === 'goalView') render();
         else if (ui.modal && ui.modal.type === 'goal' && typeof goalFormRedraw === 'function') goalFormRedraw();
@@ -130,8 +132,10 @@ async function removePhoto(id) {
 /* Photos on this device that no goal uses any more (e.g. added, then the form was cancelled). */
 async function photoCleanup() {
   const used = new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id)));
-  const pending = (ui.modal && ui.modal.payload && ui.modal.payload.photos) || [];
-  pending.forEach(p => used.add(p.id));
+  // Receipts on transactions (receipts.js) live in the same place.
+  if (typeof receiptIds === 'function') receiptIds().forEach(id => used.add(id));
+  const pl = (ui.modal && ui.modal.payload) || {};
+  [...(pl.photos || []), ...(pl.receipts || [])].forEach(p => used.add(p.id));
   for (const id of await photoAllKeys().catch(() => [])) if (!used.has(id)) await removePhoto(id);
 }
 setTimeout(() => { photoSyncPending().catch(() => {}); }, 4000);
@@ -159,11 +163,13 @@ function shrinkDataUrl(dataUrl, max, quality) {
   });
 }
 async function photosForBackup() {
-  const ids = Array.from(new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id))));
+  const ids = Array.from(new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id)).concat(typeof receiptIds === 'function' ? receiptIds() : [])));
   const out = [];
   for (const id of ids) {
     const rec = await photoGet(id).catch(() => null);
     if (!rec || !rec.data) continue;
+    // A receipt's PDF goes in as it is (it's at most 2.8 MB).
+    if (/^data:application\/pdf/.test(rec.data)) { out.push({ id, data: rec.data, mime: 'application/pdf' }); continue; }
     const small = await shrinkDataUrl(rec.data, BACKUP_PHOTO_MAX, 0.7);
     if (small) out.push({ id, data: small.data, w: small.w, h: small.h });
   }
@@ -182,12 +188,12 @@ async function restoreBackupPhotos(doc) {
   if (doc) delete doc._photos;
   let n = 0;
   for (const p of list) {
-    if (!p || !p.id || typeof p.data !== 'string' || !/^data:image\//.test(p.data)) continue;
+    if (!p || !p.id || typeof p.data !== 'string' || !/^data:(image\/|application\/pdf)/.test(p.data)) continue;
     // A photo this device already has stays as it is (full size): the backup's copy is smaller,
     // and it would otherwise replace the original here and in the cloud.
     const have = await photoGet(p.id).catch(() => null);
     if (have && have.data) continue;
-    const rec = { id: p.id, data: p.data, w: p.w, h: p.h, synced: false, addedAt: new Date().toISOString() };
+    const rec = { id: p.id, data: p.data, w: p.w, h: p.h, mime: p.mime, synced: false, addedAt: new Date().toISOString() };
     try {
       await photoPut(rec);
       const u = photoUrls.get(p.id); if (u) URL.revokeObjectURL(u);

@@ -41,7 +41,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `app.js` | data model, sync, prices (TradingView, CoinGecko, Twelve Data), Overview, Accounts, Budget, Investments, Trading, Settings, backups |
 | `topbar.js` | top bar, Action required (+ Notifications tab, data quality), Add menu, More sheet |
 | `overview.js` / `wealth.js` | Overview cards, the shared `allocationCardHtml`, the Wealth page |
-| `goals.js` / `photos.js` | goals showroom, emergency savings; goal photos (IndexedDB + Supabase; included in backups) |
+| `goals.js` / `photos.js` | goals showroom, emergency savings; goal photos and receipt files (IndexedDB + Supabase; included in backups) |
 | `cashflow.js` / `forecast.js` | Totals, Sankey, recurring calendar and scanner; Budget → Forecast with what-ifs |
 | `analysis.js` / `returns.js` / `xray.js` / `box3.js` | Analysis: fees, passive income, diversification; returns (TWR/XIRR/FIFO); X-ray rules; Dutch box 3 estimate |
 | `invest.js` / `staking.js` / `loan.js` | broker/exchange pages (Buy/Sell/Convert, plans, apply to holdings, edit/rename); staking; the invested loan |
@@ -51,6 +51,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `future.js` | Goals → Future: net worth projected 5–40 years (band cautious/good, today's euros, milestones, financial-freedom number, what-if sliders) |
 | `nwmoves.js` | Wealth → "Why your net worth moved": a month split into saved / markets / other (from daily history + transactions) |
 | `freelance.js` | Freelance page: invoices (paid → income + split offer), VAT per quarter (Dutch deadlines), VAT pocket short/extra, business expenses |
+| `receipts.js` | Receipts (photo/PDF, stored like goal photos) and warranties on expenses; Budget → Receipts (searchable); reminder a month before a warranty ends |
 | `watchlist.js` | Investments → Watchlist: prices you follow without owning them (ISIN via TradingView, coins via CoinGecko), alerts below/above your levels (bar, notification centre, Action required); never buys |
 | `planner.js` | Wealth → Compare: "where should new money go" (to the types below target, no selling) |
 | `wallet.js` | Accounts → cash wallet (an account with `kind: 'cash'`): add cash, spent, withdraw, count; "Paid with: Cash" picks it |
@@ -59,7 +60,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `ticker.js`, `report.js`, `motion.js`, `backup-excel.js`, `safety.js`, `sw.js` | live price bar, PDF/share, animations, Excel backup, undo/restore points/offline, service worker |
 | `nav.js` (branch `overnight/navigation`) | New navigation (beta) |
 
-Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js` and `watchlist.js` is exported with `module.exports` and unit-tested in Node.
+Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js` and `receipts.js` is exported with `module.exports` and unit-tested in Node.
 
 ## How to test
 

@@ -94,6 +94,9 @@ function notifyCheck() {
     });
   }
 
+  // A warranty ending within a month (receipts.js).
+  if (notifyOn('warrantyReminders') && typeof warrantyNotify === 'function') warrantyNotify(out);
+
   // Weekly summary — the system notification once a week (the Overview card does the rest).
   if (notifyOn('weeklySummary')) {
     const w = weekSummaryData(lastWeekStart());
@@ -145,6 +148,7 @@ function notifyEntryHtml(e) {
   else if (e.kind === 'goal') { icon = 'target'; title = 'Goal reached'; text = `${escHtml(e.name)} — ${fmtMoney(e.amount)}.`; go = (data.goals || []).some(g => g.id === e.goalId) ? `closeModal();openGoalView('${escHtml(e.goalId)}')` : ''; }
   else if (e.kind === 'week') { icon = 'calendar'; title = `Your week · ${escHtml(e.label)}`; text = `${fmtMoney(e.out)} out · ${fmtMoney(e.in)} in · ${e.count} transaction${e.count === 1 ? '' : 's'}.`; go = `openWeekSummary('${escHtml(e.start)}')`; }
   else if (e.kind === 'budget') { icon = 'target'; title = `Budget · ${escHtml(e.category)}`; text = e.over ? `${fmtMoney(e.spent)} of ${fmtMoney(e.limit)} — over budget.` : `${Math.round(e.pct)}% of ${fmtMoney(e.limit)} used.`; go = "closeModal();goPage('budget')"; }
+  else if (e.kind === 'warranty') { icon = 'file'; title = escHtml(e.title || 'Warranty'); text = escHtml(e.text || ''); go = (data.budgetTransactions || []).some(t => t.id === e.txId) ? `closeModal();openWarrantyTx('${escHtml(e.txId)}')` : ''; }
   else if (e.kind === 'watch') { icon = 'trend'; title = escHtml(e.title || 'Price alert'); text = escHtml(e.text || ''); go = "closeModal();goPage('watchlist')"; }
   else { title = escHtml(e.title || 'Notice'); text = escHtml(e.text || ''); }
   return `<div class="ar-row ${e.read ? '' : 'unread'}">
@@ -293,6 +297,7 @@ function settingsNotificationsHtml() {
     { key: 'negativeBalanceWarning', title: 'Negative balance warning', desc: 'When more has gone out than came in this month — once a month.' },
     { key: 'weeklySummary', title: 'Weekly summary', desc: 'From Monday, a card on the Overview with last week: in, out, top categories, net worth, what\'s due.' },
     { key: 'goalAchieved', title: 'Goal achieved', desc: 'The first time a goal reaches its target.' },
+    { key: 'warrantyReminders', title: 'Warranty reminders', desc: 'A month before the warranty of something you bought ends (Budget → Receipts).' },
     { key: 'priceAlerts', title: 'Price alerts', desc: 'When a price on your watchlist reaches one of your levels (Investments → Watchlist).' },
   ];
   let sys;

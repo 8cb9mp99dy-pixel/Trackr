@@ -13,7 +13,7 @@
  */
 const NEW_NAV = [
   { id: 'dashboard', label: 'Home', icon: 'home', phone: true, pages: ['dashboard'] },
-  { id: 'budget', label: 'Money', icon: 'receipt', phone: true, pages: ['budget'] },
+  { id: 'budget', label: 'Money', icon: 'receipt', phone: true, pages: ['budget', 'receipts'] },
   { id: 'wealth', label: 'Wealth', icon: 'pie', phone: true, pages: ['wealth', 'accounts', 'investments', 'investAccount', 'manual-prices', 'positions-import', 'watchlist'] },
   { id: 'goals', label: 'Plan', icon: 'target', phone: true, pages: ['goals', 'analysis'] },
   { id: 'trading', label: 'Trading', icon: 'bolt', pages: ['trading'] },
@@ -23,7 +23,7 @@ function newNavOn() { return !!(typeof data !== 'undefined' && data && data.sett
 function currentNavItems() { return newNavOn() ? NEW_NAV : NAV_ITEMS; }
 function navItemActive(item) {
   if (newNavOn()) return (item.pages || [item.id]).includes(ui.page);
-  return ui.page === item.id || (item.id === 'investments' && ['investAccount', 'watchlist'].includes(ui.page));
+  return ui.page === item.id || (item.id === 'investments' && ['investAccount', 'watchlist'].includes(ui.page)) || (item.id === 'budget' && ui.page === 'receipts');
 }
 function goWealthSection(tab) { ui.wealthTab = tab === 'liabilities' ? 'liabilities' : 'assets'; goPage('wealth'); }
 function goPlanSection(tab) { ui.goalsTab = tab === 'emergency' ? 'emergency' : 'goals'; goPage('goals'); }

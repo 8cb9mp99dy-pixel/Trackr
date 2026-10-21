@@ -407,6 +407,7 @@ function defaultData() {
         weeklySummary: false,
         goalAchieved: true,
         priceAlerts: true,
+        warrantyReminders: true,
       },
     },
     categories: {
@@ -2297,6 +2298,7 @@ function renderApp(app) {
     analysis: () => (typeof renderAnalysis === 'function' ? renderAnalysis() : ''),
     freelance: () => (typeof renderFreelance === 'function' ? renderFreelance() : ''),
     watchlist: () => (typeof renderWatchlist === 'function' ? renderWatchlist() : ''),
+    receipts: () => (typeof renderReceipts === 'function' ? renderReceipts() : ''),
     investAccount: () => (typeof renderInvestAccount === 'function' ? renderInvestAccount() : renderInvestments()),
     'manual-prices': renderManualPrices,
     'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
@@ -2888,6 +2890,7 @@ function renderBudget() {
   <div class="page surface-light">
     <div class="page-head">
       <div><h1 class="page-title">Budget</h1><div class="page-subtitle">${data.budgetTransactions.length} transaction${data.budgetTransactions.length !== 1 ? 's' : ''} logged</div></div>
+      ${typeof renderReceipts === 'function' ? `<button class="btn" onclick="goPage('receipts')" title="Receipts and warranties of what you bought">${ic('file', 15)} Receipts</button>` : ''}
     </div>
     <div class="tab-row budget-tabs">
       ${budgetGroups().map(g => `<button class="tab-btn ${group.id === g.id ? 'active' : ''}" onclick="setBudgetGroup('${g.id}')">${g.label}</button>`).join('')}
@@ -3719,7 +3722,7 @@ function txRowDisplayHtml(t) {
       <div style="display:flex;align-items:center;gap:12px;">
         ${txAvatarHtml(t)}
         <div>
-          <div style="font-weight:600;font-size:14px;">${escHtml(label)}${t.nature === 'Fixed' ? ' <span class="tx-rec" title="Repeats every month">↻</span>' : ''}</div>
+          <div style="font-weight:600;font-size:14px;">${escHtml(label)}${t.nature === 'Fixed' ? ' <span class="tx-rec" title="Repeats every month">↻</span>' : ''}${(t.receipts || []).length ? ` <span class="tx-rec" title="Receipt attached" aria-label="Receipt attached">${ic('file', 12)}</span>` : ''}</div>
           <div style="font-size:12px;opacity:.65;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}${acc ? ' · ' + escHtml(acc.name) : ''}</div>
         </div>
       </div>
@@ -4457,7 +4460,7 @@ window.__modalRenderers.tx = function (p) {
   } else {
     const today = todayYmd(), yest = dateToYmd(new Date(appToday().getTime() - 864e5));
     const other = p.date !== today && p.date !== yest;
-    const more = !!p._more || !!(p.location || p.description || p.logo || p.impact || p.business);
+    const more = !!p._more || !!(p.location || p.description || p.logo || p.impact || p.business || p.warrantyUntil || (p.receipts || []).length);
     body = `
       ${summary()}
       ${p._ruleText ? `<div class="tx-auto">Filled in by your rule (${escHtml(p._ruleText)}) — <a href="#" onclick="event.preventDefault();txGo(2);">change</a></div>` : ''}
@@ -4482,7 +4485,7 @@ window.__modalRenderers.tx = function (p) {
         <div><div style="font-weight:600;">Repeats every month</div><div style="font-size:12px;opacity:.6;">Rent, subscriptions, salary… added by itself on the same day each month</div></div>
         <div class="toggle ${p.nature === 'Fixed' ? 'on' : ''}"></div>
       </div>
-      <button type="button" class="tx-more-btn" onclick="ui.modal.payload._more=!${more};render();">${more ? '▴ Fewer options' : '▾ More options'} <span style="opacity:.65;">${isTransfer ? 'note, logo' : 'note, place, logo, personal impact'}</span></button>
+      <button type="button" class="tx-more-btn" onclick="ui.modal.payload._more=!${more};render();">${more ? '▴ Fewer options' : '▾ More options'} <span style="opacity:.65;">${isTransfer ? 'note, logo' : p.type === 'expense' ? 'note, place, receipt, warranty, logo' : 'note, place, logo, personal impact'}</span></button>
       ${more ? `
         <label class="field"><span class="label-text">Note</span><input value="${escHtml(p.description || '')}" placeholder="Any extra detail" onchange="updateTxField('description',this.value)"></label>
         ${isTransfer ? `
@@ -4495,6 +4498,7 @@ window.__modalRenderers.tx = function (p) {
           <div><div style="font-weight:600;">Business expense</div><div style="font-size:12px;opacity:.65;">Its VAT is taken off what you owe (Freelance → VAT)</div></div>
           <div class="toggle ${p.business ? 'on' : ''}"></div>
         </div>` : ''}
+        ${p.type === 'expense' && typeof txReceiptsBlockHtml === 'function' ? txReceiptsBlockHtml(p) : ''}
         <div class="tx-label">Personal impact</div>
         <div class="tx-chips">
           ${chip(!p.impact, `updateTxField('impact','')`, 'Neutral')}
@@ -4583,6 +4587,7 @@ function updateTxField(field, value) {
   if (field === 'type') { p.categoryId = ''; p.subCategoryId = ''; }
   if (field === 'categoryId') { p.subCategoryId = ''; }
   if (field === 'to') delete p._invest; // the switch belongs to the account it showed
+  if (field === 'warrantyUntil') delete p.warrantyNoted; // a new date gets its reminder again
   // "Paid with: Cash" and the cash wallet pick each other (wallet.js).
   if (typeof walletLinkTxField === 'function') walletLinkTxField(p, field, value);
   // Default the amount's currency to whatever the money is leaving, so a transfer out of a EUR
@@ -4651,7 +4656,7 @@ function saveTxForm() {
   };
   if (p.recurringId) record.recurringId = p.recurringId;
   // Links and marks the form doesn't show are kept when you edit (an income's split, its invoice…).
-  ['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil'].forEach(k => { if (p[k] != null && p[k] !== '') record[k] = p[k]; });
+  ['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil', 'warrantyNoted'].forEach(k => { if (p[k] != null && p[k] !== '') record[k] = p[k]; });
   if (p.type === 'expense' && p.business) { record.business = true; if (p.vatRate != null && p.vatRate !== '') record.vatRate = +p.vatRate; }
   // Edited by hand: its category is yours now (off the "To review" list).
   if (p.id) { const was = data.budgetTransactions.find(t => t.id === p.id); if (was && (was.reviewed || isToReview(was))) record.reviewed = true; }
