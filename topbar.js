@@ -86,6 +86,8 @@ function actionItems() {
       detail: `${fmtMoney(t.amount, t.currency)} on ${shortDay(t.date)} — not split yet`,
       actions: [{ label: 'Split', onclick: `closeModal();openIncomeSplit('${t.id}')`, primary: true }, { label: 'Not this one', onclick: `skipIncomeSplit('${t.id}')` }] }));
   }
+  // Freelance: invoices past due, a VAT return due soon.
+  if (typeof freelanceAttention === 'function') freelanceAttention().forEach(x => attention.push(x));
   // Categories Trackr only guessed (Budget → To review), one line.
   if (typeof toReviewList === 'function') {
     const n = toReviewList().length;

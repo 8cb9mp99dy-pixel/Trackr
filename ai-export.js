@@ -138,6 +138,16 @@
       (data.txRules || []).map(r => { const w = r.when || {}, t = r.then || {}; const c = t.categoryId ? categoryById(w.type || 'expense', t.categoryId) || categoryById('income', t.categoryId) : null;
         return [({ is: 'is', starts: 'starts with', contains: 'contains' })[w.op] || 'contains', str(w.text), str(w.type), r2(w.min), r2(w.max), c ? c.name : '', str(t.comment), t.nature ? 'yes' : '']; })];
   }
+  function invoicesSheet() {
+    return ['Invoices', ['Number', 'Client', 'Invoice date', 'Due date', 'Before VAT', 'VAT %', 'VAT', 'Total', 'Status', 'Paid on', 'Note'],
+      invoiceList().map(i => [str(i.number), str(i.client), str(i.issueDate), str(i.dueDate), r2(i.net), +i.vatRate || 0, r2(invoiceVat(i)), r2(invoiceGross(i)), invoiceState(i), str(i.paidDate), str(i.note)])];
+  }
+  function vatSheet() {
+    const ys = Array.from(new Set(invoiceList().map(i => +String(i.issueDate).slice(0, 4)).concat([appToday().getFullYear()]))).filter(Boolean).sort();
+    const rows = [];
+    ys.forEach(y => [1, 2, 3, 4].forEach(q => { const Q = vatQuarter(y, q); if (Q.from > todayYmd()) return; rows.push([Q.key, Q.from, Q.to, Q.deadline, r2(Q.fromInvoices), r2(Q.fromIncome), r2(Q.deductible), r2(Q.due), Q.paid ? 'yes' : 'no', Q.paid ? str(Q.paid.date) : '']); }));
+    return ['VAT', ['Quarter', 'From', 'To', 'Deadline', 'VAT on invoices', 'VAT in income without invoice', 'VAT on business expenses', 'To pay', 'Paid', 'Paid on'], rows];
+  }
   function readMe(sheets, txs) {
     const guide = {
       'Summary': "Today's key numbers and monthly averages. Start here.",
@@ -151,6 +161,8 @@
       'Goals': 'Savings goals and progress.',
       'Net worth history': 'One row per day the app was opened: net worth and value by asset type.',
       'Rules': 'The user\'s automatic categorisation rules.',
+      'Invoices': 'Freelance invoices: amounts before VAT, VAT, totals and whether they were paid.',
+      'VAT': 'VAT per quarter: collected, deductible, to pay, deadline (Dutch rule), paid or not. The user\'s only tax is VAT on freelance work.',
     };
     const rows = [
       ['Trackr: all my data, for analysis'], [],
@@ -189,6 +201,7 @@
     const txs = (data.budgetTransactions || []).filter(t => t.date && t.date <= todayYmd()).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
     const M = monthlySheets(txs);
     const mine = [summarySheet(M), M.monthly, M.cats, transactionsSheet(txs), ownedSheet()].concat(accountsSheets(), [recurringSheet(), goalsSheet(), historySheet(), rulesSheet()]);
+    if (typeof invoiceList === 'function' && invoiceList().length) mine.push(invoicesSheet(), vatSheet());
     // The detailed sheets of the Excel backup, minus the ones rebuilt above.
     const skip = new Set(['Accounts', 'Pockets', 'Transactions', 'Goals', 'Net worth history']);
     const more = typeof TrackrExcelBackup !== 'undefined' ? TrackrExcelBackup.readableSheets(data).filter(([n]) => !skip.has(n)) : [];

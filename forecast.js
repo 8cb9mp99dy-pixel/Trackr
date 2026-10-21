@@ -103,6 +103,8 @@ if (typeof window !== 'undefined') {
       if (s.repeat === 'monthly') fcMonthlyDates(+String(s.date).slice(8, 10) || 1, fcAddDays(today, -1), to, String(s.date).slice(0, 7) > today.slice(0, 7) ? String(s.date).slice(0, 7) : today.slice(0, 7)).filter(d => d >= s.date).forEach(d => events.push({ date: d, amount: amt, label: s.name, kind: 'scenario' }));
       else if (s.date > today && s.date <= to) events.push({ date: s.date, amount: amt, label: s.name, kind: 'scenario' });
     });
+    // Invoices not paid yet: expected on their due date (in the total only — which account is unknown).
+    if (!accountId && typeof freelanceForecastEvents === 'function') freelanceForecastEvents(today, to).forEach(e => events.push(e));
     const series = fcSeries(today, days, start, events, perDay);
     return { today, start, series, lowest: fcLowest(series), end: series[series.length - 1], events: events.filter(e => e.date > today && e.date <= to).sort((a, b) => (a.date < b.date ? -1 : 1)), usual, perDay };
   };

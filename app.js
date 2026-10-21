@@ -114,6 +114,7 @@ const ICON_PATHS = {
   x: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
   check: '<path d="M5 12l5 5l10 -10"/>',
   refresh: '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>',
+  briefcase: '<path d="M3 9a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M8 7v-2a2 2 0 0 1 2 -2h4a2 2 0 0 1 2 2v2"/><path d="M12 12l0 .01"/><path d="M3 13a20 20 0 0 0 18 0"/>',
   wallet: '<path d="M17 8v-3a1 1 0 0 0 -1 -1h-10a2 2 0 0 0 0 4h12a1 1 0 0 1 1 1v3m0 4v3a1 1 0 0 1 -1 1h-12a2 2 0 0 1 -2 -2v-12"/><path d="M20 12v4h-4a2 2 0 0 1 0 -4h4"/>',
 };
 function ic(name, size) {
@@ -128,6 +129,7 @@ const NAV_ITEMS = [
   { id: 'goals', label: 'Goals', icon: 'target' },
   { id: 'analysis', label: 'Analysis', icon: 'compass' },
   { id: 'budget', label: 'Budget', icon: 'receipt', phone: true },
+  { id: 'freelance', label: 'Freelance', icon: 'briefcase' },
   { id: 'investments', label: 'Investments', icon: 'trend', phone: true },
   { id: 'accounts', label: 'Accounts', icon: 'bank' },
   { id: 'trading', label: 'Trading', icon: 'bolt' },
@@ -440,6 +442,9 @@ function defaultData() {
     assets: [],
     assetEntries: [],
     investmentTransactions: [],
+    // Freelance (freelance.js): invoices you send, and VAT per quarter.
+    invoices: [],
+    vat: { rate: 21, pocket: '', freelanceIncludesVat: true, paid: {} },
     // Each crypto asset is tracked in one of two modes:
     //  - 'snapshot': a per-broker holding snapshot — broker, quantity, avg price, currency, no
     //    date — for coins you don't want to log purchase-by-purchase but did buy across several
@@ -2286,6 +2291,7 @@ function renderApp(app) {
     wealth: () => (typeof renderWealth === 'function' ? renderWealth() : ''),
     goals: () => (typeof renderGoals === 'function' ? renderGoals() : ''),
     analysis: () => (typeof renderAnalysis === 'function' ? renderAnalysis() : ''),
+    freelance: () => (typeof renderFreelance === 'function' ? renderFreelance() : ''),
     investAccount: () => (typeof renderInvestAccount === 'function' ? renderInvestAccount() : renderInvestments()),
     'manual-prices': renderManualPrices,
     'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
@@ -4446,7 +4452,7 @@ window.__modalRenderers.tx = function (p) {
   } else {
     const today = todayYmd(), yest = dateToYmd(new Date(appToday().getTime() - 864e5));
     const other = p.date !== today && p.date !== yest;
-    const more = !!p._more || !!(p.location || p.description || p.logo || p.impact);
+    const more = !!p._more || !!(p.location || p.description || p.logo || p.impact || p.business);
     body = `
       ${summary()}
       ${p._ruleText ? `<div class="tx-auto">Filled in by your rule (${escHtml(p._ruleText)}) — <a href="#" onclick="event.preventDefault();txGo(2);">change</a></div>` : ''}
@@ -4480,6 +4486,10 @@ window.__modalRenderers.tx = function (p) {
           ${logoPickerPopoverHtml('tf-logo')}
         </label>` : `
         <label class="field"><span class="label-text">Place</span><input value="${escHtml(p.location || '')}" placeholder="e.g. Maastricht" onchange="updateTxField('location',this.value)"></label>
+        ${p.type === 'expense' ? `<div class="tx-toggle-row" onclick="updateTxField('business', ${p.business ? 'false' : 'true'})">
+          <div><div style="font-weight:600;">Business expense</div><div style="font-size:12px;opacity:.65;">Its VAT is taken off what you owe (Freelance → VAT)</div></div>
+          <div class="toggle ${p.business ? 'on' : ''}"></div>
+        </div>` : ''}
         <div class="tx-label">Personal impact</div>
         <div class="tx-chips">
           ${chip(!p.impact, `updateTxField('impact','')`, 'Neutral')}
@@ -4635,6 +4645,9 @@ function saveTxForm() {
     comment, location: isTransfer ? '' : (p.location || '').trim(), description: (p.description || '').trim(), logo, impact: isTransfer ? '' : (p.impact || ''),
   };
   if (p.recurringId) record.recurringId = p.recurringId;
+  // Links and marks the form doesn't show are kept when you edit (an income's split, its invoice…).
+  ['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil'].forEach(k => { if (p[k] != null && p[k] !== '') record[k] = p[k]; });
+  if (p.type === 'expense' && p.business) { record.business = true; if (p.vatRate != null && p.vatRate !== '') record.vatRate = +p.vatRate; }
   // Edited by hand: its category is yours now (off the "To review" list).
   if (p.id) { const was = data.budgetTransactions.find(t => t.id === p.id); if (was && (was.reviewed || isToReview(was))) record.reviewed = true; }
   if (isTransfer) {
