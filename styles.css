@@ -1349,3 +1349,25 @@ html.compact .tab-row { margin-bottom: 12px; }
 .vat-line { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--light-text-dim); }
 .vat-line.total { color: var(--light-text); font-size: 14px; padding-top: 6px; border-top: 1px solid var(--light-border); }
 .vat-q .btn { align-self: flex-start; }
+
+/* ---- Future (future.js) ---- */
+.fu-chart { width: 100%; height: auto; margin-top: 12px; }
+.fu-band { fill: var(--accent-soft); }
+.fu-line { fill: none; stroke: var(--accent-1); stroke-width: 2.5; stroke-linejoin: round; }
+.fu-fi { stroke: var(--positive); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.fu-ticks { position: relative; height: 18px; font-size: 11.5px; color: var(--light-text-dim); }
+.fu-ticks span { position: absolute; top: 2px; transform: translateX(-50%); }
+.fu-ticks span.first { transform: none; }
+.fu-ticks span.last { transform: translateX(-100%); }
+.fu-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--light-text-dim); margin-top: 6px; }
+.fu-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.fu-k { display: inline-block; width: 16px; height: 8px; border-radius: 3px; }
+.fu-k.line { height: 3px; background: var(--accent-1); }
+.fu-k.band { background: var(--accent-soft); }
+.fu-k.fi { height: 0; border-top: 2px dashed var(--positive); }
+.fu-slider { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.fu-sl-top { display: flex; justify-content: space-between; gap: 8px; }
+.fu-slider input[type=range] { width: 100%; accent-color: var(--accent-1); padding: 0; box-shadow: none; }
+.fu-slider .link-btn { align-self: flex-start; font-size: 12px; padding: 0; }
+.fu-mark { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; padding: 6px 0; border-bottom: 1px solid var(--light-border); }
+.fu-mark.fi b { color: var(--positive); }

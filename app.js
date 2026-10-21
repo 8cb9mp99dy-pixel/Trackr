@@ -442,6 +442,8 @@ function defaultData() {
     assets: [],
     assetEntries: [],
     investmentTransactions: [],
+    // Goals → Future (future.js): your own assumptions; null = worked out from your data.
+    future: { monthly: null, investShare: null, investReturn: null, cashReturn: null, inflation: 2, real: true, years: 20 },
     // Freelance (freelance.js): invoices you send, and VAT per quarter.
     invoices: [],
     vat: { rate: 21, pocket: '', freelanceIncludesVat: true, paid: {} },
