@@ -1371,3 +1371,16 @@ html.compact .tab-row { margin-bottom: 12px; }
 .fu-slider .link-btn { align-self: flex-start; font-size: 12px; padding: 0; }
 .fu-mark { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; padding: 6px 0; border-bottom: 1px solid var(--light-border); }
 .fu-mark.fi b { color: var(--positive); }
+
+/* ---- Why net worth moved (nwmoves.js) ---- */
+.nw-moves { margin-top: 20px; }
+.nw-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 12px 0; }
+.nw-head b { font-size: 22px; }
+.nw-head span { font-size: 13.5px; color: var(--light-text-dim); }
+.nw-part { display: flex; flex-direction: column; gap: 4px; }
+.nw-top { display: flex; justify-content: space-between; font-size: 13.5px; }
+.nw-track { position: relative; height: 8px; border-radius: 4px; background: var(--dark-card-2); }
+.nw-track::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--light-border); }
+.nw-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.nw-bar.up { left: 50%; background: var(--positive); }
+.nw-bar.down { right: 50%; background: var(--negative); }

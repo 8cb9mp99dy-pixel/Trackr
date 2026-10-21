@@ -49,6 +49,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `ai-export.js` | Settings → Backup & Restore → "Export for AI": one readable workbook (Read me, Summary, Monthly, Transactions, holdings…) |
 | `allocation.js` | Budget → Income plan: split a salary / freelance income (VAT first, then % to invest, day-to-day…) into transfers |
 | `future.js` | Goals → Future: net worth projected 5–40 years (band cautious/good, today's euros, milestones, financial-freedom number, what-if sliders) |
+| `nwmoves.js` | Wealth → "Why your net worth moved": a month split into saved / markets / other (from daily history + transactions) |
 | `freelance.js` | Freelance page: invoices (paid → income + split offer), VAT per quarter (Dutch deadlines), VAT pocket short/extra, business expenses |
 | `planner.js` | Wealth → Compare: "where should new money go" (to the types below target, no selling) |
 | `wallet.js` | Accounts → cash wallet (an account with `kind: 'cash'`): add cash, spent, withdraw, count; "Paid with: Cash" picks it |
@@ -57,7 +58,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `ticker.js`, `report.js`, `motion.js`, `backup-excel.js`, `safety.js`, `sw.js` | live price bar, PDF/share, animations, Excel backup, undo/restore points/offline, service worker |
 | `nav.js` (branch `overnight/navigation`) | New navigation (beta) |
 
-Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js` and `future.js` is exported with `module.exports` and unit-tested in Node.
+Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js` and `nwmoves.js` is exported with `module.exports` and unit-tested in Node.
 
 ## How to test
 

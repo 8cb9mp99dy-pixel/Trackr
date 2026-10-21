@@ -84,6 +84,7 @@ if (typeof module !== 'undefined' && module.exports) {
         ${R.places.map(n => `<div class="yr-row"><span>${escHtml(n.name)}</span><b>${n.count}×</b><span class="yr-s">${fmtMoney(n.total)} in total</span></div>`).join('')}</div>`);
       if (R.invested || nw) cards.push(`<div class="yr-card"><div class="yr-k">Growing</div>
         ${R.invested ? `<div class="yr-row"><span>Sent to your investments</span><b>${fmtMoney(R.invested)}</b></div>` : ''}
+        ${(() => { const mv = typeof nwMovesFor === 'function' ? nwMovesFor(`${p.year}-01-01`, `${p.year}-12-31`) : null; return mv ? `<div class="yr-s">Of that: you saved ${mv.saved >= 0 ? '+' : '−'}${fmtMoney(Math.abs(mv.saved))}, markets ${mv.markets >= 0 ? '+' : '−'}${fmtMoney(Math.abs(mv.markets))}, other ${mv.other >= 0 ? '+' : '−'}${fmtMoney(Math.abs(mv.other))}.</div>` : ''; })()}
         ${nw ? `<div class="yr-row"><span>Net worth</span><b class="${nw.to.netWorth >= nw.from.netWorth ? 'positive' : 'negative'}">${nw.to.netWorth >= nw.from.netWorth ? '+' : '−'}${fmtMoney(Math.abs(nw.to.netWorth - nw.from.netWorth))}</b><span class="yr-s">${fmtMoney(nw.from.netWorth)} on ${escHtml(shortDay(nw.from.date))} → ${fmtMoney(nw.to.netWorth)} on ${escHtml(shortDay(nw.to.date))}</span></div>` : ''}
         <div class="yr-s">The bank loan isn't counted: it isn't your money.</div></div>`);
     }

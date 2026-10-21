@@ -163,6 +163,7 @@ function renderWealth() {
       </div>
       ${wealthAllocationCardHtml(tab === 'liabilities' ? liabilities : assets, tab)}
     </div>
+    ${typeof nwMovesCardHtml === 'function' ? nwMovesCardHtml() : ''}
 
     <div class="card" style="margin-top:20px;">
       <div class="tab-row" style="margin-bottom:14px;width:auto;">
