@@ -88,6 +88,8 @@ function actionItems() {
   }
   // Freelance: invoices past due, a VAT return due soon.
   if (typeof freelanceAttention === 'function') freelanceAttention().forEach(x => attention.push(x));
+  // Watchlist: a price at one of your levels.
+  if (typeof watchAttention === 'function') watchAttention().forEach(x => attention.push(x));
   // Categories Trackr only guessed (Budget → To review), one line.
   if (typeof toReviewList === 'function') {
     const n = toReviewList().length;

@@ -145,6 +145,7 @@ function notifyEntryHtml(e) {
   else if (e.kind === 'goal') { icon = 'target'; title = 'Goal reached'; text = `${escHtml(e.name)} — ${fmtMoney(e.amount)}.`; go = (data.goals || []).some(g => g.id === e.goalId) ? `closeModal();openGoalView('${escHtml(e.goalId)}')` : ''; }
   else if (e.kind === 'week') { icon = 'calendar'; title = `Your week · ${escHtml(e.label)}`; text = `${fmtMoney(e.out)} out · ${fmtMoney(e.in)} in · ${e.count} transaction${e.count === 1 ? '' : 's'}.`; go = `openWeekSummary('${escHtml(e.start)}')`; }
   else if (e.kind === 'budget') { icon = 'target'; title = `Budget · ${escHtml(e.category)}`; text = e.over ? `${fmtMoney(e.spent)} of ${fmtMoney(e.limit)} — over budget.` : `${Math.round(e.pct)}% of ${fmtMoney(e.limit)} used.`; go = "closeModal();goPage('budget')"; }
+  else if (e.kind === 'watch') { icon = 'trend'; title = escHtml(e.title || 'Price alert'); text = escHtml(e.text || ''); go = "closeModal();goPage('watchlist')"; }
   else { title = escHtml(e.title || 'Notice'); text = escHtml(e.text || ''); }
   return `<div class="ar-row ${e.read ? '' : 'unread'}">
       <div class="ar-icon"><span class="add-ic" style="width:30px;height:30px;">${ic(icon, 16)}</span></div>
@@ -292,6 +293,7 @@ function settingsNotificationsHtml() {
     { key: 'negativeBalanceWarning', title: 'Negative balance warning', desc: 'When more has gone out than came in this month — once a month.' },
     { key: 'weeklySummary', title: 'Weekly summary', desc: 'From Monday, a card on the Overview with last week: in, out, top categories, net worth, what\'s due.' },
     { key: 'goalAchieved', title: 'Goal achieved', desc: 'The first time a goal reaches its target.' },
+    { key: 'priceAlerts', title: 'Price alerts', desc: 'When a price on your watchlist reaches one of your levels (Investments → Watchlist).' },
   ];
   let sys;
   if (!systemNotifySupported()) sys = `<div style="font-size:12px;opacity:.6;">This browser can't show system notifications. On iPhone, add Trackr to the Home Screen first (Share → Add to Home Screen) and open it from there.</div>`;

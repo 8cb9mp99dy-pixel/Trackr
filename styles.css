@@ -1384,3 +1384,26 @@ html.compact .tab-row { margin-bottom: 12px; }
 .nw-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
 .nw-bar.up { left: 50%; background: var(--positive); }
 .nw-bar.down { right: 50%; background: var(--negative); }
+
+/* ---- Watchlist (watchlist.js) ---- */
+.wl-list { padding: 4px 16px; }
+.wl-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--light-border); }
+.wl-row:last-child { border-bottom: none; }
+.wl-main { flex: 1; min-width: 0; }
+.wl-name { font-weight: 700; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wl-main .dim { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wl-lvls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.wl-lvl { font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--light-border); color: var(--light-text-dim); }
+.wl-lvl.hit { border-color: var(--accent-1); color: var(--accent-1); background: var(--accent-soft); }
+.wl-num { text-align: right; font-size: 13px; white-space: nowrap; }
+.wl-num b { font-size: 15px; }
+.wl-num .dim { font-size: 11.5px; }
+.wl-btns { display: flex; gap: 4px; }
+.wl-picked { display: flex; align-items: center; gap: 8px; font-size: 14px; flex-wrap: wrap; }
+.wl-results { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow: auto; }
+.wl-res { display: flex; align-items: center; gap: 10px; padding: 8px; border: none; background: none; border-radius: 8px; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.wl-res:hover, .wl-res:focus-visible { background: var(--dark-card-2); }
+.wl-main { cursor: pointer; }
+@media (max-width: 640px) {
+  .wl-btns { display: none; }
+}

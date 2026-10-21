@@ -406,6 +406,7 @@ function defaultData() {
         negativeBalanceWarning: true,
         weeklySummary: false,
         goalAchieved: true,
+        priceAlerts: true,
       },
     },
     categories: {
@@ -446,6 +447,7 @@ function defaultData() {
     future: { monthly: null, investShare: null, investReturn: null, cashReturn: null, inflation: 2, real: true, years: 20 },
     // Freelance (freelance.js): invoices you send, and VAT per quarter.
     invoices: [],
+    watchlist: [],
     vat: { rate: 21, pocket: '', freelanceIncludesVat: true, paid: {} },
     // Each crypto asset is tracked in one of two modes:
     //  - 'snapshot': a per-broker holding snapshot — broker, quantity, avg price, currency, no
@@ -2294,6 +2296,7 @@ function renderApp(app) {
     goals: () => (typeof renderGoals === 'function' ? renderGoals() : ''),
     analysis: () => (typeof renderAnalysis === 'function' ? renderAnalysis() : ''),
     freelance: () => (typeof renderFreelance === 'function' ? renderFreelance() : ''),
+    watchlist: () => (typeof renderWatchlist === 'function' ? renderWatchlist() : ''),
     investAccount: () => (typeof renderInvestAccount === 'function' ? renderInvestAccount() : renderInvestments()),
     'manual-prices': renderManualPrices,
     'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
@@ -4702,7 +4705,10 @@ function renderInvestments() {
   <div class="page surface-dark">
     <div class="page-head">
       <div><h1 class="page-title">Portfolio</h1><div class="page-subtitle">Investment overview</div></div>
-      <button class="btn" onclick="refreshPrices()" title="Fetch the latest live price for every Stock/ETF/other asset (by ISIN) and every crypto holding">${ui.assetPriceFetching || ui.cryptoPriceFetching ? '…' : '↻'} Refresh</button>
+      <div class="row-flex" style="gap:8px;">
+        <button class="btn" onclick="goPage('watchlist')" title="Prices you follow without owning them, with alerts">${ic('eye', 15)} Watchlist</button>
+        <button class="btn" onclick="refreshPrices()" title="Fetch the latest live price for every Stock/ETF/other asset (by ISIN) and every crypto holding">${ui.assetPriceFetching || ui.cryptoPriceFetching ? '…' : '↻'} Refresh</button>
+      </div>
     </div>
 
     <div class="card-dark stack-gap-8" style="margin-bottom:20px;">
