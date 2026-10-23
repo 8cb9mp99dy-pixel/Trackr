@@ -20,7 +20,9 @@ function goalSources() {
     { id: 'pf', group: 'Everything', label: 'All my investments' },
   ];
   (data.accounts || []).forEach(a => {
-    list.push({ id: 'acc:' + a.id, group: 'Bank accounts', label: a.name });
+    list.push({ id: 'acc:' + a.id, group: 'Bank accounts', label: (a.pockets || []).length ? `${a.name} (with its pockets)` : a.name });
+    // The main balance alone (outside the pockets), so a pocket is never counted twice.
+    if ((a.pockets || []).length) list.push({ id: 'main:' + a.id, group: 'Main balances', label: `${a.name} — main balance` });
     (a.pockets || []).forEach(p => list.push({ id: 'pk:' + a.id + ':' + p.id, group: 'Pockets', label: `${p.name} (${a.name})` }));
   });
   (data.brokers || []).forEach(b => list.push({ id: 'brk:' + b.id, group: 'Brokers', label: b.name }));
@@ -37,6 +39,7 @@ function sourceValue(id) {
   if (kind === 'pf') return portfolioValue();
   if (kind === 'crypto') return (data.cryptoAssets || []).reduce((s, c) => s + cryptoAssetStats(c.symbol).marketValueEUR, 0);
   if (kind === 'acc') { const a = accountById(x); return a ? toEUR(accountTotal(a), a.currency) : 0; }
+  if (kind === 'main') { const a = accountById(x); return a ? toEUR(+a.balance || 0, a.currency) : 0; }
   if (kind === 'pk') { const a = accountById(x), p = a && (a.pockets || []).find(q => q.id === y); return p ? toEUR(+p.amountSaved || 0, a.currency) : 0; }
   if (kind === 'brk') { const b = brokerById(x); return b ? brokerValue(b.id) : 0; }
   if (kind === 'a') { const a = assetById(x); return a ? toEUR(assetStats(a.id).value, a.priceCurrency) : 0; }
@@ -53,6 +56,7 @@ function sourceValueOn(id, h) {
   if (kind === 'crypto') return sum(k => k.startsWith('c:'));
   if (kind === 'acc') return sum(k => k === 'acc:' + x || k.startsWith('pk:' + x + ':'));
   if (kind === 'pk') return h.pos[id] || 0;
+  if (kind === 'main') return h.pos['acc:' + x] || 0;
   if (kind === 'brk') { const ids = (data.assetEntries || []).filter(e => e.broker === x).map(e => 'e:' + e.id); return sum(k => ids.includes(k) || k === 'bc:' + x); }
   if (kind === 'a') { const ids = entriesFor(x).map(e => 'e:' + e.id); return sum(k => ids.includes(k)); }
   if (kind === 'c') return sum(k => k.startsWith('c:' + x + '@'));
@@ -439,15 +443,29 @@ function deleteGoal(id) {
 function defaultEmergencyLinks() {
   const ids = [];
   (data.accounts || []).forEach(a => {
-    if (isSavingsName(a.name)) ids.push('acc:' + a.id);
+    if (isSavingsName(a.name)) ids.push('main:' + a.id, ...(a.pockets || []).map(p => 'pk:' + a.id + ':' + p.id));
     else (a.pockets || []).filter(p => isSavingsName(p.name)).forEach(p => ids.push('pk:' + a.id + ':' + p.id));
   });
-  return ids.length ? ids : (data.accounts || []).filter(a => a.visibleInTotals).map(a => 'acc:' + a.id);
+  return ids.length ? ids : (data.accounts || []).filter(a => a.visibleInTotals).map(a => 'main:' + a.id);
+}
+/* The emergency cushion's money: main balances and pockets, each ticked on its own. A whole
+   account ticked before (acc:, main balance + pockets) reads as its main balance and each of
+   its pockets — same total, and each pocket can then be unticked. */
+function emergencyLinks() {
+  const ef = data.emergencyFund || {};
+  const out = [];
+  (ef.links || defaultEmergencyLinks()).forEach(id => {
+    const [kind, x] = id.split(':');
+    const a = kind === 'acc' && accountById(x);
+    if (a) out.push('main:' + a.id, ...(a.pockets || []).map(p => 'pk:' + a.id + ':' + p.id));
+    else out.push(id);
+  });
+  return Array.from(new Set(out));
 }
 function emergencyState() {
   const ef = data.emergencyFund || {};
   const spend = avgMonthlyExpenses(3, ef.excludeCats);
-  const links = ef.links || defaultEmergencyLinks();
+  const links = emergencyLinks();
   const current = linksValue(links), months = +ef.months || 6;
   const target = spend.avg * months;
   const covered = spend.avg ? current / spend.avg : null;
@@ -467,7 +485,12 @@ function emergencyTabHtml() {
   const s = emergencyState();
   const pct = s.target ? Math.min(100, s.current / s.target * 100) : 0;
   const [label, tone] = s.status === 'done' ? ['Enough', 'up'] : s.status === 'none' ? ['No spending logged', ''] : ['Not enough yet', 'down'];
-  const accounts = goalSources().filter(x => x.group === 'Bank accounts' || x.group === 'Pockets');
+  // Bank accounts and pockets apart: each bank's main balance, then its pockets.
+  const box = (id, label, sub) => `<label class="ll-row ${sub ? 'sub' : ''}"><input type="checkbox" ${s.links.includes(id) ? 'checked' : ''} onchange="toggleEmergencyLink('${escHtml(id)}')"><span>${label}</span><span class="dim" style="margin-left:auto;">${fmtMoney(sourceValue(id))}</span></label>`;
+  const banks = (data.accounts || []).map(a => `<div class="ll-group"><div class="ll-head">${escHtml(a.name)}</div>
+      ${box('main:' + a.id, (a.pockets || []).length ? 'Main balance <span class="dim">(outside pockets)</span>' : 'Balance')}
+      ${(a.pockets || []).map(p => box('pk:' + a.id + ':' + p.id, `${escHtml(p.icon || '')} ${escHtml(p.name)} <span class="dim">· pocket</span>`, true)).join('')}
+    </div>`).join('');
   return `
     <div class="card goal-card" style="max-width:720px;">
       <div class="row-flex" style="align-items:flex-start;gap:8px;">
@@ -484,7 +507,8 @@ function emergencyTabHtml() {
         <label class="field"><span class="label-text">Months of spending to keep</span><input type="number" min="1" max="24" step="1" value="${s.months}" onchange="setEmergencyMonths(this.value)"></label>
       </div>
       <div style="font-weight:600;font-size:13px;margin:12px 0 6px;">Money that counts</div>
-      <div class="link-list">${accounts.map(x => `<label class="ll-row"><input type="checkbox" ${s.links.includes(x.id) ? 'checked' : ''} onchange="toggleEmergencyLink('${escHtml(x.id)}')"><span>${escHtml(x.label)}</span><span class="dim" style="margin-left:auto;">${fmtMoney(sourceValue(x.id))}</span></label>`).join('') || '<div class="dim">Add a bank account first.</div>'}</div>
+      <div class="dim" style="margin:-2px 0 6px;">Each bank's main balance and its pockets are ticked apart, so a pocket for a trip or a bike doesn't count as your cushion.</div>
+      <div class="link-list">${banks || '<div class="dim">Add a bank account first.</div>'}</div>
       <button class="btn small ghost" style="margin-top:12px;color:var(--negative);" onclick="disableEmergencyFund()">Remove the cushion</button>
     </div>`;
 }
@@ -513,7 +537,7 @@ function toggleEmergencyCategory(id) {
 }
 function toggleEmergencyLink(id) {
   const ef = data.emergencyFund;
-  const l = ef.links || defaultEmergencyLinks();
+  const l = emergencyLinks();
   ef.links = l.includes(id) ? l.filter(x => x !== id) : l.concat(id);
   save(); render();
 }

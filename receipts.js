@@ -108,7 +108,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const t = receiptOwner(id);
     const r = t ? t.receipts.find(x => x.id === id) : ((ui.modal && ui.modal.payload && ui.modal.payload.receipts) || []).find(x => x.id === id);
     // From inside the transaction form: open in a new tab so the form (and what's typed) stays.
-    if (ui.modal && ui.modal.type === 'transaction') { receiptOpenTab(id); return; }
+    if (ui.modal && ui.modal.type === 'tx') { receiptOpenTab(id); return; }
     ui.modal = { type: 'receipt', payload: { id, name: (r && r.name) || 'Receipt', mime: (r && r.mime) || '', txId: t ? t.id : '' } };
     render();
   };

@@ -5,7 +5,7 @@
    in the background, store it for next time, and tell the open app when something changed so
    it can offer to reload. Only this site's own files are handled; Supabase, prices and fonts
    always go straight to the network. */
-const CACHE = 'trackr-app-v52';
+const CACHE = 'trackr-app-v53';
 const SHELL = [
   './', './index.html', './styles.css', './app.js', './excel-import.js', './rules.js', './budget-import.js', './trade-import.js', './notify.js', './loan.js', './wallet.js', './interest.js', './allocation.js', './freelance.js', './nav.js', './topbar.js', './overview.js', './wealth.js', './planner.js', './future.js', './nwmoves.js', './photos.js', './receipts.js', './goals.js', './cashflow.js', './forecast.js', './analysis.js', './returns.js', './xray.js', './box3.js', './invest.js', './staking.js', './report.js', './motion.js', './backup-excel.js', './ticker.js', './watchlist.js', './emergency.js', './palette.js', './insights.js', './yearreview.js', './quickadd.js', './ai-export.js', './safety.js',
   './assets/logos/logos.js', './assets/vendor/xlsx.full.min.js', './assets/vendor/jspdf.umd.min.js', './assets/vendor/html2canvas.min.js', './manifest.webmanifest',

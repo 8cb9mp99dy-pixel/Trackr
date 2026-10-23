@@ -393,6 +393,7 @@ function defaultData() {
       compactMode: false,
       budgetLimitsBeta: false, // Settings → Display → "Category budgets (beta)"
       newNav: false, // the beta's switch, no longer read (nav.js)
+      mainAccountId: null, // the account new incomes / expenses use by default (Accounts → an account → Main account)
       classicNav: false, // Settings → Display → "Classic navigation": every page in the side bar (nav.js)
       applyTradesToHoldings: false, // Investments → an account → Buy: "Also update my holdings and cash"
       privacyMode: false,
@@ -1692,7 +1693,8 @@ function monthLabel(d) { return d.toLocaleDateString('en-US', { month: 'long', y
 // "available" no longer means "balance minus what's earmarked" the way a stock broker's cash
 // does — here it's simply the account's full worth.
 function bankTotal() { return data.accounts.filter(a => a.visibleInTotals).reduce((s, a) => s + toEUR(a.balance + pocketsTotalFor(a), a.currency), 0); }
-function bankAvailable() { return bankTotal(); }
+// What's in the main balances, outside the pockets (visible accounts).
+function bankAvailable() { return data.accounts.filter(a => a.visibleInTotals).reduce((s, a) => s + toEUR(+a.balance || 0, a.currency), 0); }
 function pocketsTotalFor(acc) { return (acc.pockets || []).reduce((s, p) => s + p.amountSaved, 0); }
 function pocketsTotal() { return data.accounts.reduce((s, a) => s + toEUR(pocketsTotalFor(a), a.currency), 0); }
 function accountTotal(acc) { return acc.balance + pocketsTotalFor(acc); }
@@ -2622,7 +2624,7 @@ function renderAccounts() {
         
       </div>
       <div class="grid-2">
-        <div class="card-nested"><div class="eyebrow">Available</div><div style="font-size:18px;font-weight:700;" class="${avail >= 0 ? 'positive' : 'negative'}">${fmtMoney(avail)}</div></div>
+        <div class="card-nested"><div class="eyebrow">Main balances <span style="opacity:.6;font-weight:500;">(outside pockets)</span></div><div style="font-size:18px;font-weight:700;" class="${avail >= 0 ? 'positive' : 'negative'}">${fmtMoney(avail)}</div></div>
         <div class="card-nested"><div class="eyebrow">In pockets</div><div style="font-size:18px;font-weight:700;color:var(--accent-1);">${fmtMoney(pockets)}</div></div>
       </div>
       <div class="chip-scroll" tabindex="0" role="group" aria-label="Filters">${chips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>
@@ -2655,30 +2657,31 @@ function accountCardHtml(acc) {
         <button class="icon-btn-round" style="width:32px;height:32px;background:none;border:none;" onclick="deleteAccount('${acc.id}')" aria-label="Delete">${ic('trash')}</button>
       </div>
     </div>
-    <div class="row-flex" style="margin-top:14px;">
-      <div><div class="eyebrow">Total</div><div style="font-weight:700;font-size:17px;">${fmtMoney(accountTotal(acc), acc.currency)}</div></div>
-      ${pocketsTot > 0 ? `<div style="text-align:right;"><div class="eyebrow">In pockets</div><div style="font-weight:700;font-size:17px;color:var(--accent-1);">${fmtMoney(pocketsTot, acc.currency)}</div></div>` : ''}
-    </div>
+    ${(acc.pockets || []).length ? `<div class="acc-split">
+      <div><div class="eyebrow">Main balance</div><div class="v">${fmtMoney(acc.balance, acc.currency)}</div></div>
+      <div><div class="eyebrow">In pockets</div><div class="v pk">${fmtMoney(pocketsTot, acc.currency)}</div></div>
+      <div><div class="eyebrow">Total</div><div class="v">${fmtMoney(accountTotal(acc), acc.currency)}</div></div>
+    </div>` : `<div style="margin-top:14px;"><div class="eyebrow">Balance</div><div style="font-weight:700;font-size:17px;">${fmtMoney(acc.balance, acc.currency)}</div></div>`}
     ${expanded ? accountExpandedHtml(acc) : ''}
   </div>`;
 }
 
 function accountExpandedHtml(acc) {
   const pocketsTot = pocketsTotalFor(acc);
-  const avail = accountTotal(acc);
+  const hasPk = (acc.pockets || []).length > 0;
+  const totalMode = hasPk && ui.balanceInputTotal === acc.id;
   return `
     <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--dark-border);">
-      <div class="grid-2" style="margin-bottom:14px;">
-        <div class="card-nested"><div class="eyebrow">Available</div><div style="font-weight:700;">${fmtMoney(avail, acc.currency)}</div></div>
-        <div class="card-nested"><div class="eyebrow">In pockets</div><div style="font-weight:700;">${fmtMoney(pocketsTot, acc.currency)}</div></div>
-      </div>
+      ${accountSinceCheckHtml(acc)}
       <div style="margin-bottom:16px;">
-        <label class="field"><span class="label-text">Update balance…</span>
+        <label class="field"><span class="label-text">${hasPk ? (totalMode ? 'Correct the total (main balance + pockets), as your bank shows it' : 'Correct the main balance (outside pockets), as your bank shows it') : 'Correct the balance, as your bank shows it'}</span>
           <div style="display:flex;gap:8px;">
-            <input type="number" step="0.01" id="quickbal-${acc.id}" placeholder="${acc.balance}">
-            <button class="btn primary" onclick="quickUpdateBalance('${acc.id}')">Set</button>
+            <input type="number" step="0.01" id="quickbal-${acc.id}" placeholder="${totalMode ? accountTotal(acc) : acc.balance}" inputmode="decimal">
+            <button class="btn primary" onclick="quickUpdateBalance('${acc.id}', ${totalMode})">Set</button>
           </div>
         </label>
+        ${hasPk ? `<button class="link-btn" style="font-size:12px;padding:4px 0;text-align:left;" onclick="ui.balanceInputTotal=${totalMode ? 'null' : `'${acc.id}'`};render()">${totalMode ? 'Type the main balance instead' : 'My bank shows the total with pockets — type that instead'}</button>` : ''}
+        <div class="row-flex" style="margin-top:6px;gap:10px;flex-wrap:nowrap;"><span style="font-size:12.5px;opacity:.75;flex:1;">Main account: new incomes and expenses go here unless you pick another</span><div class="toggle ${data.settings.mainAccountId === acc.id ? 'on' : ''}" role="switch" aria-label="Main account" onclick="setMainAccount('${acc.id}')" style="flex:none;"></div></div>
       </div>
       <div class="row-flex" style="margin-bottom:10px;">
         <div style="font-weight:700;font-size:13.5px;">Pockets · ${fmtMoney(pocketsTot, acc.currency)} allocated</div>
@@ -2713,14 +2716,63 @@ function pocketRowHtml(acc, p) {
   </div>`;
 }
 
+/* ---- Main balance, moved by Budget ----
+   Incomes and expenses linked to an account, and transfers to / from it or its pockets, move its
+   main balance by themselves (applyTxToAccountBalance). This shows what moved it since you last
+   checked it, and offers to link the transactions since then that have no account (they then
+   move it too). The main account (Settings: one at most) is picked by default in new transactions. */
+function accountMovesSince(acc) {
+  const since = acc.balanceCheckedAt ? dateToYmd(new Date(acc.balanceCheckedAt)) : null;
+  const out = { since, in: 0, out: 0, pockets: 0, other: 0, n: 0, unlinked: [] };
+  if (!since) return out;
+  const today = todayYmd(), acRef = 'acc:' + acc.id, pkRef = 'pk:' + acc.id + ':';
+  (data.budgetTransactions || []).forEach(t => {
+    if (!(t.date > since && t.date <= today)) return;
+    const v = convertCurrency(+t.amount || 0, t.currency, acc.currency);
+    if (t.type === 'transfer') {
+      const from = t.from === acRef, to = t.to === acRef;
+      if (!from && !to) return;
+      const other = from ? t.to : t.from;
+      const d = to ? v : -v;
+      if (String(other).startsWith(pkRef)) out.pockets += d; else out.other += d;
+      out.n++;
+    } else if (t.accountId === acc.id) { if (t.type === 'income') out.in += v; else out.out += v; out.n++; }
+    else if (!t.accountId && (t.type === 'income' || t.type === 'expense')) out.unlinked.push(t);
+  });
+  return out;
+}
+function accountSinceCheckHtml(acc) {
+  const m = accountMovesSince(acc);
+  if (!m.since) return '';
+  const c = v => fmtMoney(Math.abs(v), acc.currency), sg = v => (v >= 0 ? '+' : '−');
+  const rows = [['Came in', m.in], ['Went out', -m.out], ['To / from its pockets', m.pockets], ['Other transfers', m.other]].filter(r => Math.abs(r[1]) >= 0.005);
+  const net = m.in - m.out + m.pockets + m.other;
+  const ul = m.unlinked, ulNet = ul.reduce((s, t) => s + (t.type === 'income' ? 1 : -1) * convertCurrency(+t.amount || 0, t.currency, acc.currency), 0);
+  return `<div class="acc-since">
+    <div style="font-weight:600;margin-bottom:4px;">Since you checked it on ${escHtml(shortDay(m.since))}</div>
+    ${rows.length ? rows.map(([l, v]) => `<div class="row"><span>${l}</span><b class="${v >= 0 ? 'positive' : 'negative'}">${sg(v)}${c(v)}</b></div>`).join('') + `<div class="row" style="margin-top:2px;"><span>Moved by Budget</span><b>${sg(net)}${c(net)}</b></div>`
+      : '<div style="opacity:.7;">No transaction linked to it since — the main balance is what you typed.</div>'}
+    ${ul.length ? `<div class="acc-link"><span>${ul.length} income${ul.length === 1 ? '' : 's'} / expense${ul.length === 1 ? '' : 's'} since then ${ul.length === 1 ? 'has' : 'have'} no account (${sg(ulNet)}${c(ulNet)}), so ${ul.length === 1 ? 'it doesn\'t' : 'they don\'t'} move any balance.</span><button class="btn small" onclick="linkUnlinkedTo('${acc.id}')">Link to ${escHtml(acc.name)}</button></div>` : ''}
+  </div>`;
+}
+function linkUnlinkedTo(accId) {
+  const acc = accountById(accId); if (!acc) return;
+  const list = accountMovesSince(acc).unlinked;
+  if (!list.length || !confirm(`Link ${list.length} transaction${list.length === 1 ? '' : 's'} to ${acc.name}? Its main balance moves by them. You can undo for 10 seconds.`)) return;
+  list.forEach(t => { t.accountId = acc.id; applyTxToAccountBalance(t, 1); });
+  save(); render();
+}
+function setMainAccount(id) { data.settings.mainAccountId = data.settings.mainAccountId === id ? null : id; save(); render(); }
+
 function toggleAccountExpand(id) { ui.openAccountId = ui.openAccountId === id ? null : id; render(); }
 function toggleBrokerExpand(id) { ui.openBrokerId = ui.openBrokerId === id ? null : id; render(); }
-function quickUpdateBalance(id) {
+function quickUpdateBalance(id, total) {
   const el = document.getElementById('quickbal-' + id);
-  const v = parseFloat(el.value);
+  const v = parseFloat(String(el.value).replace(',', '.'));
   if (isNaN(v)) return;
   const acc = accountById(id);
-  acc.balance = v;
+  // Typed as the total the bank shows: the pockets are taken off to get the main balance.
+  acc.balance = round2(total ? v - pocketsTotalFor(acc) : v);
   acc.balanceCheckedAt = new Date().toISOString(); // typing the balance = you just checked it
   save(); render();
 }
@@ -4399,7 +4451,8 @@ function removePaymentMethod(id) { data.paymentMethods = data.paymentMethods.fil
    (name-suggestions, logo, location, description) that doesn't fit well crammed N-at-a-time.
    The same modal/payload serves both "Add" (no id) and "Edit" (existing id) — item 1. ---- */
 function blankTxDraft() {
-  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: '', currency: data.settings.defaultCurrency, amount: '', date: todayYmd(), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
+  const main = data.settings.mainAccountId && accountById(data.settings.mainAccountId);
+  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: main ? main.id : '', currency: data.settings.defaultCurrency, amount: '', date: todayYmd(), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
 }
 function openTxForm(id, prefill) {
   const existing = id ? data.budgetTransactions.find(t => t.id === id) : null;

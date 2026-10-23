@@ -128,7 +128,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!it.logo && q.logo) { it.logo = q.logo; changed = true; }
       const step = watchAlertStep(it, q.price);
       if (JSON.stringify(step.fired) !== JSON.stringify(Object.assign({ below: false, above: false }, it.fired))) { it.fired = step.fired; changed = true; }
-      if (step.fire && notifyOn('priceAlerts')) {
+      if (step.fire && typeof notifyOn === 'function' && notifyOn('priceAlerts')) {
         const lvl = step.fire === 'below' ? +it.below : +it.above;
         const name = it.name || it.ticker || it.isin || 'Watchlist';
         const txt = `${name} is ${step.fire === 'below' ? 'down to' : 'up to'} ${priceTxt(q.price, q.ccy)} — your level was ${step.fire === 'below' ? 'below' : 'above'} ${priceTxt(lvl, q.ccy)}.`;
@@ -202,7 +202,7 @@ if (typeof module !== 'undefined' && module.exports) {
             <div class="dim">${hits.length ? `<span class="negative">${hits.length} at your level</span> · ` : ''}${latest ? `Prices ${escHtml(timeAgo(new Date(latest).toISOString()))}` : ui.watchStatus === 'error' ? 'Prices unavailable right now' : 'Getting prices…'}</div>
           </div>
           <div class="card wl-list">${list.map(watchRowHtml).join('')}</div>
-          <div class="dim" style="margin-top:10px;">Public market prices (TradingView, CoinGecko), in the listing's currency. Trackr checks while it's open: on start, every 15 minutes and here. ${notifyOn('priceAlerts') ? '' : 'Price alerts are off in Settings → Notifications.'}</div>`}
+          <div class="dim" style="margin-top:10px;">Public market prices (TradingView, CoinGecko), in the listing's currency. Trackr checks while it's open: on start, every 15 minutes and here. ${typeof notifyOn !== 'function' || notifyOn('priceAlerts') ? '' : 'Price alerts are off in Settings → Notifications.'}</div>`}
     </div>`;
   };
 

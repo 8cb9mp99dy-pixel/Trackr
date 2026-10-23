@@ -1448,3 +1448,18 @@ html.compact .tab-row { margin-bottom: 12px; }
 .pi-track { height: 8px; border-radius: 4px; background: var(--dark-card-2); overflow: hidden; }
 .pi-track i { display: block; height: 100%; background: var(--positive); border-radius: 4px; }
 @media (max-width: 640px) { .pi-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---- Emergency savings: banks and their pockets apart (goals.js) ---- */
+.ll-group + .ll-group { border-top: 1px solid var(--light-border); margin-top: 4px; padding-top: 4px; }
+.ll-head { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--light-text-dim); padding: 8px 10px 2px; }
+.ll-row.sub { padding-left: 30px; }
+
+/* ---- Account card: main balance vs pockets (app.js) ---- */
+.acc-split { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.acc-split .v { font-weight: 700; font-size: 17px; }
+.acc-split .pk { color: var(--accent-1); }
+.acc-split > div:last-child { text-align: right; }
+.acc-since { font-size: 12.5px; line-height: 1.55; background: var(--dark-card-2); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+.acc-since .row { display: flex; justify-content: space-between; gap: 10px; }
+.acc-link { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--dark-border); }
+@media (max-width: 640px) { .acc-split .v { font-size: 15px; } }
