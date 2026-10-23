@@ -53,6 +53,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `freelance.js` | Freelance page: invoices (paid → income + split offer), VAT per quarter (Dutch deadlines), VAT pocket short/extra, business expenses |
 | `receipts.js` | Receipts (photo/PDF, stored like goal photos) and warranties on expenses; Budget → Receipts (searchable); reminder a month before a warranty ends |
 | `interest.js` | Interest on pockets: central bank rate (ECB / Fed fetched, others typed) or own rate, optional cap; per day/week/month/year, growth, "Record interest received" (pocket + income) |
+| `appearance.js` | Light / Dark / Auto (this device only, set before the first frame in index.html); dark = black with drifting red and green glows, glass cards, glowing green/red figures (CSS `html[data-mode="dark"]`) |
 | `goals-visual.js` | Goals: floating bubbles filled with liquid up to each goal's progress; the goal calendar (months as a road, pins, pace ghosts, "Next up" countdown) |
 | `overview-hero.js` | Overview top: net worth with its change and a self-drawing chart (1M/3M/1Y/All, point to read a day), what it's made of (main balances · pockets · invested), this month (in/out bars, % kept ring, 6-month columns) |
 | `portfolio-chart.js` | Investments: ring of positions (logos + shares around it) or of investment types, list beside it, hover/tap to light a slice, sort, sweep-in animation |
