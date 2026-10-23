@@ -66,3 +66,15 @@ test('a crypto is picked from a search; levels are checked when saved', async ({
   expect(await page.evaluate(() => data.watchlist[0].kind)).toBe('crypto');
   expect(errors).toEqual([]);
 });
+
+test('the watchlist is still there after a reload (an old clean-up used to erase it)', async ({ page }) => {
+  const errors = await openApp(page);
+  await page.evaluate(() => {
+    data.watchlist = [{ id: 'wl_keep', kind: 'crypto', cgId: 'test-coin', name: 'Kept Coin', below: 1, above: null, addedAt: '2026-10-01', addedPrice: 2, ccy: 'EUR', fired: {} }, { symbol: 'OLD', name: 'Old demo entry' }];
+    save();
+  });
+  await page.reload();
+  await page.waitForFunction(() => typeof data !== 'undefined' && document.querySelector('.main .page'));
+  expect(await page.evaluate(() => data.watchlist.map(w => w.id || w.symbol))).toEqual(['wl_keep']);
+  expect(errors).toEqual([]);
+});

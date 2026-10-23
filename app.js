@@ -948,9 +948,10 @@ function migrateCryptoModel() {
   // gap (a field a save predates, read before anything had backfilled it), so this replaces
   // fixing it field-by-field with fixing the category of bug once.
   data = deepDefaults(data, defaultData());
-  // Replace fabricated demo history/watchlist from earlier versions with real tracking.
+  // Replace fabricated demo history/watchlist from earlier versions with real tracking. Only the
+  // old watchlist's entries go (they have no `kind`); the Watchlist page's own (watchlist.js) stay.
   delete data.netWorthHistory;
-  delete data.watchlist;
+  if (Array.isArray(data.watchlist)) data.watchlist = data.watchlist.filter(w => w && (w.kind === 'isin' || w.kind === 'crypto'));
   if (!data.cryptoLots) {
     data.cryptoAssets = [];
     data.cryptoLots = [];
