@@ -85,7 +85,7 @@ function renderInvestAccount() {
     <button class="link-btn" style="margin-bottom:12px;" onclick="goPage('investments')">${ic('chevronLeft', 15)} Investments</button>
     <div class="page-head" style="align-items:center;">
       <div style="display:flex;gap:12px;align-items:center;">${logoImg(acc.logo, 40)}<div><h1 class="page-title">${escHtml(acc.name)}</h1><div class="page-subtitle">${acc.kind === 'broker' ? 'Broker' : 'Crypto exchange'}</div></div></div>
-      <div style="display:flex;gap:8px;"><button class="btn" onclick="editInvestAccount()">${ic('edit', 15)} Edit</button><button class="btn primary" onclick="openDepositForm()">${ic('plus', 15)} Deposit</button></div>
+      <div style="display:flex;gap:8px;"><button class="btn" onclick="editInvestAccount()">${ic('edit', 15)} Edit</button><button class="btn danger" aria-label="Delete this ${acc.kind === 'broker' ? 'broker' : 'exchange'}" title="Delete this ${acc.kind === 'broker' ? 'broker' : 'exchange'}" onclick="deleteInvestAccount()">${ic('trash', 15)}</button><button class="btn primary" onclick="openDepositForm()">${ic('plus', 15)} Deposit</button></div>
     </div>
     <div class="card" style="margin-bottom:16px;">
       <div class="eyebrow">Balance</div>
@@ -115,6 +115,7 @@ function portfolioTabHtml(acc, holdings, cash) {
             <button class="fm-row" onclick="startTrade('sell','${h.key}')">Sell</button>
             ${h.crypto ? `<button class="fm-row" onclick="startTrade('convert','${h.key}')">Convert</button><button class="fm-row" onclick="openStakeForm('${escHtml(h.ref)}', null, '${escHtml(acc.name).replace(/'/g, "\\'")}')">Stake</button>` : ''}
             <button class="fm-row" onclick="ui.investMenu=null;${h.crypto ? `openCryptoAssetEditor('${escHtml(h.ref)}')` : `openPositionForm('${h.ref}')`}">Edit the holding</button>
+            <button class="fm-row danger" onclick="removeHoldingHere('${escHtml(h.key)}')">Remove from ${escHtml(acc.name)}</button>
           </div>` : ''}</div>
       </div>`).join('')}
     </div>` : `<div class="empty-state"><div class="title">No holdings here yet</div><div class="sub">Record a deposit, or add a position from the + Add menu.</div></div>`}
@@ -456,6 +457,46 @@ document.addEventListener('click', e => {
   ui.investMenu = null; render();
 });
 
+/* ---- Delete a broker / an exchange, or one holding at it ----
+   Both ask first and can be undone for 10 seconds (safety.js). What's removed: the holdings at
+   that place (a broker's positions, the coins at that name with their purchases and stakes), its
+   cash and its plans. Transfers in Budget and recorded trades stay, as history. */
+const atName = (n, name) => txNameKey(n || 'Unknown') === txNameKey(name);
+function removeCoinsAt(name, symbol) {
+  (data.cryptoAssets || []).forEach(c => {
+    if (symbol && c.symbol !== symbol) return;
+    if (c.snapshots) c.snapshots = c.snapshots.filter(r => !atName(r.broker, name));
+    if (Array.isArray(c.stakes)) c.stakes = c.stakes.filter(s => !atName(s.exchange, name));
+  });
+  data.cryptoLots = (data.cryptoLots || []).filter(l => !((!symbol || l.symbol === symbol) && atName(l.broker, name)));
+}
+function removeHoldingHere(key) {
+  ui.investMenu = null;
+  const acc = investAccountByKey(ui.investAccount);
+  const h = acc && investHoldings(acc).find(x => x.key === key);
+  if (!h) { render(); return; }
+  if (!confirm(`Remove ${h.name} (${fmtQty(h.quantity)} ${h.ticker}) from ${acc.name}? You can undo for 10 seconds. Recorded trades and transfers stay.`)) { render(); return; }
+  if (h.crypto) removeCoinsAt(acc.name, h.ref);
+  else data.assetEntries = data.assetEntries.filter(e => !(e.assetId === h.ref && e.broker === acc.id));
+  save(); render();
+}
+function deleteInvestAccount() {
+  const acc = investAccountByKey(ui.investAccount);
+  if (!acc) return;
+  const n = investHoldings(acc).length;
+  if (!confirm(`Delete ${acc.name}${n ? ` and the ${n} holding${n === 1 ? '' : 's'} there` : ''}? Its cash and plans go too. You can undo for 10 seconds. Transfers in Budget and recorded trades stay.`)) return;
+  if (acc.kind === 'broker') {
+    data.brokers = data.brokers.filter(b => b.id !== acc.id);
+    data.assetEntries = data.assetEntries.filter(e => e.broker !== acc.id);
+  }
+  removeCoinsAt(acc.name);
+  data.cryptoExchangeCash = (data.cryptoExchangeCash || []).filter(c => !atName(c.exchange, acc.name));
+  if (acc.kind !== 'broker' && data.exchangeLogos) delete data.exchangeLogos[acc.name.trim().toLowerCase()];
+  data.investPlans = (data.investPlans || []).filter(p => p.accountKey !== acc.kind + ':' + acc.id);
+  ui.investAccount = null; ui.modal = null; ui.page = 'investments';
+  save(); render();
+}
+
 /* ---- Edit a broker or an exchange ----
    A broker opens its usual form (name, logo, cash, interest). A crypto exchange has no record of
    its own — its name is written on each holding, purchase, cash line and stake — so renaming it
@@ -487,6 +528,7 @@ window.__modalRenderers.exchange = function (p) {
       <div id="ex-err" style="display:none;color:var(--negative);font-size:12.5px;"></div>
     </div>
     <div class="modal-actions">
+      <button class="btn ghost" style="margin-right:auto;color:var(--negative);" onclick="closeModal();deleteInvestAccount()">Delete</button>
       <button class="btn primary" onclick="saveExchangeForm()">Save</button>
       <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;

@@ -1904,7 +1904,7 @@ function cryptoHoldingsAtExchange(name) {
 function toggleCryptoExchangeExpand(name) { ui.openCryptoExchange = ui.openCryptoExchange === name ? null : name; render(); }
 function deleteCryptoExchange(name) {
   const holdings = cryptoHoldingsAtExchange(name);
-  if (!confirm(`Remove all crypto holdings at ${name} (${holdings.length} coin${holdings.length !== 1 ? 's' : ''})? This can't be undone.`)) return;
+  if (!confirm(`Remove all crypto holdings at ${name} (${holdings.length} coin${holdings.length !== 1 ? 's' : ''})? You can undo for 10 seconds.`)) return;
   const key = name.trim().toLowerCase();
   data.cryptoAssets.forEach(c => { if (c.snapshots) c.snapshots = c.snapshots.filter(r => (r.broker || '').trim().toLowerCase() !== key); });
   data.cryptoLots = data.cryptoLots.filter(l => (l.broker || '').trim().toLowerCase() !== key);
@@ -4997,13 +4997,13 @@ function deletePositionRow(entryId, assetId) {
     const entry = data.assetEntries.find(e => e.id === entryId);
     if (!entry) return;
     const asset = assetById(entry.assetId);
-    if (!confirm(`Remove this ${asset ? asset.ticker : ''} holding (${fmtQty(entry.quantity)} units at this broker)? This can't be undone.`)) return;
+    if (!confirm(`Remove this ${asset ? asset.ticker : ''} holding (${fmtQty(entry.quantity)} units at this broker)? You can undo for 10 seconds.`)) return;
     data.assetEntries = data.assetEntries.filter(e => e.id !== entryId);
     save(); render();
   } else if (assetId) {
     const asset = assetById(assetId);
     if (!asset) return;
-    if (!confirm(`Delete ${asset.ticker} and all its holdings across every broker? This can't be undone.`)) return;
+    if (!confirm(`Delete ${asset.ticker} and all its holdings across every broker? You can undo for 10 seconds.`)) return;
     data.assets = data.assets.filter(a => a.id !== assetId);
     data.assetEntries = data.assetEntries.filter(e => e.assetId !== assetId);
     save(); render();
@@ -5065,6 +5065,7 @@ window.__modalRenderers.position = function (payload) {
     </div>
 
     <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn ghost" style="margin-right:auto;color:var(--negative);" onclick="closeModal();deletePositionRow('','${a.id}')">Delete everywhere</button>
       <button class="btn primary" onclick="savePositionForm('${a.id}')">Save</button>
       <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
@@ -5192,6 +5193,7 @@ async function refreshFxNow() {
 function deleteBroker(id) {
   data.brokers = data.brokers.filter(b => b.id !== id);
   data.assetEntries = data.assetEntries.filter(e => e.broker !== id);
+  data.investPlans = (data.investPlans || []).filter(p => p.accountKey !== 'broker:' + id);
   save(); render();
 }
 
@@ -5355,6 +5357,7 @@ window.__modalRenderers.cryptoAssetEdit = function (payload) {
     `}
 
     <div class="modal-actions" style="margin-top:16px;">
+      <button class="btn ghost" style="margin-right:auto;color:var(--negative);" onclick="closeModal();deleteCryptoAsset('${sym}')">Delete everywhere</button>
       <button class="btn primary" onclick="saveCryptoAssetEditForm('${sym}')">Save</button>
       <button class="btn ghost" onclick="closeModal()">Cancel</button>
     </div>`;
@@ -5664,7 +5667,7 @@ function addCryptoLot(symbol) {
 }
 function deleteCryptoLot(id) { data.cryptoLots = data.cryptoLots.filter(l => l.id !== id); save(); render(); }
 function deleteCryptoAsset(symbol) {
-  if (!confirm(`Remove ${symbol} and all ${lotsFor(symbol).length} purchase(s)? This can't be undone.`)) return;
+  if (!confirm(`Remove ${symbol} and all ${lotsFor(symbol).length} purchase(s)? You can undo for 10 seconds.`)) return;
   data.cryptoAssets = data.cryptoAssets.filter(c => c.symbol !== symbol);
   data.cryptoLots = data.cryptoLots.filter(l => l.symbol !== symbol);
   save(); render();
