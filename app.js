@@ -2412,22 +2412,8 @@ function renderDashboard() {
   `).join('');
 
   const income = monthIncome(now), expenses = monthExpenses(now), balance = income - expenses;
-
-
-
-  return `
-  <div class="page surface-light">
-    <div class="page-head">
-      <div>
-        <h1 class="page-title">Overview</h1>
-        <div class="page-subtitle">${monthLabel(now)}</div>
-      </div>
-    </div>
-
-    ${typeof liveTickerHtml === 'function' ? liveTickerHtml() : ''}
-    ${recapBannerHtml()}
-    ${typeof weekSummaryBannerHtml === 'function' ? weekSummaryBannerHtml() : ''}
-    ${typeof insightsHtml === 'function' ? insightsHtml() : ''}
+  // Before overview-hero.js (or if it's missing): the plain cards.
+  const classicNetWorthCard = `
     <div class="card stack-gap-16" style="margin-bottom:20px;">
       <div>
         <div class="eyebrow">Total net worth</div>
@@ -2447,13 +2433,36 @@ function renderDashboard() {
         : `<div class="chip-scroll" tabindex="0" role="group" aria-label="Filters">${accountChips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>`}
     </div>
 
-    ${typeof loanDashboardHtml === 'function' ? loanDashboardHtml(netWorth) : ''}
-
+`;
+  const classicMonthCards = `
     <div class="grid-3" style="margin-bottom:20px;">
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Income</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(income)}</div></div></div></div>
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Expenses</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(expenses)}</div></div></div></div>
       <div class="card"><div class="row-flex"><div><div class="eyebrow">Balance</div><div style="font-size:20px;font-weight:700;color:var(--light-accent-2)">${fmtMoney(balance)}</div></div></div></div>
     </div>
+
+`;
+
+
+
+  return `
+  <div class="page surface-light">
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">Overview</h1>
+        <div class="page-subtitle">${monthLabel(now)}</div>
+      </div>
+    </div>
+
+    ${typeof liveTickerHtml === 'function' ? liveTickerHtml() : ''}
+    ${recapBannerHtml()}
+    ${typeof weekSummaryBannerHtml === 'function' ? weekSummaryBannerHtml() : ''}
+    ${typeof insightsHtml === 'function' ? insightsHtml() : ''}
+    ${typeof overviewHeroHtml === 'function' ? `${overviewHeroHtml()}${accountChips ? `<div class="chip-scroll ov-accounts" tabindex="0" role="group" aria-label="Your accounts">${accountChips}</div>` : ''}` : classicNetWorthCard}
+
+    ${typeof loanDashboardHtml === 'function' ? loanDashboardHtml(netWorth) : ''}
+
+    ${typeof overviewMonthHtml === 'function' ? overviewMonthHtml() : classicMonthCards}
 
     ${typeof overviewHistoryCardHtml === 'function' ? overviewHistoryCardHtml() : ''}
     ${typeof overviewPerformanceCardHtml === 'function' ? overviewPerformanceCardHtml() : ''}
