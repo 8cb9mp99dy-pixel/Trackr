@@ -53,6 +53,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `freelance.js` | Freelance page: invoices (paid → income + split offer), VAT per quarter (Dutch deadlines), VAT pocket short/extra, business expenses |
 | `receipts.js` | Receipts (photo/PDF, stored like goal photos) and warranties on expenses; Budget → Receipts (searchable); reminder a month before a warranty ends |
 | `interest.js` | Interest on pockets: central bank rate (ECB / Fed fetched, others typed) or own rate, optional cap; per day/week/month/year, growth, "Record interest received" (pocket + income) |
+| `goals-visual.js` | Goals: floating bubbles filled with liquid up to each goal's progress; the goal calendar (months as a road, pins, pace ghosts, "Next up" countdown) |
 | `overview-hero.js` | Overview top: net worth with its change and a self-drawing chart (1M/3M/1Y/All, point to read a day), what it's made of (main balances · pockets · invested), this month (in/out bars, % kept ring, 6-month columns) |
 | `portfolio-chart.js` | Investments: ring of positions (logos + shares around it) or of investment types, list beside it, hover/tap to light a slice, sort, sweep-in animation |
 | `watchlist.js` | Investments → Watchlist: prices you follow without owning them (ISIN via TradingView, coins via CoinGecko), alerts below/above your levels (bar, notification centre, Action required); never buys |
@@ -63,7 +64,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `ticker.js`, `report.js`, `motion.js`, `backup-excel.js`, `safety.js`, `sw.js` | live price bar, PDF/share, animations, Excel backup, undo/restore points/offline, service worker |
 | `nav.js` | Navigation: grouped by default (Home · Money: budget, receipts, freelance · Wealth: overview, cash, investments, watchlist, debts · Plan: goals, future, emergency, insights) with section tabs; Settings → Display → "Classic navigation" brings back every page in the side bar |
 
-Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js`, `receipts.js`, `interest.js`, `portfolio-chart.js` and `overview-hero.js` is exported with `module.exports` and unit-tested in Node.
+Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js`, `receipts.js`, `interest.js`, `portfolio-chart.js`, `overview-hero.js` and `goals-visual.js` is exported with `module.exports` and unit-tested in Node.
 
 ## How to test
 

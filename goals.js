@@ -149,7 +149,7 @@ function renderGoals() {
   return `
   <div class="page surface-light">
     <div class="page-head"><div><h1 class="page-title">Goals</h1><div class="page-subtitle">Where your money is heading</div></div></div>
-    ${goalsTimelineHtml()}
+    ${typeof goalsCalendarHtml === 'function' ? goalsCalendarHtml() : goalsTimelineHtml()}
     ${typeof newNavOn === 'function' && newNavOn() ? '<div style="height:20px;"></div>' : `<div class="tab-row" style="margin:20px 0;width:auto;">
       <button class="tab-btn ${tab === 'goals' ? 'active' : ''}" onclick="ui.goalsTab='goals';render()">Goals${(data.goals || []).length ? ` (${data.goals.length})` : ''}</button>
       <button class="tab-btn ${tab === 'emergency' ? 'active' : ''}" onclick="ui.goalsTab='emergency';render()">Emergency savings ${ef.enabled ? '' : '<span class="dim">· not set</span>'}</button>
@@ -208,7 +208,8 @@ function goalColor(g) { return g.color || hashColor(g.name || 'goal'); }
 function goalsTabHtml() {
   const goals = data.goals || [];
   return `
-    <div class="gs-grid">
+    ${typeof goalsBubblesHtml === 'function' ? goalsBubblesHtml() : ''}
+    <div class="gs-grid" style="margin-top:20px;">
       ${goals.map(goalShowCardHtml).join('')}
       <button class="gs-add" onclick="openGoalForm()"><span class="gs-add-ic">${ic('plus', 22)}</span><span><b>New goal</b><span>A trip, a car, a flat deposit…</span></span></button>
     </div>`;
