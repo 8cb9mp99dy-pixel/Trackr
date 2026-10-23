@@ -1430,3 +1430,21 @@ html.compact .tab-row { margin-bottom: 12px; }
 .rc-stats .eyebrow { white-space: nowrap; }
 .rc-view { display: block; max-width: 100%; max-height: 65vh; margin: 0 auto; border-radius: 10px; }
 .rc-view-pdf { width: 100%; height: 65vh; border: none; border-radius: 10px; }
+
+/* ---- Interest on pockets (interest.js) ---- */
+.pk-int { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 2px 8px; border-radius: 999px; border: none; background: rgba(34,181,115,0.14); color: var(--positive); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.pi-box { border: 1px solid var(--light-border); border-radius: 12px; padding: 12px; }
+.pi-rate { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.pi-rate b { font-size: 28px; color: var(--positive); }
+.pi-rate span { font-size: 13px; color: var(--light-text-dim); }
+.pi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.pi-grid.two { grid-template-columns: repeat(2, 1fr); margin-top: 8px; }
+.pi-grid > div { background: var(--dark-card-2); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+.pi-grid span { font-size: 11.5px; color: var(--light-text-dim); }
+.pi-grid b { font-size: 15px; }
+.pi-bars { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.pi-bar-row { display: grid; grid-template-columns: 60px 1fr auto; gap: 4px 10px; align-items: center; font-size: 13px; }
+.pi-bar-row em { grid-column: 3; font-style: normal; font-size: 11.5px; text-align: right; }
+.pi-track { height: 8px; border-radius: 4px; background: var(--dark-card-2); overflow: hidden; }
+.pi-track i { display: block; height: 100%; background: var(--positive); border-radius: 4px; }
+@media (max-width: 640px) { .pi-grid { grid-template-columns: repeat(2, 1fr); } }

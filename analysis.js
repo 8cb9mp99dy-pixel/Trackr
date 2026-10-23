@@ -64,6 +64,12 @@ function passiveModel() {
     const v = toEUR(+c.amount, c.currency);
     items.push({ name: `${c.exchange} — cash`, base: v, rate: +c.interestRate, yearly: v * c.interestRate / 100, kind: 'Interest' });
   });
+  // Pockets earning interest (interest.js).
+  if (typeof pocketInterest === 'function') (data.accounts || []).forEach(a => (a.pockets || []).forEach(p => {
+    const f = pocketInterest(a, p);
+    if (!f || !(f.yearly > 0)) return;
+    items.push({ name: `${a.name} — ${p.name}`, base: toEUR(f.base, a.currency), rate: f.rate, yearly: toEUR(f.yearly, a.currency), kind: 'Interest' });
+  }));
   (typeof allStakes === 'function' ? allStakes() : []).forEach(({ c, s, price }) => {
     if (!(+s.amount > 0) || !(+s.apy > 0)) return;
     const v = s.amount * price;

@@ -2701,6 +2701,7 @@ function pocketRowHtml(acc, p) {
           <div style="font-weight:600;font-size:13.5px;">${escHtml(p.name)}</div>
           <div style="font-size:12px;opacity:.6;">${fmtMoney(p.amountSaved, acc.currency)}${p.targetAmount ? ' / ' + fmtMoney(p.targetAmount, acc.currency) + ' · ' + pct.toFixed(0) + '%' : ''}</div>
           ${(() => { const g = typeof goalForPocket === 'function' && goalForPocket(acc.id, p.id); return g ? `<button class="pk-goal" onclick="event.stopPropagation();goPage('goals');openGoalView('${g.id}')">${ic('target', 12)} Goal: ${escHtml(g.name)}</button>` : ''; })()}
+          ${typeof pocketInterestLineHtml === 'function' ? pocketInterestLineHtml(acc, p) : ''}
         </div>
       </div>
       <div style="display:flex;gap:2px;">
@@ -2836,6 +2837,7 @@ window.__modalRenderers.pocket = function (payload) {
         <span class="label-text" style="font-size:12px;opacity:.7;">Color</span>
         ${colorPickerHtml(pk ? pk.color : POCKET_COLORS[0])}
       </div>
+      ${typeof pocketInterestFormHtml === 'function' ? pocketInterestFormHtml(acc, pk) : ''}
     </div>
     <div class="modal-actions">
       <button class="btn primary" onclick="savePocketForm('${payload.accId}','${payload.pkId || ''}')">Save</button>
@@ -2852,10 +2854,15 @@ function savePocketForm(accId, pkId) {
   const selectedSwatch = document.querySelector('#app .modal .swatch-dot.selected');
   const color = selectedSwatch ? selectedSwatch.dataset.color : POCKET_COLORS[0];
   const acc = accountById(accId);
-  if (pkId) {
-    Object.assign(acc.pockets.find(p => p.id === pkId), { name, amountSaved, targetAmount, icon, color });
+  // Interest (interest.js): kept as it was when that part of the form isn't there.
+  const old = pkId ? acc.pockets.find(p => p.id === pkId) : null;
+  const int = typeof readPocketInterestForm === 'function' ? readPocketInterestForm(acc, old && old.interest) : { interest: old ? old.interest : undefined };
+  if (int.error) { alert(int.error); return; }
+  if (old) {
+    Object.assign(old, { name, amountSaved, targetAmount, icon, color });
+    if (int.interest) old.interest = int.interest; else delete old.interest;
   } else {
-    acc.pockets.push({ id: uid('pk'), icon, name, amountSaved, targetAmount, color });
+    acc.pockets.push(Object.assign({ id: uid('pk'), icon, name, amountSaved, targetAmount, color }, int.interest ? { interest: int.interest } : {}));
   }
   save(); closeModal();
 }
