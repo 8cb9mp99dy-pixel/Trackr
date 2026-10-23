@@ -666,7 +666,7 @@ function renderLoanTab() {
       : `At ${G.rate}% a year${G.own ? ' (your positions\' returns)' : ''}, your gain passes the interest${G.spent ? ` + ${fmtMoney(G.spent)}` : ''} around <strong>${fmtMonth(G.passes.date)}</strong>.`)
     : (G.s ? `At ${G.rate}% a year, your gain doesn't pass the interest${G.spent ? ` + ${fmtMoney(G.spent)}` : ''} before ${fmtMonth(G.end)}.` : 'Add the loan details (pencil button) to compare.');
   return `
-    ${list.length > 1 ? `<div class="chip-scroll" style="margin-bottom:14px;">${list.map(l => `<span class="chip" style="cursor:pointer;${l.id === L.id ? 'background:var(--light-accent-1);color:#fff;border-color:var(--light-accent-1);' : ''}" onclick="ui.loanId='${l.id}';render();">${escHtml(l.name || 'Loan')}</span>`).join('')}</div>` : ''}
+    ${list.length > 1 ? `<div class="chip-scroll" style="margin-bottom:14px;">${list.map(l => `<span class="chip" style="cursor:pointer;${l.id === L.id ? 'background:var(--light-accent-1);color:var(--on-accent-1);border-color:var(--light-accent-1);' : ''}" onclick="ui.loanId='${l.id}';render();">${escHtml(l.name || 'Loan')}</span>`).join('')}</div>` : ''}
     <div class="card-dark" style="margin-bottom:14px;">
       <div class="row-flex" style="margin-bottom:14px;">
         <div><div style="font-weight:700;font-size:16px;">${escHtml(L.name || 'Loan')}</div>

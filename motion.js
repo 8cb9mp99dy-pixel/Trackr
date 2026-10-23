@@ -25,6 +25,7 @@ function afterRenderMotion(app) {
   const tabChanged = !first && !pageChanged && tabs !== motionLastTabs;
   const modalOpened = !!modal && modal !== motionLastModal;
   motionLastView = view; motionLastTabs = tabs; motionLastModal = modal;
+  if (typeof fxAfterRender === 'function') fxAfterRender(app, { first, pageChanged, tabChanged, modalOpened });
   if (motionReduced()) return;
   const page = app.querySelector('.main .page');
   if (page && (pageChanged || first)) {

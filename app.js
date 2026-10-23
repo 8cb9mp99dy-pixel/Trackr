@@ -2372,7 +2372,7 @@ function downloadRawDataBackup() {
   URL.revokeObjectURL(url);
 }
 
-function goPage(page) { ui.page = page; ui.modal = null; if (page === 'budget') ui.investedAnimate = true; render(); }
+function goPage(page) { ui.page = page; ui.modal = null; if (page === 'budget') ui.investedAnimate = true; if (typeof fxViewTransition === 'function') fxViewTransition(render); else render(); }
 /* Hiding the amounts is a choice for the screen in front of you (e.g. on the phone in public), so
    it's kept on this device only — it used to be part of the synced data, which hid the amounts
    on every device at once and sent a sync each time. */
@@ -3410,7 +3410,7 @@ function budgetTotalsTab() {
   const periods = [['month', 'Month'], ['3m', '3 months'], ['year', 'Year'], ['all', 'All time']];
   return `
     <div class="row-flex" style="margin-bottom:12px;flex-wrap:wrap;gap:10px;">
-      <div class="chip-scroll" style="margin:0;">${periods.map(([k, l]) => `<span class="chip" style="cursor:pointer;${p === k ? 'background:var(--light-accent-1);border-color:var(--light-accent-1);color:#fff;' : ''}" onclick="setBudgetTotalsPeriod('${k}')">${l}</span>`).join('')}</div>
+      <div class="chip-scroll" style="margin:0;">${periods.map(([k, l]) => `<span class="chip" style="cursor:pointer;${p === k ? 'background:var(--light-accent-1);border-color:var(--light-accent-1);color:var(--on-accent-1);' : ''}" onclick="setBudgetTotalsPeriod('${k}')">${l}</span>`).join('')}</div>
       ${p !== 'all' ? `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? -12 : p === '3m' ? -3 : -1})" aria-label="Previous">‹</button><div style="font-weight:700;">${escHtml(r.label)}</div><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? 12 : p === '3m' ? 3 : 1})" aria-label="Next">›</button></div>` : `<div style="font-weight:700;">All time</div>`}
     </div>
     <div class="grid-3" style="margin-bottom:20px;">
@@ -3743,12 +3743,12 @@ function transferEmoji(t) {
 }
 function txAvatarHtml(t) {
   if (t.type === 'transfer') {
-    if (t.logo) return `<div style="position:relative;width:38px;height:38px;flex:none;"><img src="${escHtml(t.logo)}" alt="" style="width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--accent-soft);" onerror="this.style.visibility='hidden'"><span aria-hidden="true" style="position:absolute;right:-3px;bottom:-3px;display:flex;width:17px;height:17px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:10px;border:2px solid var(--dark-card);">⇄</span></div>`;
+    if (t.logo) return `<div style="position:relative;width:38px;height:38px;flex:none;"><img src="${escHtml(t.logo)}" alt="" style="width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--accent-soft);" onerror="this.style.visibility='hidden'"><span aria-hidden="true" style="position:absolute;right:-3px;bottom:-3px;display:flex;width:17px;height:17px;border-radius:50%;background:var(--light-accent-1);color:var(--on-accent-1);align-items:center;justify-content:center;font-size:10px;border:2px solid var(--dark-card);">⇄</span></div>`;
     const emoji = transferEmoji(t);
     if (emoji) {
-      return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--accent-soft);align-items:center;justify-content:center;font-size:17px;">${escHtml(emoji)}</span><span aria-hidden="true" style="position:absolute;right:-3px;bottom:-3px;display:flex;width:17px;height:17px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:10px;border:2px solid var(--dark-card);">⇄</span></div>`;
+      return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--accent-soft);align-items:center;justify-content:center;font-size:17px;">${escHtml(emoji)}</span><span aria-hidden="true" style="position:absolute;right:-3px;bottom:-3px;display:flex;width:17px;height:17px;border-radius:50%;background:var(--light-accent-1);color:var(--on-accent-1);align-items:center;justify-content:center;font-size:10px;border:2px solid var(--dark-card);">⇄</span></div>`;
     }
-    return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--light-accent-1);color:#fff;align-items:center;justify-content:center;font-size:17px;">⇄</span></div>`;
+    return `<div style="position:relative;width:38px;height:38px;flex:none;"><span style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--light-accent-1);color:var(--on-accent-1);align-items:center;justify-content:center;font-size:17px;">⇄</span></div>`;
   }
   const cat = categoryById(t.type === 'income' ? 'income' : 'expense', t.categoryId);
   const subcat = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null;
@@ -4761,6 +4761,7 @@ function saveTxForm() {
   attachToRecurringSeries(record, { setDay: !!prior && prior.nature === 'Fixed' });
   runRecurring();
   save(); closeModal();
+  if (typeof fxSuccess === 'function') fxSuccess(p.type === 'transfer' ? 'Transfer saved' : 'Transaction saved');
   // A new salary / freelance income: offer to split it (Budget → Income plan).
   if (!prior && typeof incomePlanOffer === 'function') incomePlanOffer(record);
   budgetCheckAfterSave(record, prior && prior.type === 'expense' && prior.categoryId === record.categoryId && ymOf(prior.date) === ymOf(record.date) ? toEUR(record.amount, record.currency) - toEUR(prior.amount, prior.currency) : toEUR(record.amount, record.currency));
@@ -7526,7 +7527,7 @@ function syncStatusIndicatorHtml() {
   const state = syncStatusState();
   if (!state) return `
     <button class="sync-indicator-sidebar" onclick="goPage('settings');ui.settingsOpenSections={supabasesync:true};render();" title="This copy of Trackr isn't connected to sync — its data stays here only" style="display:flex;align-items:center;gap:7px;width:100%;background:transparent;border:none;padding:6px 4px;margin-bottom:2px;cursor:pointer;font-family:inherit;font-size:11.5px;opacity:.65;color:inherit;text-align:left;">
-      <span style="width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:#8A8DA0;"></span>
+      <span class="sync-dot" data-s="off"></span>
       <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Sync off — this device only</span>
     </button>`;
   const label = state === 'conflict' ? 'Sync needs attention'
@@ -7536,7 +7537,7 @@ function syncStatusIndicatorHtml() {
   const dotColor = state === 'ok' ? 'var(--accent-2, #34C77B)' : '#E8963C';
   return `
     <button class="sync-indicator-sidebar" onclick="openSyncStatusModal()" style="display:flex;align-items:center;gap:7px;width:100%;background:transparent;border:none;padding:6px 4px;margin-bottom:2px;cursor:pointer;font-family:inherit;font-size:11.5px;opacity:${state === 'ok' ? '.55' : '1'};color:inherit;text-align:left;">
-      <span style="width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:${dotColor};"></span>
+      <span class="sync-dot" data-s="${state !== 'ok' ? state : syncIsPending() || !syncState.lastSuccessAt ? 'pending' : 'ok'}"></span>
       <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(label)}</span>
     </button>`;
 }
@@ -7555,7 +7556,7 @@ function navSyncBadgeHtml() {
   // knocking its label out of the flex/font-size rules scoped to it entirely (this is exactly
   // what caused the broken oversized "Settings" text found while checking the phone layout).
   // Purely visual span instead — see settingsNavItemOnClick() for how the tap itself is handled.
-  return `<span class="nav-sync-badge" style="background:${dotColor};" aria-hidden="true"></span>`;
+  return `<span class="nav-sync-badge" data-s="${state}" style="background:${dotColor};" aria-hidden="true"></span>`;
 }
 /* The Settings nav item's own tap target doubles as the sync-issue entry point on phones, where
    there's no room for the sidebar's separate text indicator (see .sync-indicator-sidebar's

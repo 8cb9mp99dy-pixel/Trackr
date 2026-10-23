@@ -76,7 +76,7 @@ if (typeof module !== 'undefined' && module.exports) {
             <path class="ov-area" d="${sp.area}" fill="url(#ovg)"/>
             <path class="ov-line ${up ? 'up' : 'down'}" d="${sp.line}" pathLength="1"/>
           </svg>
-          <div class="ov-dot" hidden></div><div class="ov-tip" hidden></div>
+          <div class="ov-x" hidden></div><div class="ov-dot" hidden></div><div class="ov-tip" hidden></div>
         </div>` : '<div class="ov-chart-empty">Trackr saves your net worth each day you open it — the chart starts tomorrow.</div>'}
       <div class="ov-mix" role="img" aria-label="What your net worth is made of">${parts.map(([l, v, c], i) => `<span style="--w:${(Math.max(0, v) / pos * 100).toFixed(2)}%;--c:${c};--d:${(0.15 + i * 0.12).toFixed(2)}s"></span>`).join('')}</div>
       <div class="ov-legend">${parts.map(([l, v, c, go]) => `<button class="ov-leg" onclick="${go}"><i style="background:${c}"></i><span>${l}</span><b>${fmtMoney(v)}</b>${l === 'Invested' && Math.abs(pl) >= 0.005 ? `<small class="${pl >= 0 ? 'positive' : 'negative'}">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))}</small>` : ''}</button>`).join('')}</div>
@@ -85,14 +85,15 @@ if (typeof module !== 'undefined' && module.exports) {
   /* Reading a day on the chart (no redraw). */
   window.ovChartHover = function (e) {
     const box = document.querySelector('.ov-chart'); if (!box) return;
-    const dot = box.querySelector('.ov-dot'), tip = box.querySelector('.ov-tip');
-    if (!e) { dot.hidden = tip.hidden = true; return; }
+    const dot = box.querySelector('.ov-dot'), tip = box.querySelector('.ov-tip'), cross = box.querySelector('.ov-x');
+    if (!e) { dot.hidden = tip.hidden = true; if (cross) cross.hidden = true; return; }
     const pts = nwPoints().filter(p => p.date >= rangeFrom(ui.ovRange || '3M'));
     const sp = sparkPaths(pts.map(p => p.v), W, H, 6); if (!sp) return;
     const r = box.getBoundingClientRect();
     const i = Math.max(0, Math.min(pts.length - 1, Math.round((e.clientX - r.left) / r.width * (pts.length - 1))));
     const [x, y] = sp.pts[i];
     dot.hidden = tip.hidden = false;
+    if (cross) { cross.hidden = false; cross.style.transform = `translate3d(${(x / W * r.width).toFixed(1)}px,0,0)`; }
     dot.style.left = (x / W * 100) + '%'; dot.style.top = (y / H * 100) + '%';
     tip.style.left = Math.min(85, Math.max(15, x / W * 100)) + '%';
     tip.innerHTML = `<b>${fmtMoney(pts[i].v)}</b><span>${escHtml(shortDay(pts[i].date))}</span>`;

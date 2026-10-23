@@ -142,7 +142,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const list = invoiceList().slice().sort((a, b) => ((b.issueDate || '') < (a.issueDate || '') ? -1 : 1))
       .filter(i => f === 'all' || (f === 'paid' ? i.status === 'paid' : i.status !== 'paid'));
     return `
-      <div class="chip-scroll" tabindex="0" role="group" aria-label="Filter" style="margin-bottom:12px;">${[['open', 'Not paid'], ['paid', 'Paid'], ['all', 'All']].map(([k, l]) => `<span class="chip" style="cursor:pointer;${f === k ? 'background:var(--light-accent-1);border-color:var(--light-accent-1);color:#fff;' : ''}" onclick="ui.invoiceFilter='${k}';render()">${l}</span>`).join('')}</div>
+      <div class="chip-scroll" tabindex="0" role="group" aria-label="Filter" style="margin-bottom:12px;">${[['open', 'Not paid'], ['paid', 'Paid'], ['all', 'All']].map(([k, l]) => `<span class="chip" style="cursor:pointer;${f === k ? 'background:var(--light-accent-1);border-color:var(--light-accent-1);color:var(--on-accent-1);' : ''}" onclick="ui.invoiceFilter='${k}';render()">${l}</span>`).join('')}</div>
       <div class="card">${list.length ? `<div class="stack-gap-12">${list.map(i => {
         const st = invoiceState(i);
         return `<div class="inv-line">

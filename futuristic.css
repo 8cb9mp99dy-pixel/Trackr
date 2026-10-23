@@ -1,0 +1,410 @@
+/* ===================== Futuristic layer =====================
+ * Loaded after styles.css. Black and white only (greys and opacities); green and red stay for
+ * gains and losses, and categories keep the colours you gave them. Light is ink on paper, dark is
+ * the same inverted. Hairlines, small corners, numbers in a monospace font with digits of equal
+ * width, a faint dot grid behind everything, and motion that only uses transform and opacity.
+ * fx.js drives the pieces that need JavaScript (sliding indicators, digit roll, the mode wipe…).
+ * Everything calms down with "reduce motion".
+ */
+
+/* ---------- Tokens ---------- */
+:root {
+  /* Colour: ink and paper, and greys in between */
+  --fx-ink: #0B0B0C;
+  --fx-paper: #FFFFFF;
+  --fx-bg: #F5F5F5;
+  --fx-dim: #5E5E62;            /* 6.3:1 on paper, 5.8:1 on bg (AA) */
+  --fx-faint: #8E8E93;          /* decoration only, never body text */
+  --fx-line: rgba(0,0,0,.10);
+  --fx-line-strong: rgba(0,0,0,.30);
+  --fx-fill: rgba(0,0,0,.04);
+  --fx-fill-2: rgba(0,0,0,.07);
+  --fx-dot: rgba(0,0,0,.075);
+  --fx-shadow: 0 10px 28px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+
+  /* Gradients (grey and opacity only) */
+  --g-scan: linear-gradient(90deg, transparent, rgba(0,0,0,.55) 50%, transparent);
+  --g-scan-v: linear-gradient(180deg, transparent, rgba(0,0,0,.35) 20%, rgba(0,0,0,.35) 80%, transparent);
+  --g-chart-fill-top: rgba(0,0,0,.10);
+  --g-hairline: linear-gradient(90deg, transparent, var(--fx-line) 12%, var(--fx-line) 88%, transparent);
+  --g-sheen: linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,0) 40%);
+  --g-grid: radial-gradient(var(--fx-dot) 1px, transparent 1.4px);
+  --g-fade-mask: radial-gradient(120% 90% at 50% 0%, #000 30%, rgba(0,0,0,.35) 100%);
+
+  /* Spacing */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-7: 40px; --sp-8: 48px;
+
+  /* Corners */
+  --radius-lg: 12px;
+  --radius-md: 8px;
+  --radius-sm: 6px;
+
+  /* Time and easing */
+  --dur-fast: 120ms;
+  --dur-med: 240ms;
+  --dur-slow: 480ms;
+  --ease-snap: cubic-bezier(.2,.9,.1,1);      /* mechanical, decisive */
+  --ease-out: cubic-bezier(.2,.8,.2,1);
+  --ease-in-out: cubic-bezier(.65,0,.35,1);
+
+  /* Type */
+  --font-text: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-num: 'JetBrains Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* The app's own names, pointed at the tokens */
+  --dark-bg: var(--fx-bg);
+  --dark-card: var(--fx-paper);
+  --dark-card-2: var(--fx-fill);
+  --dark-border: var(--fx-line);
+  --dark-text: var(--fx-ink);
+  --dark-text-dim: var(--fx-dim);
+  --light-bg: var(--fx-bg);
+  --light-card: var(--fx-paper);
+  --light-border: var(--fx-line);
+  --light-text: var(--fx-ink);
+  --light-text-dim: var(--fx-dim);
+  --sidebar-bg: var(--fx-paper);
+  --accent-1: var(--fx-ink);
+  --accent-2: var(--fx-faint);
+  --accent-3: var(--fx-dim);
+  --accent-4: var(--fx-ink);
+  --on-accent-1: var(--fx-paper);
+  --accent-soft: var(--fx-fill-2);
+  --light-accent-1: var(--fx-ink);
+  --light-accent-2: var(--fx-faint);
+  --ov-c1: var(--fx-ink); --ov-c2: #8E8E93; --ov-c3: #C7C7CC;
+}
+html[data-mode="dark"] {
+  --fx-ink: #F5F5F5;
+  --fx-paper: #0A0A0B;
+  --fx-bg: #000000;
+  --fx-dim: #A1A1A6;            /* 7.9:1 on paper (AA) */
+  --fx-faint: #6E6E73;
+  --fx-line: rgba(255,255,255,.12);
+  --fx-line-strong: rgba(255,255,255,.34);
+  --fx-fill: rgba(255,255,255,.05);
+  --fx-fill-2: rgba(255,255,255,.09);
+  --fx-dot: rgba(255,255,255,.085);
+  --fx-shadow: 0 0 0 1px rgba(255,255,255,.04), 0 0 32px rgba(255,255,255,.07);
+
+  --g-scan: linear-gradient(90deg, transparent, rgba(255,255,255,.75) 50%, transparent);
+  --g-scan-v: linear-gradient(180deg, transparent, rgba(255,255,255,.4) 20%, rgba(255,255,255,.4) 80%, transparent);
+  --g-chart-fill-top: rgba(255,255,255,.14);
+  --g-sheen: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,0) 40%);
+
+  --dark-bg: var(--fx-bg);
+  --dark-card: var(--fx-paper);
+  --dark-card-2: var(--fx-fill);
+  --dark-border: var(--fx-line);
+  --dark-text: var(--fx-ink);
+  --dark-text-dim: var(--fx-dim);
+  --light-bg: var(--fx-bg);
+  --light-card: var(--fx-paper);
+  --light-border: var(--fx-line);
+  --light-text: var(--fx-ink);
+  --light-text-dim: var(--fx-dim);
+  --sidebar-bg: var(--fx-paper);
+  --accent-1: var(--fx-ink);
+  --accent-4: var(--fx-ink);
+  --on-accent-1: var(--fx-paper);
+  --accent-soft: var(--fx-fill-2);
+  --light-accent-1: var(--fx-ink);
+  --ov-c1: var(--fx-ink); --ov-c2: #8E8E93; --ov-c3: #48484A;
+}
+
+/* ---------- Base ---------- */
+body { font-family: var(--font-text); background: var(--fx-bg); }
+html[data-mode="dark"] body { background: var(--fx-bg); }
+#app { position: relative; z-index: 0; }
+.page.surface-light, .page.surface-dark, html[data-mode="dark"] .page.surface-light, html[data-mode="dark"] .page.surface-dark { background: transparent; }
+
+/* The dot grid: fixed behind everything, fading towards the bottom, drifting one cell a minute.
+   (In dark mode this replaces the red and green glows.) */
+body::before, html[data-mode="dark"] body::before {
+  content: ''; position: fixed; z-index: -1; inset: -24px; left: -24px; top: -24px; right: -24px; bottom: -24px;
+  width: auto; height: auto; border-radius: 0; filter: none; opacity: 1; pointer-events: none;
+  background: var(--g-grid); background-size: 24px 24px;
+  -webkit-mask-image: var(--g-fade-mask); mask-image: var(--g-fade-mask);
+  animation: fxGrid 60s linear infinite;
+  will-change: transform;
+}
+body::after, html[data-mode="dark"] body::after { content: none; display: none; animation: none; }
+@keyframes fxGrid { from { transform: translate3d(0,0,0); } to { transform: translate3d(24px,24px,0); } }
+html.fx-calm body::before { animation: none; }
+
+/* ---------- Numbers: monospace, equal-width digits ---------- */
+.big-number, .num, .mono, .fl-num, .inv-val, .inv-total, .scan-amt, .scan-val, .sk-val, .c-val, .wl-num, .tx-amount,
+.trade-amt, .trade-price, .trade-sum, .split-amt, .recap-num, .perf-val, .nm-amount, .loan-stat-value, .gs-amts,
+.goal-amounts, .gb-amt, .gb-in b, .brk-val, .tk-price, .alloc-amt, .ov-leg b, .ov-m-row b, .ov-m-bal b, .ov-tip b,
+.ov-change, .ov-ring b, .pct-pill, .lc-tip-v, .lc-y, .count-up, .dim-val, .totals-main, .cat-fold-sum, .tx-summary b,
+.bt-summary b, .ip-sum-row b, .ar-detail b, .wt-row .num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.02em;
+}
+.big-number { font-weight: 700; letter-spacing: -0.045em; font-size: 38px; }
+@media (max-width: 640px) { .big-number { font-size: 32px; } }
+
+/* Labels read like instrument captions */
+.eyebrow {
+  font-family: var(--font-num); text-transform: uppercase; letter-spacing: .09em;
+  font-size: 10.5px; font-weight: 500; opacity: 1; color: var(--fx-dim);
+}
+.page-title { letter-spacing: -0.035em; }
+
+/* ---------- Surfaces: hairlines, small corners, no blur ---------- */
+.card, .card-dark, .accordion, .modal, .filter-menu, .ticker {
+  border: 1px solid var(--fx-line); box-shadow: none;
+}
+.card, .card-dark { background: var(--fx-paper); background-image: var(--g-sheen); }
+html[data-mode="dark"] .card, html[data-mode="dark"] .card-dark, html[data-mode="dark"] .modal, html[data-mode="dark"] .sidebar {
+  -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none;
+}
+html[data-mode="dark"] .card, html[data-mode="dark"] .card-dark { background-color: rgba(10,10,11,.88); }
+html[data-mode="dark"] .modal { background: #0A0A0B; }
+html[data-mode="dark"] .card-nested, .card-nested { background: var(--fx-fill); }
+.sidebar { border-right-color: var(--fx-line); }
+html[data-mode="dark"] .sidebar { background: rgba(0,0,0,.82); }
+.topbar { background: color-mix(in srgb, var(--fx-bg) 84%, transparent); }
+html[data-mode="dark"] .topbar { background: rgba(0,0,0,.6); }
+.modal-backdrop { background: rgba(0,0,0,.42); }
+html[data-mode="dark"] .modal-backdrop { background: rgba(0,0,0,.72); }
+.filter-menu { box-shadow: var(--fx-shadow); }
+
+/* Cards come alive on hover (pointer devices): corner brackets close in just inside the corners, a soft glow rises,
+   and cards you can click lift a little. On touch, a tap presses them in. */
+:where(.card, .card-dark) { position: relative; }
+@media (hover: hover) and (pointer: fine) {
+  .card::before, .card-dark::before {
+    content: ''; position: absolute; inset: 5px; pointer-events: none; border-radius: 0; z-index: 2;
+    --b: var(--fx-ink); --l: 10px;
+    background:
+      linear-gradient(var(--b), var(--b)) top left / var(--l) 1px no-repeat,
+      linear-gradient(var(--b), var(--b)) top left / 1px var(--l) no-repeat,
+      linear-gradient(var(--b), var(--b)) top right / var(--l) 1px no-repeat,
+      linear-gradient(var(--b), var(--b)) top right / 1px var(--l) no-repeat,
+      linear-gradient(var(--b), var(--b)) bottom left / var(--l) 1px no-repeat,
+      linear-gradient(var(--b), var(--b)) bottom left / 1px var(--l) no-repeat,
+      linear-gradient(var(--b), var(--b)) bottom right / var(--l) 1px no-repeat,
+      linear-gradient(var(--b), var(--b)) bottom right / 1px var(--l) no-repeat;
+    opacity: 0; transform: scale(1.012);
+    transition: opacity var(--dur-med) var(--ease-snap), transform var(--dur-med) var(--ease-snap);
+  }
+  .card::after, .card-dark::after {
+    content: ''; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none;
+    box-shadow: var(--fx-shadow); opacity: 0; transition: opacity var(--dur-med) var(--ease-out);
+  }
+  .card:hover::before, .card-dark:hover::before { opacity: .55; transform: none; }
+  .card:hover::after, .card-dark:hover::after { opacity: 1; }
+  .card:hover, .card-dark:hover { z-index: 1; }
+  .card[onclick], button.card, .perf-card, .add-tile, .acc-chip, .gs-card { transition: transform var(--dur-med) var(--ease-snap); }
+  .card[onclick]:hover, button.card:hover { transform: translateY(-2px); }
+}
+.card[onclick]:active, button.card:active { transform: scale(.99); transition: transform var(--dur-fast) var(--ease-snap); }
+
+/* ---------- Buttons ---------- */
+.btn { border-color: var(--fx-line); transition: transform var(--dur-fast) var(--ease-snap), background-color var(--dur-med), border-color var(--dur-med), color var(--dur-med); }
+.btn:hover { filter: none; border-color: var(--fx-line-strong); }
+.btn:active, .tb-btn:active, .seg:active, .tab-btn:active, .section-tabs button:active { transform: scale(.95); }
+.btn.primary, html[data-mode="dark"] .btn.primary { background: var(--fx-ink); border-color: var(--fx-ink); color: var(--fx-paper); box-shadow: none; }
+.btn.primary:hover { filter: none; opacity: .88; }
+html[data-mode="dark"] .btn { background: var(--fx-fill); border-color: var(--fx-line); }
+html[data-mode="dark"] .btn.ghost { background: none; }
+.tb-btn { border-color: var(--fx-line); background: var(--fx-paper); }
+.tb-btn:hover { border-color: var(--fx-line-strong); }
+html[data-mode="dark"] .tb-btn { background: var(--fx-fill); }
+.toggle.on { background: var(--fx-ink); border-color: var(--fx-ink); }
+.toggle.on::after, html[data-mode="dark"] .toggle.on::after { background: var(--fx-paper); }
+.toggle::after { transition: transform var(--dur-med) var(--ease-snap); }
+.privacy-toggle.on, .tb-btn.on, .more-row.active, .filter-chip.on { color: var(--fx-ink); border-color: var(--fx-ink); }
+.filter-chip.on { background: var(--fx-fill-2); }
+.add-ic { background: var(--fx-fill-2); color: var(--fx-ink); }
+.link-btn { color: var(--fx-ink); text-decoration: underline; text-decoration-color: var(--fx-line-strong); text-underline-offset: 3px; }
+.link-btn:hover { text-decoration-color: currentColor; }
+
+/* ---------- Inputs: a line traces along the bottom on focus ---------- */
+input, select, textarea, html[data-mode="dark"] input, html[data-mode="dark"] select, html[data-mode="dark"] textarea {
+  border-width: 1px; border-color: var(--fx-line);
+}
+html[data-mode="dark"] input, html[data-mode="dark"] select, html[data-mode="dark"] textarea { background-color: var(--fx-fill); }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]), textarea {
+  background-image: linear-gradient(var(--fx-ink), var(--fx-ink));
+  background-repeat: no-repeat; background-position: left bottom; background-size: 0% 2px;
+  transition: background-size var(--dur-slow) var(--ease-snap), border-color var(--dur-med) var(--ease-out);
+}
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238E8E93' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), linear-gradient(var(--fx-ink), var(--fx-ink));
+  background-repeat: no-repeat, no-repeat; background-position: right 14px center, left bottom; background-size: 10px 6px, 0% 2px;
+  transition: background-size var(--dur-slow) var(--ease-snap), border-color var(--dur-med) var(--ease-out);
+}
+input:focus, select:focus, textarea:focus { border-color: var(--fx-line-strong); box-shadow: none; }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]):focus, textarea:focus { background-size: 100% 2px; }
+select:focus { background-size: 10px 6px, 100% 2px; }
+:focus-visible { outline: 2px solid var(--fx-ink); outline-offset: 2px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; }
+
+/* ---------- Navigation: a sliding indicator (fx.js places it) ---------- */
+.nav-list, .section-tabs, .tab-row, .seg-row { position: relative; }
+.fx-ind {
+  position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1;
+  background: var(--fx-ink); transform-origin: 0 0; opacity: 0;
+  transition: transform var(--dur-slow) var(--ease-snap), opacity var(--dur-fast);
+}
+.fx-ind.h { width: 100px; height: 2px; }
+.fx-ind.v { width: 2px; height: 100px; }
+.fx-ind.on { opacity: 1; }
+.fx-ind.still { transition: none; }
+
+.nav-item { border-radius: var(--radius-sm); }
+.nav-item.active, html[data-mode="dark"] .nav-item.active { background: var(--fx-fill); color: var(--fx-ink); }
+.nav-item:hover, html[data-mode="dark"] .nav-item:hover { background: var(--fx-fill); }
+.tab-row, .section-tabs { background: none; border-radius: 0; box-shadow: inset 0 -1px 0 var(--fx-line); padding: 0; gap: 0; }
+.tab-btn, .section-tabs button { border-radius: 0; padding-bottom: 11px; }
+.tab-btn.active, .section-tabs button.on, html[data-mode="dark"] .tab-btn.active, html[data-mode="dark"] .section-tabs button.on {
+  background: none; box-shadow: none; color: var(--fx-ink); opacity: 1;
+}
+.seg-row { background: none; box-shadow: inset 0 0 0 1px var(--fx-line); border-radius: var(--radius-sm); }
+.seg { border-radius: 4px; font-family: var(--font-num); font-size: 11.5px; letter-spacing: .02em; }
+.seg.on, html[data-mode="dark"] .seg.on { background: var(--fx-fill-2); color: var(--fx-ink); box-shadow: none; }
+/* Without fx.js placing it (or before it does), the active tab still shows a line under it. */
+.tab-row:not(.fx-has-ind) .tab-btn.active, .section-tabs:not(.fx-has-ind) button.on { box-shadow: inset 0 -2px 0 var(--fx-ink); }
+
+/* Page changes (View Transitions where the browser has them): the old page fades quickly; the
+   new one's cards rise in by themselves (motion.js). */
+::view-transition-old(root) { animation: fxFadeOut 160ms var(--ease-out) both; }
+::view-transition-new(root) { animation: none; }
+@keyframes fxFadeOut { to { opacity: 0; } }
+
+/* Arriving on a page: snappier, shorter rise */
+.page-enter > *, .page-enter .wealth-top > *, .page-enter .scan-grid > *, .page-enter .goal-grid > *, .page-enter .grid-3 > *, .page-enter .grid-2 > * {
+  animation-name: fxRise; animation-duration: var(--dur-slow); animation-timing-function: var(--ease-snap);
+}
+@keyframes fxRise { from { opacity: 0; transform: translate3d(0,10px,0); } to { opacity: 1; transform: none; } }
+
+/* ---------- The boot scan across the top bar (first load only) ---------- */
+.topbar::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; pointer-events: none;
+  background: var(--g-scan); transform-origin: 0 50%; transform: scaleX(0); opacity: 0;
+}
+.fx-boot .topbar::after { animation: fxScan 1100ms var(--ease-in-out) 150ms both; }
+@keyframes fxScan { 0% { transform: scaleX(0); opacity: 1; } 65% { transform: scaleX(1); opacity: 1; } 100% { transform: scaleX(1); opacity: 0; } }
+
+/* ---------- Digit roll (fx.js wraps the digits that changed) ---------- */
+.fx-d { display: inline-block; animation: fxDigit 420ms var(--ease-snap) both; }
+@keyframes fxDigit { 0% { opacity: 0; transform: translate3d(0,-.45em,0); } 100% { opacity: 1; transform: none; } }
+
+/* ---------- Charts ---------- */
+.ov-line, .ov-line.up, .ov-line.down, html[data-mode="dark"] .ov-line.up, html[data-mode="dark"] .ov-line.down { stroke: var(--fx-ink); filter: none; }
+.ov-chart stop { stop-color: var(--fx-ink); }
+.ov-chart stop:first-child { stop-opacity: .12; }
+.ov-dot, html[data-mode="dark"] .ov-dot { background: var(--fx-paper); border-color: var(--fx-ink); box-shadow: none; }
+.ov-tip, html[data-mode="dark"] .ov-tip { background: var(--fx-ink); color: var(--fx-paper); box-shadow: none; border-radius: 4px; }
+.ov-tip span, html[data-mode="dark"] .ov-tip span { color: inherit; opacity: .65; }
+.ov-x { position: absolute; top: -6px; bottom: 0; left: 0; width: 1px; background: var(--g-scan-v); pointer-events: none; will-change: transform; }
+.ov-x[hidden] { display: none; }
+.lc-cross { border-left: 0; width: 1px; background: var(--g-scan-v); opacity: 1; }
+.lc-tip, .surface-dark .lc-tip { border-radius: 4px; }
+html[data-mode="dark"] .ov-track i.in, html[data-mode="dark"] .ov-col-bars i.in { background: var(--positive); box-shadow: none; }
+html[data-mode="dark"] .ov-track i.out, html[data-mode="dark"] .ov-col-bars i.out { background: var(--negative); box-shadow: none; }
+html[data-mode="dark"] .ov-ring-fg.up, html[data-mode="dark"] .ov-ring-fg.down { filter: none; }
+.pc-slice, .pc-slice:nth-child(3n+2), .pc-slice:nth-child(3n) { fill: var(--fx-ink); fill-opacity: .82; }
+.pc-slice:nth-child(3n+2) { fill-opacity: .55; }
+.pc-slice:nth-child(3n) { fill-opacity: .32; }
+.pc-chart.has-sel .pc-slice, html[data-mode="dark"] .pc-chart.has-sel .pc-slice { fill: var(--fx-ink); fill-opacity: .1; }
+.pc-chart .pc-slice.on, .pc-chart.has-sel .pc-slice.on { fill: var(--fx-ink); fill-opacity: 1; }
+.pc-chart.typed .pc-slice, .pc-chart.typed.has-sel .pc-slice, .pc-chart.typed.has-sel .pc-slice.on { fill: var(--c, var(--fx-faint)); fill-opacity: 1; }
+html[data-mode="dark"] .pc-slice { stroke: var(--fx-paper); }
+html[data-mode="dark"] .pc-lbl { background: var(--fx-fill-2); }
+html[data-mode="dark"] .pc-lbl.on { background: #1A1A1C; }
+
+/* ---------- Figures: green and red stay (gains and losses); the glow is quieter ---------- */
+html[data-mode="dark"] .positive { text-shadow: 0 0 12px rgba(46,240,154,.22); }
+html[data-mode="dark"] .negative { text-shadow: 0 0 12px rgba(255,77,106,.22); }
+html[data-mode="dark"] .big-number { background: none; -webkit-background-clip: border-box; background-clip: border-box; color: var(--fx-ink); filter: none; }
+html[data-mode="dark"] .big-number.positive { color: var(--positive); }
+html[data-mode="dark"] .big-number.negative { color: var(--negative); }
+html[data-mode="dark"] .big-number .cents { color: inherit; -webkit-text-fill-color: currentColor; }
+.pct-pill { border-radius: 3px; }
+
+/* ---------- Goals in grey ---------- */
+.gb-card, html[data-mode="dark"] .gb-card { background: var(--fx-paper); background-image: var(--g-sheen); }
+.gb-ball, html[data-mode="dark"] .gb-ball {
+  background: radial-gradient(circle at 32% 28%, var(--fx-paper), var(--fx-fill) 70%);
+  box-shadow: inset 0 0 0 1px var(--fx-line), 0 10px 26px rgba(0,0,0,.08);
+}
+html[data-mode="dark"] .gb-ball { background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.12), rgba(255,255,255,.03) 70%); box-shadow: inset 0 0 0 1px var(--fx-line), 0 0 30px rgba(255,255,255,.05); }
+.gb:hover .gb-ball, .gb:focus-visible .gb-ball { box-shadow: inset 0 0 0 1px var(--fx-line-strong), var(--fx-shadow); }
+.gb-liquid, .gb.done .gb-liquid, .gb.behind .gb-liquid { background: linear-gradient(180deg, rgba(0,0,0,.10), rgba(0,0,0,.20)); }
+.gb-liquid svg, .gb.done .gb-liquid svg, .gb.behind .gb-liquid svg { fill: rgba(0,0,0,.10); }
+html[data-mode="dark"] .gb-liquid, html[data-mode="dark"] .gb.done .gb-liquid, html[data-mode="dark"] .gb.behind .gb-liquid { background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.22)); }
+html[data-mode="dark"] .gb-liquid svg, html[data-mode="dark"] .gb.done .gb-liquid svg, html[data-mode="dark"] .gb.behind .gb-liquid svg { fill: rgba(255,255,255,.12); }
+.gb-in, html[data-mode="dark"] .gb-in { text-shadow: none; }
+.gb.done .gb-ball, html[data-mode="dark"] .gb.done .gb-ball { box-shadow: 0 0 0 2px var(--positive), 0 10px 26px rgba(0,0,0,.08); }
+.gb.behind .gb-ball, html[data-mode="dark"] .gb.behind .gb-ball { box-shadow: 0 0 0 2px var(--negative), 0 10px 26px rgba(0,0,0,.08); }
+.gc-today { background: var(--fx-ink); box-shadow: none; animation: none; }
+.gc-today::after { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 1px solid var(--fx-ink); animation: fxPing 2s var(--ease-out) infinite; }
+@keyframes fxPing { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(2.6); opacity: 0; } }
+
+/* Ink backgrounds take paper-coloured text (it was always white, now it inverts with the mode) */
+.tx-step.on span, .tx-step.done span, .tx-seg button.on, .tx-chip.on, .gf-ph-tag, .bt-m.on .bt-l, .tb-notes b { color: var(--on-accent-1); }
+
+/* Other blue tints, now grey */
+.bi-table tr.bi-need td, .ar-row.unread, .pal-item.on { background: var(--fx-fill); }
+
+/* ---------- Sync indicator ---------- */
+.sync-dot { position: relative; width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: var(--fx-ink); }
+.sync-dot[data-s="off"] { background: none; box-shadow: inset 0 0 0 1px var(--fx-faint); }
+.sync-dot[data-s="warning"] { background: var(--manual-accent); }
+.sync-dot[data-s="conflict"] { background: var(--negative); }
+.sync-dot[data-s="pending"]::after, .nav-sync-badge[data-s="pending"]::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%; background: inherit;
+  animation: fxPulse 1.6s var(--ease-out) infinite; animation-delay: var(--fx-phase, 0ms);
+}
+.sync-dot[data-s="pending"] { animation: fxBreathe 1.6s ease-in-out infinite; animation-delay: var(--fx-phase, 0ms); }
+@keyframes fxPulse { 0% { transform: scale(1); opacity: .7; } 100% { transform: scale(3); opacity: 0; } }
+@keyframes fxBreathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.fx-shake { animation: fxShake 420ms var(--ease-snap) 1; }
+@keyframes fxShake { 0%, 100% { transform: none; } 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+
+/* ---------- "Saved" check ---------- */
+.fx-ok {
+  position: fixed; z-index: 9500; left: 50%; top: calc(72px + env(safe-area-inset-top, 0px));
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px 8px 10px; border-radius: 999px;
+  background: var(--fx-ink); color: var(--fx-paper); font-size: 13px; font-weight: 600; pointer-events: none;
+  transform: translate3d(-50%,-8px,0); opacity: 0;
+  animation: fxOk 1300ms var(--ease-snap) both;
+}
+.fx-ok svg { display: block; }
+.fx-ok circle { stroke-dasharray: 57; stroke-dashoffset: 57; animation: fxDraw 420ms var(--ease-out) 80ms forwards; }
+.fx-ok path { stroke-dasharray: 14; stroke-dashoffset: 14; animation: fxDraw 260ms var(--ease-out) 380ms forwards; }
+@keyframes fxOk { 0% { opacity: 0; transform: translate3d(-50%,-8px,0) scale(.96); } 14%, 80% { opacity: 1; transform: translate3d(-50%,0,0); } 100% { opacity: 0; transform: translate3d(-50%,-4px,0); } }
+@keyframes fxDraw { to { stroke-dashoffset: 0; } }
+
+/* ---------- Light / dark wipe (fx.js) ---------- */
+.fx-wipe {
+  position: fixed; z-index: 9999; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%;
+  pointer-events: none; transform: scale(0); will-change: transform, opacity;
+}
+.fx-wipe.grow { transition: transform 520ms var(--ease-in-out); }
+.fx-wipe.fade { transition: opacity 260ms var(--ease-out); opacity: 0; }
+
+/* ---------- Phone ---------- */
+@media (max-width: 640px) {
+  .sidebar { background: color-mix(in srgb, var(--fx-paper) 92%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  html[data-mode="dark"] .sidebar { background: rgba(0,0,0,.86); }
+  .tab-btn, .section-tabs button { padding-bottom: 10px; }
+}
+
+/* ---------- Reduced motion: everything still, nothing lost ---------- */
+@media (prefers-reduced-motion: reduce) {
+  body::before, html[data-mode="dark"] body::before { animation: none; }
+  .card::before, .card::after, .card-dark::before, .card-dark::after, .fx-ind, .toggle::after,
+  input, select, textarea { transition: none !important; }
+  .card[onclick]:hover, button.card:hover, .card[onclick]:active, button.card:active,
+  .btn:active, .tb-btn:active, .seg:active, .tab-btn:active, .section-tabs button:active { transform: none; }
+  .fx-boot .topbar::after, .fx-d, .fx-shake, .sync-dot, .sync-dot::after, .nav-sync-badge::after, .gc-today::after { animation: none !important; }
+  .fx-ok { animation: none; opacity: 1; transform: translate3d(-50%,0,0); }
+  .fx-ok circle, .fx-ok path { animation: none; stroke-dashoffset: 0; }
+  ::view-transition-old(root) { animation: none; }
+}

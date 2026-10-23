@@ -1,4 +1,5 @@
-/* Dark mode: the top bar switch, kept after a reload, Settings → Display, red / green figures. */
+/* Dark mode: the top bar switch (a circle wipe), kept after a reload, Settings → Display, white on
+   black with red / green figures. */
 const { test, expect } = require('@playwright/test');
 const { openApp } = require('./helpers');
 
@@ -7,7 +8,8 @@ test('dark mode: switch, reload, settings, colours', async ({ page }) => {
   const mode = () => page.evaluate(() => document.documentElement.getAttribute('data-mode'));
   expect(await mode()).toBe(null);
   await page.getByRole('button', { name: 'Switch to dark mode' }).click();
-  expect(await mode()).toBe('dark');
+  await expect.poll(mode).toBe('dark');
+  await expect(page.locator('.fx-wipe')).toHaveCount(0);
   // Kept on this device, set before the first frame.
   await page.reload();
   await page.waitForFunction(() => document.querySelector('.main .page'));
@@ -19,7 +21,7 @@ test('dark mode: switch, reload, settings, colours', async ({ page }) => {
     const neg = getComputedStyle(el).color; el.remove();
     return { bg: s.backgroundColor, pos, neg, theme: document.querySelector('meta[name="theme-color"]').content };
   });
-  expect(colours).toEqual({ bg: 'rgb(7, 8, 12)', pos: 'rgb(46, 240, 154)', neg: 'rgb(255, 77, 106)', theme: '#07080C' });
+  expect(colours).toEqual({ bg: 'rgb(0, 0, 0)', pos: 'rgb(46, 240, 154)', neg: 'rgb(255, 77, 106)', theme: '#000000' });
   // Settings → Display: Auto follows the device.
   await page.evaluate(() => { goPage('settings'); ui.settingsOpenSections.display = true; render(); });
   await page.emulateMedia({ colorScheme: 'light' });
