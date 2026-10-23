@@ -30,6 +30,7 @@ function paletteItems() {
   (data.assets || []).filter(a => assetStats(a.id).quantity > 0).forEach(a => add('Holdings', a.name || a.ticker, [a.ticker, a.isin].filter(Boolean).join(' · '), () => openPositionForm(a.id), 'trend'));
   (data.cryptoAssets || []).forEach(c => add('Holdings', c.name || c.symbol, c.symbol, () => { goPage('investments'); setInvestmentsTab('crypto'); }, 'bolt'));
   (data.goals || []).forEach(g => add('Goals', g.name || 'Goal', g.target ? fmtMoney(+g.target) : '', () => openGoalView(g.id), 'target'));
+  runHooks('__palette', f => f(add));
   return items;
 }
 function paletteNorm(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }

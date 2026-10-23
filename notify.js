@@ -96,6 +96,8 @@ function notifyCheck() {
 
   // A warranty ending within a month (receipts.js).
   if (notifyOn('warrantyReminders') && typeof warrantyNotify === 'function') warrantyNotify(out);
+  // Feature files: contract notice deadlines, yearly bills due…
+  runHooks('__notifiers', f => f(out));
 
   // Weekly summary — the system notification once a week (the Overview card does the rest).
   if (notifyOn('weeklySummary')) {

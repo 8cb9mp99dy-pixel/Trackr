@@ -266,6 +266,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 }
 .seg-row { background: none; box-shadow: inset 0 0 0 1px var(--fx-line); border-radius: var(--radius-sm); }
 .seg { border-radius: 4px; font-family: var(--font-num); font-size: 11.5px; letter-spacing: .02em; }
+.modal .seg, .page-head .seg, .seg.txt { font-family: var(--font-text); font-size: 12.5px; letter-spacing: 0; }
 .seg.on, html[data-mode="dark"] .seg.on { background: var(--fx-fill-2); color: var(--fx-ink); box-shadow: none; }
 /* Without fx.js placing it (or before it does), the active tab still shows a line under it. */
 .tab-row:not(.fx-has-ind) .tab-btn.active, .section-tabs:not(.fx-has-ind) button.on { box-shadow: inset 0 -2px 0 var(--fx-ink); }

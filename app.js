@@ -398,6 +398,8 @@ function defaultData() {
       newNav: false, // the beta's switch, no longer read (nav.js)
       mainAccountId: null, // the account new incomes / expenses use by default (Accounts → an account → Main account)
       sageHidden: false, // Settings → Display → Sage (sage.js): hide the round assistant
+      payday: null, // day of the month the salary arrives (spend.js); null = guessed from the biggest recurring income
+      spendBuffer: 0, // kept aside in "Safe to spend" (spend.js)
       classicNav: false, // Settings → Display → "Classic navigation": every page in the side bar (nav.js)
       applyTradesToHoldings: false, // Investments → an account → Buy: "Also update my holdings and cash"
       privacyMode: false,
@@ -455,6 +457,11 @@ function defaultData() {
     // Freelance (freelance.js): invoices you send, and VAT per quarter.
     invoices: [],
     watchlist: [],
+    ious: [], // money lent / borrowed / split with people (ious.js)
+    contracts: [], // subscriptions and contracts with their notice period (contracts.js)
+    yearlyBills: [], // irregular bills set aside for every month (setaside.js)
+    trips: [], // trips with dates and a budget (trips.js)
+    monthClose: {}, // 'YYYY-MM' → { at, note }: the month-end check (monthclose.js)
     vat: { rate: 21, pocket: '', freelanceIncludesVat: true, paid: {} },
     // Each crypto asset is tracked in one of two modes:
     //  - 'snapshot': a per-broker holding snapshot — broker, quantity, avg price, currency, no
@@ -2312,7 +2319,9 @@ function renderApp(app) {
     'manual-prices': renderManualPrices,
     'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
   };
-  const pageHtml = pageRenderers[ui.page] ? pageRenderers[ui.page]() : '';
+  // Pages from their own files register in window.__pageRenderers (trips.js, ious.js…).
+  const extraPage = window.__pageRenderers && window.__pageRenderers[ui.page];
+  const pageHtml = pageRenderers[ui.page] ? pageRenderers[ui.page]() : extraPage ? extraPage() : '';
   // Settings → Display → "New navigation (beta)" groups the same pages differently (nav.js).
   const navItems = typeof currentNavItems === 'function' ? currentNavItems() : NAV_ITEMS;
   const navActive = typeof navItemActive === 'function' ? navItemActive : item => ui.page === item.id || (item.id === 'investments' && ui.page === 'investAccount');
@@ -2402,6 +2411,11 @@ function renderModal() {
   return `<div class="modal-backdrop" onclick="if(event.target===this) closeModal()"><div class="modal${wide}">${fn(ui.modal.payload)}</div></div>`;
 }
 window.__modalRenderers = {};
+/* Registries the feature files add to: pages, Action required lines, notifications, the Add menu,
+   the palette, sheets for Export for AI / Sage, Overview cards and the transaction form. */
+window.__pageRenderers = window.__pageRenderers || {};
+['__attention', '__notifiers', '__addMenu', '__palette', '__aiSheets', '__overviewCards', '__txFormBlocks'].forEach(k => { window[k] = window[k] || []; });
+function runHooks(name, fn) { (window[name] || []).forEach(h => { try { fn(h); } catch (e) { console.warn(name, e); } }); }
 
 /* ===================== Dashboard ===================== */
 function renderDashboard() {
@@ -2466,6 +2480,7 @@ function renderDashboard() {
     ${typeof insightsHtml === 'function' ? insightsHtml() : ''}
     ${typeof overviewHeroHtml === 'function' ? `${overviewHeroHtml()}${accountChips ? `<div class="chip-scroll ov-accounts" tabindex="0" role="group" aria-label="Your accounts">${accountChips}</div>` : ''}` : classicNetWorthCard}
 
+    ${(() => { let h = ''; runHooks('__overviewCards', f => { h += f() || ''; }); return h; })()}
     ${typeof loanDashboardHtml === 'function' ? loanDashboardHtml(netWorth) : ''}
 
     ${typeof overviewMonthHtml === 'function' ? overviewMonthHtml() : classicMonthCards}
@@ -4575,6 +4590,7 @@ window.__modalRenderers.tx = function (p) {
           <div class="toggle ${p.business ? 'on' : ''}"></div>
         </div>` : ''}
         ${p.type === 'expense' && typeof txReceiptsBlockHtml === 'function' ? txReceiptsBlockHtml(p) : ''}
+        ${(() => { let h = ''; runHooks('__txFormBlocks', f => { h += f(p) || ''; }); return h; })()}
         <div class="tx-label">Personal impact</div>
         <div class="tx-chips">
           ${chip(!p.impact, `updateTxField('impact','')`, 'Neutral')}
@@ -4732,7 +4748,7 @@ function saveTxForm() {
   };
   if (p.recurringId) record.recurringId = p.recurringId;
   // Links and marks the form doesn't show are kept when you edit (an income's split, its invoice…).
-  ['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil', 'warrantyNoted'].forEach(k => { if (p[k] != null && p[k] !== '') record[k] = p[k]; });
+  ['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil', 'warrantyNoted', 'tripId'].forEach(k => { if (p[k] != null && p[k] !== '') record[k] = p[k]; });
   if (p.type === 'expense' && p.business) { record.business = true; if (p.vatRate != null && p.vatRate !== '') record.vatRate = +p.vatRate; }
   // Edited by hand: its category is yours now (off the "To review" list).
   if (p.id) { const was = data.budgetTransactions.find(t => t.id === p.id); if (was && (was.reviewed || isToReview(was))) record.reviewed = true; }

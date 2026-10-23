@@ -407,6 +407,15 @@ ${sum}${s.projectNotes ? `\n\nNotes from the user's Claude project (their own in
     if (typeof safetyToast === 'function') safetyToast('<span>The chat is copied: paste it in your Claude project.</span>', { ms: 4000 });
     window.open(s.projectUrl, '_blank', 'noopener');
   };
+  /* For other features (the receipt scan): Claude with Sage's key and model, or null without a key. */
+  window.sageClaude = async function () {
+    const s = settings();
+    if (!s.apiKey) return null;
+    const Anthropic = await loadSdk();
+    const model = MODELS.some(m => m[0] === s.model) ? s.model : MODELS[0][0];
+    return { Anthropic, model, client: new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true, maxRetries: 2 }), fallbacks: model !== 'claude-haiku-5-5' };
+  };
+  window.sageOpenSetup = function () { S.open = true; S.view = 'setup'; draw(); };
   /* Settings → Display: show or hide Sage. */
   window.sageSettingHtml = function () {
     const on = shown();

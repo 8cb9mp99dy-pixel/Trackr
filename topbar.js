@@ -111,6 +111,8 @@ function actionItems() {
       xrayAttention().forEach(x => attention.push({ key: 'xray:' + x.rule.key, icon: `<span class="add-ic" style="width:30px;height:30px;">${ic('compass', 16)}</span>`, name: 'X-ray · ' + x.rule.title, detail: escHtml(x.result.text), actions: [{ label: 'See', onclick: "closeModal();goPage('analysis')", primary: true }, { label: 'Snooze 30 days', onclick: `xraySnooze('${x.rule.key}')` }] }));
     } catch (e) { /* the checks never block the top bar */ }
   }
+  // Feature files (contracts, IOUs, trips, the month-end check…).
+  runHooks('__attention', f => f().forEach(x => attention.push(x)));
   return { attention, manual };
 }
 function confirmAccountBalance(id) {
@@ -196,7 +198,7 @@ window.__modalRenderers.addMenu = function () {
   return `
     <div class="modal-head"><div class="modal-title">Add</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="add-grid">
-      ${ADD_MENU.filter(m => !m.needs || typeof window[m.needs] === 'function').map(m => `
+      ${ADD_MENU.concat(window.__addMenu || []).filter(m => !m.needs || typeof window[m.needs] === 'function').map(m => `
         <button class="add-tile" onclick="ui.modal=null;${m.go}">
           <span class="add-ic">${ic(m.icon, 20)}</span><span><span class="add-l">${m.label}</span><span class="add-s">${m.sub}</span></span>
         </button>`).join('')}

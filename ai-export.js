@@ -202,6 +202,8 @@
     const M = monthlySheets(txs);
     const mine = [summarySheet(M), M.monthly, M.cats, transactionsSheet(txs), ownedSheet()].concat(accountsSheets(), [recurringSheet(), goalsSheet(), historySheet(), rulesSheet()]);
     if (typeof invoiceList === 'function' && invoiceList().length) mine.push(invoicesSheet(), vatSheet());
+    // Feature files add their own sheets: [name, header, rows, what it holds].
+    runHooks('__aiSheets', f => { const sh = f(); if (sh && sh[2] && sh[2].length) { mine.push(sh.slice(0, 3)); if (sh[3]) SHEET_GUIDE[sh[0]] = sh[3]; } });
     // The detailed sheets of the Excel backup, minus the ones rebuilt above.
     const skip = new Set(['Accounts', 'Pockets', 'Transactions', 'Goals', 'Net worth history']);
     const more = typeof TrackrExcelBackup !== 'undefined' ? TrackrExcelBackup.readableSheets(data).filter(([n]) => !skip.has(n)) : [];

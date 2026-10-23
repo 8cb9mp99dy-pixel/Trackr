@@ -32,6 +32,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 - **Persistence.**
   - `save()` writes localStorage, records today's history snapshot (`recordHistorySnapshot`: netWorth, portfolioValue, byType, per-holding `pos`), then syncs.
   - Sync goes through the Supabase RPCs `get_trackr_data` / `set_trackr_data`, with a stale-write guard.
+- **Feature hooks.** Files add themselves through registries made in app.js: `window.__pageRenderers` (pages), `__attention` (Action required), `__notifiers`, `__addMenu`, `__palette`, `__aiSheets` (Export for AI and Sage), `__overviewCards`, `__txFormBlocks` (the expense form); `runHooks(name, fn)` calls them safely.
 - **Undo.** Destructive or big actions are listed in `UNDO_ACTIONS` (`safety.js`); each gets 10 s of undo.
 
 ### File map
@@ -48,6 +49,14 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `yearreview.js` | Year in review: swipeable cards (Budget → Totals → Year, and an insight in Dec/Jan) |
 | `ai-export.js` | Settings → Backup & Restore → "Export for AI": one readable workbook (Read me, Summary, Monthly, Transactions, holdings…) |
 | `sage.js` | Sage: the round assistant in the corner (face SVG, eyes follow the pointer). Answers questions with Claude via the official SDK (`assets/vendor/anthropic-sdk.min.js`, loaded on first use; Opus 5.5 by default, `fallbacks: "default"`), with the user's own API key in localStorage `trackr-sage` (device only, never synced or backed up). Read-only tools run on the device: `read_sheet` (the `aiDataSheets()` sheets of ai-export.js), `search_transactions`, `sum_transactions`. Claude project: link + pasted notes; "Continue in my Claude project" copies the chat. The eye masks its amounts. Settings → Display → Sage hides it |
+| `spend.js` | Overview → Safe to spend (main balances − recurring bills/transfers before payday − buffer, per day until payday; payday guessed from the biggest recurring income or `settings.payday`); "Can I afford it?" (from main balances or savings: per day left, emergency months, goal delays, days of spending, working days) |
+| `ious.js` | Money → IOUs (`data.ious`): lent / borrowed / split per person, settle, copy a reminder (never sends), "Split with someone" on a saved expense; not in net worth |
+| `contracts.js` | Money → Contracts (`data.contracts`): cost, term end, renewal, notice → "cancel by"; Action required 30 days before (terms ≥ 3 months), notification 14 days before; "From recurring" |
+| `setaside.js` | Plan → Yearly bills (`data.yearlyBills`): per-month amount to put aside, optional pocket (on track / behind / ready), "Paid" adds the expense and moves the date |
+| `trips.js` | Money → Trips (`data.trips`, `tx.tripId`): budget, per day, pace, day bars, by category; expenses by date (bills excluded) or tagged; Overview card during a trip |
+| `patterns.js` | Plan → Patterns: heatmap of day-to-day spending, no-spend streaks, weekday averages, your own inflation (recurring price changes, categories vs a year before) |
+| `monthclose.js` | Month-end check (`data.monthClose`), offered from the 26th to the 7th: balances, to review, recurring, prices, invoices; the month in numbers; a note; Month notes journal |
+| `snap.js` | Add → Scan a receipt: Claude (Sage's key, structured JSON output) reads the photo and opens the expense form filled in, with the photo attached as the receipt |
 | `allocation.js` | Budget → Income plan: split a salary / freelance income (VAT first, then % to invest, day-to-day…) into transfers |
 | `future.js` | Goals → Future: net worth projected 5–40 years (band cautious/good, today's euros, milestones, financial-freedom number, what-if sliders) |
 | `nwmoves.js` | Wealth → "Why your net worth moved": a month split into saved / markets / other (from daily history + transactions) |
@@ -55,6 +64,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `receipts.js` | Receipts (photo/PDF, stored like goal photos) and warranties on expenses; Budget → Receipts (searchable); reminder a month before a warranty ends |
 | `interest.js` | Interest on pockets: central bank rate (ECB / Fed fetched, others typed) or own rate, optional cap; per day/week/month/year, growth, "Record interest received" (pocket + income) |
 | `appearance.js` | Light / Dark / Auto (this device only, set before the first frame in index.html); dark is the same black-and-white design inverted; switching wipes the screen in a circle from the button |
+| `features.css` | Styles of the feature pages above (same tokens as futuristic.css) |
 | `futuristic.css` / `fx.js` | The look, loaded after `styles.css`: design tokens (ink/paper greys, spacing, corners, durations, easings, gradients), monospace numbers (JetBrains Mono, equal-width digits), hairlines, dot grid; fx.js: boot scan, sliding nav/tab indicators, digit roll on changed amounts, sync dot pulse/shake, "Saved" check, View Transitions on page changes. Only transform/opacity move; all still with reduced motion. Green/red stay for gains/losses, user colours for categories |
 | `goals-visual.js` | Goals: floating bubbles filled with liquid up to each goal's progress; the goal calendar (months as a road, pins, pace ghosts, "Next up" countdown) |
 | `overview-hero.js` | Overview top: net worth with its change and a self-drawing chart (1M/3M/1Y/All, point to read a day), what it's made of (main balances · pockets · invested), this month (in/out bars, % kept ring, 6-month columns) |
@@ -65,9 +75,9 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `budget-import.js` / `rules.js` / `excel-import.js` / `trade-import.js` | Excel/CSV imports (transfers included); transaction rules engine; positions import; trades import |
 | `notify.js` / `insights.js` / `palette.js` / `quickadd.js` / `emergency.js` | alerts and notification centre, weekly summary and `.ics`; Overview insights; Cmd+K palette; Apple Pay quick-add link; emergency pack |
 | `ticker.js`, `report.js`, `motion.js` (calls `fxAfterRender`), `backup-excel.js`, `safety.js`, `sw.js` | live price bar, PDF/share, animations, Excel backup, undo/restore points/offline, service worker |
-| `nav.js` | Navigation: grouped by default (Home · Money: budget, receipts, freelance · Wealth: overview, cash, investments, watchlist, debts · Plan: goals, future, emergency, insights) with section tabs; Settings → Display → "Classic navigation" brings back every page in the side bar |
+| `nav.js` | Navigation: grouped by default (Home · Money: budget, receipts, trips, IOUs, contracts, freelance · Wealth: overview, cash, investments, watchlist, debts · Plan: goals, yearly bills, future, emergency, patterns, insights) with section tabs; Settings → Display → "Classic navigation" brings back every page in the side bar |
 
-Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js`, `receipts.js`, `interest.js`, `portfolio-chart.js`, `overview-hero.js`, `goals-visual.js` and `sage.js` is exported with `module.exports` and unit-tested in Node.
+Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js`, `receipts.js`, `interest.js`, `portfolio-chart.js`, `overview-hero.js`, `goals-visual.js`, `sage.js`, `spend.js`, `ious.js`, `contracts.js`, `setaside.js`, `trips.js`, `patterns.js`, `monthclose.js` and `snap.js` is exported with `module.exports` and unit-tested in Node.
 
 ## How to test
 
