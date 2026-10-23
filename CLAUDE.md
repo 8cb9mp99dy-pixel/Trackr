@@ -47,6 +47,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `invest.js` / `staking.js` / `loan.js` | broker/exchange pages (Buy/Sell/Convert, plans, apply to holdings, edit/rename); staking; the invested loan |
 | `yearreview.js` | Year in review: swipeable cards (Budget → Totals → Year, and an insight in Dec/Jan) |
 | `ai-export.js` | Settings → Backup & Restore → "Export for AI": one readable workbook (Read me, Summary, Monthly, Transactions, holdings…) |
+| `sage.js` | Sage: the round assistant in the corner (face SVG, eyes follow the pointer). Answers questions with Claude via the official SDK (`assets/vendor/anthropic-sdk.min.js`, loaded on first use; Opus 5.5 by default, `fallbacks: "default"`), with the user's own API key in localStorage `trackr-sage` (device only, never synced or backed up). Read-only tools run on the device: `read_sheet` (the `aiDataSheets()` sheets of ai-export.js), `search_transactions`, `sum_transactions`. Claude project: link + pasted notes; "Continue in my Claude project" copies the chat. The eye masks its amounts. Settings → Display → Sage hides it |
 | `allocation.js` | Budget → Income plan: split a salary / freelance income (VAT first, then % to invest, day-to-day…) into transfers |
 | `future.js` | Goals → Future: net worth projected 5–40 years (band cautious/good, today's euros, milestones, financial-freedom number, what-if sliders) |
 | `nwmoves.js` | Wealth → "Why your net worth moved": a month split into saved / markets / other (from daily history + transactions) |
@@ -66,7 +67,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `ticker.js`, `report.js`, `motion.js` (calls `fxAfterRender`), `backup-excel.js`, `safety.js`, `sw.js` | live price bar, PDF/share, animations, Excel backup, undo/restore points/offline, service worker |
 | `nav.js` | Navigation: grouped by default (Home · Money: budget, receipts, freelance · Wealth: overview, cash, investments, watchlist, debts · Plan: goals, future, emergency, insights) with section tabs; Settings → Display → "Classic navigation" brings back every page in the side bar |
 
-Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js`, `receipts.js`, `interest.js`, `portfolio-chart.js`, `overview-hero.js` and `goals-visual.js` is exported with `module.exports` and unit-tested in Node.
+Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js`, `receipts.js`, `interest.js`, `portfolio-chart.js`, `overview-hero.js`, `goals-visual.js` and `sage.js` is exported with `module.exports` and unit-tested in Node.
 
 ## How to test
 

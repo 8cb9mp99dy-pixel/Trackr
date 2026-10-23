@@ -132,10 +132,11 @@ function fxSuccess(label) {
   setTimeout(() => el.remove(), 1400);
 }
 
-/* ---- Page changes: View Transitions after a real tap or click, the CSS rise otherwise ---- */
+/* ---- Page changes: View Transitions after a real tap or click, the CSS rise otherwise (keyboard
+   jumps, like the palette, switch at once so what you type next lands on the new page) ---- */
 function fxViewTransition(update) {
   const ev = window.event;
-  const userAction = ev && ev.isTrusted && /^(click|pointerup|keydown)$/.test(ev.type);
+  const userAction = ev && ev.isTrusted && /^(click|pointerup)$/.test(ev.type);
   if (!userAction || fxReduced() || typeof document.startViewTransition !== 'function') { update(); return; }
   try { document.startViewTransition(update); } catch (e) { update(); }
 }

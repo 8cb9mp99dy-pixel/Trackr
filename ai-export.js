@@ -148,22 +148,22 @@
     ys.forEach(y => [1, 2, 3, 4].forEach(q => { const Q = vatQuarter(y, q); if (Q.from > todayYmd()) return; rows.push([Q.key, Q.from, Q.to, Q.deadline, r2(Q.fromInvoices), r2(Q.fromIncome), r2(Q.deductible), r2(Q.due), Q.paid ? 'yes' : 'no', Q.paid ? str(Q.paid.date) : '']); }));
     return ['VAT', ['Quarter', 'From', 'To', 'Deadline', 'VAT on invoices', 'VAT in income without invoice', 'VAT on business expenses', 'To pay', 'Paid', 'Paid on'], rows];
   }
+  const SHEET_GUIDE = {
+    'Summary': "Today's key numbers and monthly averages. Start here.",
+    'Monthly': 'One row per month: income, spending, net, savings rate, money sent to investments.',
+    'Monthly by category': 'One row per month × category × sub-category: totals, to compare spending over time.',
+    'Transactions': 'Every income, expense and transfer. "Signed EUR": income +, spending −, transfers 0 (money only moved between the user\'s own places).',
+    'Everything I own': 'Every place money sits today, with value, cost and gain (bank accounts, holdings, coins, cash at brokers).',
+    'Accounts': 'Bank accounts and the cash wallet, with their pockets total.',
+    'Pockets': 'Savings pockets inside bank accounts, with targets.',
+    'Recurring': 'Monthly recurring income, bills and transfers, and whether this month\'s was paid.',
+    'Goals': 'Savings goals and progress.',
+    'Net worth history': 'One row per day the app was opened: net worth and value by asset type.',
+    'Rules': 'The user\'s automatic categorisation rules.',
+    'Invoices': 'Freelance invoices: amounts before VAT, VAT, totals and whether they were paid.',
+    'VAT': 'VAT per quarter: collected, deductible, to pay, deadline (Dutch rule), paid or not. The user\'s only tax is VAT on freelance work.',
+  };
   function readMe(sheets, txs) {
-    const guide = {
-      'Summary': "Today's key numbers and monthly averages. Start here.",
-      'Monthly': 'One row per month: income, spending, net, savings rate, money sent to investments.',
-      'Monthly by category': 'One row per month × category × sub-category: totals, to compare spending over time.',
-      'Transactions': 'Every income, expense and transfer. "Signed EUR": income +, spending −, transfers 0 (money only moved between the user\'s own places).',
-      'Everything I own': 'Every place money sits today, with value, cost and gain (bank accounts, holdings, coins, cash at brokers).',
-      'Accounts': 'Bank accounts and the cash wallet, with their pockets total.',
-      'Pockets': 'Savings pockets inside bank accounts, with targets.',
-      'Recurring': 'Monthly recurring income, bills and transfers, and whether this month\'s was paid.',
-      'Goals': 'Savings goals and progress.',
-      'Net worth history': 'One row per day the app was opened: net worth and value by asset type.',
-      'Rules': 'The user\'s automatic categorisation rules.',
-      'Invoices': 'Freelance invoices: amounts before VAT, VAT, totals and whether they were paid.',
-      'VAT': 'VAT per quarter: collected, deductible, to pay, deadline (Dutch rule), paid or not. The user\'s only tax is VAT on freelance work.',
-    };
     const rows = [
       ['Trackr: all my data, for analysis'], [],
       ['Made on', new Date().toISOString().slice(0, 16).replace('T', ' ')],
@@ -177,7 +177,7 @@
       ['The loan', 'A bank loan whose money is invested apart is NOT the user\'s money: it is left out of net worth on purpose. It appears only in Summary, Loans and Loan portfolio.'],
       ['Added by the app', 'Recurring items are added automatically each month on their day; "Added by the app = yes" means not confirmed from a bank statement.'], [],
       ['Sheets'],
-      ...sheets.map(([name]) => [name, guide[name] || 'Detail sheet from the app (raw values as typed).']), [],
+      ...sheets.map(([name]) => [name, SHEET_GUIDE[name] || 'Detail sheet from the app (raw values as typed).']), [],
       ['Questions to ask'],
       ['1', 'Where does my money go each month, and which categories grew the most over the last 6 months?'],
       ['2', 'What is my real savings rate, and how much do I invest each month on average?'],
@@ -196,8 +196,8 @@
     ws['!freeze'] = { xSplit: 0, ySplit: 1 };
     return ws;
   }
-  /* The workbook, without saving it (also used by the tests). */
-  window.buildAiWorkbook = function () {
+  /* Every sheet as [name, header, rows], newest transactions first (the workbook and Sage read these). */
+  function allSheets() {
     const txs = (data.budgetTransactions || []).filter(t => t.date && t.date <= todayYmd()).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
     const M = monthlySheets(txs);
     const mine = [summarySheet(M), M.monthly, M.cats, transactionsSheet(txs), ownedSheet()].concat(accountsSheets(), [recurringSheet(), goalsSheet(), historySheet(), rulesSheet()]);
@@ -205,7 +205,12 @@
     // The detailed sheets of the Excel backup, minus the ones rebuilt above.
     const skip = new Set(['Accounts', 'Pockets', 'Transactions', 'Goals', 'Net worth history']);
     const more = typeof TrackrExcelBackup !== 'undefined' ? TrackrExcelBackup.readableSheets(data).filter(([n]) => !skip.has(n)) : [];
-    const all = mine.concat(more);
+    return { all: mine.concat(more), txs };
+  }
+  window.aiDataSheets = function () { return { sheets: allSheets().all, guide: SHEET_GUIDE }; };
+  /* The workbook, without saving it (also used by the tests). */
+  window.buildAiWorkbook = function () {
+    const { all, txs } = allSheets();
     const wb = XLSX.utils.book_new();
     const rm = XLSX.utils.aoa_to_sheet(readMe(all, txs));
     rm['!cols'] = [{ wch: 26 }, { wch: 110 }];
