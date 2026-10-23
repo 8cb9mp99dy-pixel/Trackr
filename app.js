@@ -4770,26 +4770,26 @@ function renderInvestments() {
   return `
   <div class="page surface-dark">
     <div class="page-head">
-      <div><h1 class="page-title">Portfolio</h1><div class="page-subtitle">Investment overview</div></div>
+      <div><h1 class="page-title">Portfolio</h1><div class="page-subtitle">${typeof portfolioChartHtml === 'function' ? `${fmtMoney(value)} with cash · invested ${fmtMoney(invested)} · EUR/USD ${eurUsd().toFixed(4)}` : 'Investment overview'}</div></div>
       <div class="row-flex" style="gap:8px;">
         ${typeof newNavOn === 'function' && newNavOn() ? '' : `<button class="btn" onclick="goPage('watchlist')" title="Prices you follow without owning them, with alerts">${ic('eye', 15)} Watchlist</button>`}
         <button class="btn" onclick="refreshPrices()" title="Fetch the latest live price for every Stock/ETF/other asset (by ISIN) and every crypto holding">${ui.assetPriceFetching || ui.cryptoPriceFetching ? '…' : '↻'} Refresh</button>
       </div>
     </div>
 
-    <div class="card-dark stack-gap-8" style="margin-bottom:20px;">
+    ${typeof portfolioChartHtml === 'function' ? portfolioChartHtml() : `<div class="card-dark stack-gap-8" style="margin-bottom:20px;">
       <div class="eyebrow">Total value — whole portfolio (${data.settings.defaultCurrency})</div>
       <div class="big-number">${fmtMoney(value)}</div>
       <div class="perf ${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
       <div style="font-size:12.5px;opacity:.65;">Invested: ${fmtMoney(invested)} · EUR/USD: ${eurUsd().toFixed(4)}</div>
-    </div>
+    </div>`}
 
-    ${typeof allocationCardHtml === 'function'
+    ${typeof portfolioChartHtml === 'function' ? '' : typeof allocationCardHtml === 'function'
       ? allocationCardHtml({ title: 'Portfolio breakdown', cls: 'card-dark', style: 'margin-bottom:20px;', link: "goPage('wealth')", empty: 'No positions yet.', segs: breakdownSegments.map(x => Object.assign({}, x, { color: typeof typeColor === 'function' ? typeColor(x.label) : x.color })) })
       : ''}
 
     ${typeof investAccountsStripHtml === 'function' ? investAccountsStripHtml() : ''}
-    ${investedByTypeCardHtml()}
+    ${typeof portfolioChartHtml === 'function' ? '' : investedByTypeCardHtml()}
 
     <div class="tab-row" style="margin-bottom:20px;">
       <button class="tab-btn ${ui.investmentsTab === 'stocks' ? 'active' : ''}" onclick="setInvestmentsTab('stocks')">Stocks &amp; ETFs</button>
