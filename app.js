@@ -2787,9 +2787,63 @@ function linkUnlinkedTo(accId) {
   const acc = accountById(accId); if (!acc) return;
   const list = accountMovesSince(acc).unlinked;
   if (!list.length || !confirm(`Link ${list.length} transaction${list.length === 1 ? '' : 's'} to ${acc.name}? Its main balance moves by them. You can undo for 10 seconds.`)) return;
-  list.forEach(t => { t.accountId = acc.id; applyTxToAccountBalance(t, 1); });
+  list.forEach(t => linkTxAccount(t, acc.id));
   save(); render();
 }
+/* Every income / expense with no account (older imports, older versions of the app). */
+function unlinkedTransactions() {
+  return (data.budgetTransactions || []).filter(t => (t.type === 'income' || t.type === 'expense') && !accountById(t.accountId) && !t.pocketInterest)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+/* Where it most likely went: the account of the last one with the same name, else the default. */
+function guessTxAccount(t) {
+  const name = String(t.comment || '').trim().toLowerCase();
+  const past = name && (data.budgetTransactions || []).filter(x => x !== t && x.type === t.type && accountById(x.accountId) && String(x.comment || '').trim().toLowerCase() === name).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+  return past ? past.accountId : defaultMoneyAccountId();
+}
+function openLinkUnlinked() {
+  const picks = {};
+  unlinkedTransactions().forEach(t => { picks[t.id] = guessTxAccount(t); });
+  ui.modal = { type: 'linkUnlinked', payload: { picks } }; render();
+}
+window.__modalRenderers.linkUnlinked = function (p) {
+  const list = unlinkedTransactions();
+  if (!list.length) return `<div class="modal-head"><div class="modal-title">Every transaction has an account</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
+    <div class="modal-actions"><button class="btn primary" onclick="closeModal()">Done</button></div>`;
+  const opts = sel => data.accounts.map(a => `<option value="${escHtml(a.id)}" ${sel === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('');
+  // What each balance would do: only the ones after its last check move it.
+  const moves = {};
+  list.forEach(t => {
+    const acc = accountById(p.picks[t.id]); if (!acc) return;
+    const checked = acc.balanceCheckedAt ? dateToYmd(new Date(acc.balanceCheckedAt)) : '';
+    if (checked && t.date <= checked) return;
+    moves[acc.id] = (moves[acc.id] || 0) + (t.type === 'income' ? 1 : -1) * convertCurrency(+t.amount || 0, t.currency, acc.currency);
+  });
+  const sg = v => (v >= 0 ? '+' : '−');
+  return `
+    <div class="modal-head"><div class="modal-title">Where did this money go?</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
+    <p class="dim" style="font-size:13px;margin:0 0 12px;">${list.length} income${list.length === 1 ? '' : 's'} / expense${list.length === 1 ? '' : 's'} ${list.length === 1 ? 'has' : 'have'} no account, so ${list.length === 1 ? 'it moves' : 'they move'} no balance. Each one is matched to the account used last time for the same name, or your main account. Ones dated before you last checked a balance are already in it, so they don't move it again.</p>
+    <div class="row-flex" style="gap:8px;margin-bottom:10px;"><span style="font-size:13px;flex:1;">All to</span><select class="mini-select" onchange="linkUnlinkedAll(this.value)"><option value="">Choose…</option>${opts('')}</select></div>
+    <div class="lu-list">${list.map(t => `<div class="lu-row"><div class="lu-txt"><b>${escHtml(t.comment || (categoryById(t.type, t.categoryId) || {}).name || 'Transaction')}</b><span class="dim">${escHtml(shortDay(t.date))}</span></div>
+      <b class="num ${t.type === 'income' ? 'positive' : 'negative'}">${t.type === 'income' ? '+' : '−'}${fmtMoney(+t.amount || 0, t.currency)}</b>
+      <select class="mini-select" aria-label="Account" onchange="ui.modal.payload.picks['${t.id}']=this.value;render();">${opts(p.picks[t.id])}</select></div>`).join('')}</div>
+    ${Object.keys(moves).length ? `<div class="lu-moves">${Object.entries(moves).map(([id, v]) => `<div class="row-flex"><span>${escHtml(accountById(id).name)}</span><b>${sg(v)}${fmtMoney(Math.abs(v), accountById(id).currency)}</b></div>`).join('')}</div>` : '<p class="dim" style="font-size:12.5px;">No balance changes: they are all older than your last balance checks.</p>'}
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">Later</button><button class="btn primary" onclick="linkUnlinkedApply()">Link ${list.length}</button></div>`;
+};
+function linkUnlinkedAll(id) { if (!id) return; Object.keys(ui.modal.payload.picks).forEach(k => { ui.modal.payload.picks[k] = id; }); render(); }
+function linkUnlinkedApply() {
+  const picks = ui.modal.payload.picks;
+  let n = 0;
+  unlinkedTransactions().forEach(t => { if (accountById(picks[t.id])) { linkTxAccount(t, picks[t.id]); n++; } });
+  closeModal(); save(); render();
+  if (typeof fxSuccess === 'function') fxSuccess(`${n} linked`);
+}
+window.__attention.push(() => {
+  const n = data.accounts.length ? unlinkedTransactions().length : 0;
+  return n ? [{ key: 'unlinked:' + n, icon: `<span class="add-ic" style="width:30px;height:30px;">${ic('bank', 16)}</span>`,
+    name: `${n} transaction${n === 1 ? '' : 's'} with no account`, detail: 'Their money goes nowhere, so no balance follows them. Link each one to its account.',
+    actions: [{ label: 'Link them', onclick: 'closeModal();openLinkUnlinked()', primary: true }] }] : [];
+});
 function setMainAccount(id) { data.settings.mainAccountId = data.settings.mainAccountId === id ? null : id; save(); render(); }
 
 function toggleAccountExpand(id) { ui.openAccountId = ui.openAccountId === id ? null : id; render(); }
@@ -4478,9 +4532,26 @@ function removePaymentMethod(id) { data.paymentMethods = data.paymentMethods.fil
    batch-add flow was dropped as redundant now that each transaction carries a lot more detail
    (name-suggestions, logo, location, description) that doesn't fit well crammed N-at-a-time.
    The same modal/payload serves both "Add" (no id) and "Edit" (existing id) — item 1. ---- */
-function blankTxDraft() {
+/* Money always goes somewhere: the account an income / expense uses when nothing else says
+   which. The main account, else the first everyday bank account, else any account ('' if none). */
+function defaultMoneyAccountId() {
   const main = data.settings.mainAccountId && accountById(data.settings.mainAccountId);
-  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: main ? main.id : '', currency: data.settings.defaultCurrency, amount: '', date: todayYmd(), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
+  if (main) return main.id;
+  const accs = data.accounts || [], cash = a => typeof isCashWallet === 'function' ? isCashWallet(a) : a.kind === 'cash';
+  const a = accs.find(x => !cash(x) && !x.countsAsInvestment && x.visibleInTotals !== false) || accs.find(x => !cash(x)) || accs[0];
+  return a ? a.id : '';
+}
+/* Links an income / expense that had no account. Its amount moves the balance only if it's newer
+   than the last time you checked that balance (older ones are already in what you typed). */
+function linkTxAccount(t, accId) {
+  const acc = accountById(accId); if (!acc || t.type === 'transfer') return false;
+  t.accountId = acc.id;
+  const checked = acc.balanceCheckedAt ? dateToYmd(new Date(acc.balanceCheckedAt)) : '';
+  if (!checked || t.date > checked) { applyTxToAccountBalance(t, 1); return true; }
+  return false;
+}
+function blankTxDraft() {
+  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: defaultMoneyAccountId(), currency: data.settings.defaultCurrency, amount: '', date: todayYmd(), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
 }
 function openTxForm(id, prefill) {
   const existing = id ? data.budgetTransactions.find(t => t.id === id) : null;
@@ -4561,9 +4632,8 @@ window.__modalRenderers.tx = function (p) {
         <label class="tx-chip ${other ? 'on' : ''} tx-date-chip">${other ? escHtml(ymdToDate(p.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })) : 'Other day'}<input type="date" value="${escHtml(p.date || '')}" onchange="updateTxField('date',this.value)"></label>
       </div>
       ${isTransfer ? '' : `
-      ${data.accounts.length ? `<div class="tx-label">Account <span style="opacity:.5;font-weight:500;">(its balance follows)</span></div>
+      ${data.accounts.length ? `<div class="tx-label">Account <span style="opacity:.5;font-weight:500;">(its balance follows)</span>${p.accountId ? '' : ' <span class="tx-need">pick one</span>'}</div>
       <div class="tx-chips">
-        ${chip(!p.accountId, `updateTxField('accountId','')`, 'None')}
         ${data.accounts.map(a => chip(p.accountId === a.id, `updateTxField('accountId','${a.id}')`, `${escHtml(a.name)}`)).join('')}
       </div>` : ''}
       <div class="tx-label">Paid with</div>
@@ -4733,6 +4803,8 @@ function saveTxForm() {
     if (isNaN(amt) || amt <= 0) { alert('Enter an amount greater than zero.'); return; }
     if (!transferEndpoint(p.from) || !transferEndpoint(p.to)) { alert("One of those places doesn't exist anymore — pick it again."); return; }
   } else if (!p.categoryId || p.amount === '' || isNaN(parseFloat(p.amount))) return;
+  // Money always goes somewhere: an income or expense needs its account.
+  if (!isTransfer && data.accounts.length && !accountById(p.accountId)) { alert('Choose the account this money went through, so its balance follows.'); return; }
   const comment = (p.comment || '').trim();
   // One logo per name: a blank logo takes the one already used for this name (else a matching
   // built-in logo); a logo set here is then shared with every transaction of that name (below).
@@ -4772,7 +4844,10 @@ function saveTxForm() {
   }
   if (prior) data.budgetTransactions[idx] = record;
   else data.budgetTransactions.push(record);
-  applyTxToAccountBalance(record, 1);
+  // One that had no account gets linked like the "link" buttons do (older than the balance check:
+  // already in it); everything else moves its balance as before.
+  if (prior && !isTransfer && !prior.accountId) linkTxAccount(record, record.accountId);
+  else applyTxToAccountBalance(record, 1);
   if (record.logo && record.comment) shareTxLogoByName(record.comment, record.logo);
   if (isTransfer && p._invest != null) { const tp = parseTransferRef(record.to) || {}; const ta = tp.kind === 'acc' && accountById(tp.accountId); if (ta) ta.countsAsInvestment = !!p._invest; }
   attachToRecurringSeries(record, { setDay: !!prior && prior.nature === 'Fixed' });

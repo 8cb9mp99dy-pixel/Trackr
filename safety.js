@@ -60,7 +60,7 @@ const UNDO_ACTIONS = {
   deleteSnapshotRow: 'Holding removed', deleteCryptoExchange: 'Exchange deleted', deleteCryptoExchangeCash: 'Exchange cash removed', deleteTrade: 'Trade deleted',
   removeCategory: 'Category deleted', removeSubcategory: 'Sub-category deleted', removePaymentMethod: 'Payment method deleted',
   stopRecurringSeries: 'Recurring item stopped', deleteLoan: 'Loan deleted', deleteLoanPosition: 'Loan position removed', deleteLoanStatement: 'Statement deleted',
-  loanMoveHoldings: 'Positions moved to the loan', biApply: 'Transactions imported', applyExcelImport: 'Positions imported',
+  loanMoveHoldings: 'Positions moved to the loan', biApply: 'Transactions imported', linkUnlinkedApply: 'Transactions linked', applyExcelImport: 'Positions imported',
   resolveSyncConflictUseRemote: "Switched to the cloud's data", resolveSyncConflictKeepLocal: "Kept this device's data",
   pushSupabaseSyncOverwrite: 'Cloud replaced with this device', saveTxForm: null,
   saveInvoice: 'Invoice saved', deleteInvoice: 'Invoice deleted', setInvoiceStatus: 'Invoice updated', markInvoicePaid: 'Payment recorded', markVatPaid: 'VAT payment recorded', unmarkVatPaid: 'VAT payment removed', reviewSetCategory: 'Category changed', reviewLooksRight: 'Kept', reviewAllRight: 'All kept', recurringConfirm: 'Marked paid', recurringMarkMissed: 'Marked missed', recurringUnmiss: 'Marked paid', saveRecurringAmount: 'Amount changed', saveWalletModal: 'Wallet updated', applyIncomeSplit: 'Income split', skipIncomeSplit: 'Income left as it is', deleteLiability: 'Debt removed', deleteCryptoAtExchange: 'Holding removed', deleteGoal: 'Goal deleted', confirmTrade: 'Trade recorded',

@@ -203,3 +203,16 @@
 .sn-scan { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--g-scan); box-shadow: 0 0 12px rgba(255,255,255,.6); animation: snScan 1.6s var(--ease-in-out) infinite alternate; }
 @keyframes snScan { from { transform: translateY(0); } to { transform: translateY(338px); } }
 @media (prefers-reduced-motion: reduce) { .sn-scan { animation: none; top: 50%; } }
+
+/* ---------- Money always goes somewhere (app.js linkUnlinked, budget-import.js) ---------- */
+.tx-need { margin-left: 6px; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--fx-ink); color: var(--fx-ink); opacity: 1; }
+.bi-noacc { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--fx-line-strong); font-size: 13px; line-height: 1.5; }
+.bi-noacc .btn { margin-left: 6px; }
+.lu-list { max-height: min(46vh, 420px); overflow-y: auto; border-top: 1px solid var(--fx-line); }
+.lu-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--fx-line); }
+.lu-txt { min-width: 0; display: flex; flex-direction: column; }
+.lu-txt b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lu-txt span { font-size: 11.5px; }
+.lu-row .num { font-size: 13.5px; white-space: nowrap; }
+.lu-row select { grid-column: 1 / -1; width: 100%; }
+.lu-moves { margin: 12px 0 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--fx-fill); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }

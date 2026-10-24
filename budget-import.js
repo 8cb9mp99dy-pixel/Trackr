@@ -831,6 +831,8 @@ async function biHandleFile(file) {
     ui.budgetImport = Object.assign({ step: 'preview', fileName: file.name, sources, opts, detected,
       sheetNames: sources.map(x => x.sheetName), mapping: sources[0].mapping, ignored: sources[0].ignored,
       balanceMode: 'smart', defaultAccountId: '' }, biBuild(sources, opts));
+    // Money always goes somewhere: rows without an account go to the main account by default.
+    biSetDefaultAccount(typeof defaultMoneyAccountId === 'function' ? defaultMoneyAccountId() : '', true);
     render();
   } catch (e) {
     ui.budgetImport = { step: 'start', error: `Couldn't import ${file.name}: ${e && e.message ? e.message : e}` };
@@ -958,10 +960,10 @@ function biPreviewHtml(st) {
         <div style="margin-top:8px;line-height:1.7;">${st.mapping.map(m => `<span class="chip" style="cursor:default;font-size:12px;padding:4px 9px;">${escHtml(m.label)} ← “${escHtml(m.header)}”</span>`).join(' ')}</div>
         ${st.ignored.length ? `<div style="margin-top:6px;opacity:.6;">Ignored: ${st.ignored.map(escHtml).join(', ')}</div>` : ''}
       </details>
+      ${needsAccount && !data.accounts.length ? `<div class="bi-noacc"><strong>Add an account first.</strong> Every income and expense goes in or out of an account, so its balance follows. <button class="btn small" onclick="goPage('accounts');openAccountForm()">Add an account</button></div>` : ''}
       ${needsAccount && data.accounts.length ? `<label class="row-flex" style="gap:12px;margin-bottom:10px;">
-        <span style="font-size:13px;line-height:1.45;"><strong>Account for rows without one</strong><br><span style="opacity:.6;">Handy for a bank statement: link every row to that bank account.</span></span>
+        <span style="font-size:13px;line-height:1.45;"><strong>Rows without an account go to</strong><br><span style="opacity:.6;">Every income and expense lands in an account. For a bank statement, pick that bank.</span></span>
         <select onchange="biSetDefaultAccount(this.value)" style="max-width:180px;flex:none;">
-          <option value="">None</option>
           ${data.accounts.map(a => `<option value="${a.id}" ${st.defaultAccountId === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}
         </select>
       </label>` : ''}
@@ -1016,7 +1018,7 @@ function biSetTransferSide(i, side, ref) {
   if (!r.duplicate) r.included = biTransferReady(r, st) && !r.pending;
   render();
 }
-function biSetDefaultAccount(id) {
+function biSetDefaultAccount(id, quiet) {
   const st = ui.budgetImport;
   st.defaultAccountId = id;
   st.rows.forEach(r => {
@@ -1025,7 +1027,7 @@ function biSetDefaultAccount(id) {
     biMarkTransferDuplicates([r], st);
     if (!r.duplicate) r.included = biTransferReady(r, st) && !r.pending;
   });
-  render();
+  if (!quiet) render();
 }
 /* "Not a transfer": back to income / expense as it would have been read. */
 function biUntransfer(i) {
@@ -1118,6 +1120,8 @@ async function biApply() {
   if (!st) return;
   const sel = st.rows.filter(r => r.included && biTransferReady(r, st));
   if (!sel.length) return;
+  // Money always goes somewhere: no income / expense is imported without an account.
+  if (sel.some(r => r.type !== 'transfer' && !accountById(r.accountId) && !accountById(st.defaultAccountId))) { alert('Add an account first: every income and expense goes in or out of an account.'); return; }
   const created = { cats: 0, subs: 0 };
   const imported = [];
   let replaced = 0, balanceRows = 0;
