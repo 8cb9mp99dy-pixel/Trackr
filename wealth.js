@@ -128,11 +128,16 @@ function groupRows(rows, by) {
     return g;
   });
 }
+/* A type's colour where there's no ranking to go by: the one you picked, else one of five greys
+   (always the same for a name). Charts use chartShade() instead: greys by size. */
 function typeColor(type) {
-  const fixed = { 'Bank account': '#9AA3B5', Savings: '#22A39F', Cash: '#B9C0CE', 'Loan portfolio': '#C9CDD6', 'Bank loan': '#E5484D', Debt: '#E8963C' };
-  return fixed[type] || (typeof assetTypeColor === 'function' ? assetTypeColor(type) : hashColor(type));
+  const own = data.settings.assetTypeColors && data.settings.assetTypeColors[type];
+  if (own) return own;
+  let h = 0;
+  for (const ch of String(type)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return fxShade(h % 5, 5);
 }
-function typeDotHtml(type) { return `<span style="width:26px;height:26px;border-radius:8px;background:${typeColor(type)}22;display:inline-flex;align-items:center;justify-content:center;flex:none;"><span style="width:10px;height:10px;border-radius:3px;background:${typeColor(type)};"></span></span>`; }
+function typeDotHtml(type) { return `<span style="width:26px;height:26px;border-radius:8px;background:color-mix(in srgb, ${typeColor(type)} 14%, transparent);display:inline-flex;align-items:center;justify-content:center;flex:none;"><span style="width:10px;height:10px;border-radius:3px;background:${typeColor(type)};"></span></span>`; }
 
 function renderWealth() {
   const tab = ui.wealthTab === 'liabilities' ? 'liabilities' : 'assets';
@@ -184,8 +189,7 @@ function wealthAllocationCardHtml(rows, tab) {
   const shown = rows.filter(r => !r.loan || tab === 'assets');
   const groups = groupRows(shown.filter(r => r.value > 0), by === 'asset' ? 'asset' : by).sort((a, b) => b.value - a.value);
   const total = groups.reduce((s, g) => s + g.value, 0);
-  const colorOf = g => by === 'type' ? typeColor(g.name) : hashColor(g.name);
-  const segs = groups.map(g => ({ label: g.name, value: g.value, color: colorOf(g) }));
+  const segs = groups.map((g, i) => ({ label: g.name, value: g.value, color: by === 'type' ? chartShade(g.name, i, groups.length) : fxShade(i, groups.length) }));
   const focus = ui.wealthFocus != null ? segs[ui.wealthFocus] : null;
   const center = focus ? `<div class="donut-center"><b>${fmtMoney(focus.value)}</b><span>${escHtml(focus.label)} · ${(focus.value / (total || 1) * 100).toFixed(1)}%</span></div>` : `<div class="donut-center"><b>${fmtMoney(total)}</b><span>Total</span></div>`;
   return `
@@ -229,7 +233,7 @@ function wealthDonutSvg(segs) {
       : `M ${c + r * Math.cos(sa)} ${c + r * Math.sin(sa)} A ${r} ${r} 0 ${large} 1 ${c + r * Math.cos(ea)} ${c + r * Math.sin(ea)}`;
     a0 = a1;
     const on = ui.wealthFocus === i, dim = ui.wealthFocus != null && !on;
-    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${on ? stroke + 6 : stroke}" opacity="${dim ? 0.35 : 1}" style="cursor:pointer;" onpointerenter="wealthDonutFocus(${i})" onclick="wealthDonutFocus(${i})"><title>${escHtml(s.label)}</title></path>`;
+    return `<path d="${d}" fill="none" stroke-width="${on ? stroke + 6 : stroke}" opacity="${dim ? 0.35 : 1}" style="stroke:${s.color};cursor:pointer;" onpointerenter="wealthDonutFocus(${i})" onclick="wealthDonutFocus(${i})"><title>${escHtml(s.label)}</title></path>`;
   }).join('')}</svg>`;
 }
 function wealthDonutFocus(i) { if (ui.wealthFocus === i) return; ui.wealthFocus = i; render(); }
@@ -249,7 +253,7 @@ function wealthCompareHtml(rows) {
         const now = (byType[k] || 0) / total * 100, tgt = t[k] != null && t[k] !== '' ? +t[k] : null;
         const gapEur = tgt != null ? (tgt / 100 * total) - (byType[k] || 0) : null;
         return `<div class="cmp-row">
-          <span class="alloc-name"><span class="donut-swatch" style="background:${typeColor(k)};"></span>${escHtml(k)}</span>
+          <span class="alloc-name"><span class="donut-swatch" style="background:${chartShade(k, types.indexOf(k), types.length)};"></span>${escHtml(k)}</span>
           <span>${now.toFixed(1)}%</span>
           <span><input class="cmp-input" type="number" min="0" max="100" step="1" inputmode="decimal" value="${tgt != null ? tgt : ''}" placeholder="—" onchange="setTargetAllocation('${escHtml(k).replace(/'/g, "\\'")}', this.value)" aria-label="Target % for ${escHtml(k)}">%</span>
           <span class="${gapEur == null ? '' : gapEur >= 0 ? 'positive' : 'negative'}" style="font-size:12.5px;">${gapEur == null ? '—' : `${gapEur >= 0 ? '+' : '−'}${fmtMoney(Math.abs(gapEur))}`}</span>
@@ -301,19 +305,20 @@ function wealthTableHtml(rows, tab, period) {
   const periodLbl = period === 'All' ? 'All' : period;
   return `
     <div class="wt-tools">
-      <div class="wt-filters">${chip('types', 'Type', allTypes, f.types)}${chip('insts', 'Institution', allInsts, f.insts)}</div>
-      <div class="wt-right">
-        <label class="switch-row"><span>Group by type</span><button class="toggle ${ui.wealthGroupByType ? 'on' : ''}" onclick="ui.wealthGroupByType=!ui.wealthGroupByType;render()" aria-label="Group by type"></button></label>
-        <label class="wt-search">${ic('search', 15)}<input id="wealth-search" placeholder="Search" value="${escHtml(ui.wealthSearch || '')}" oninput="setWealthSearch(this.value)"></label>
+      <label class="wt-search">${ic('search', 16)}<input id="wealth-search" placeholder="Search ${tab === 'liabilities' ? 'debts' : 'what you own'}" value="${escHtml(ui.wealthSearch || '')}" oninput="setWealthSearch(this.value)"></label>
+      <div class="wt-filters">
+        ${chip('types', 'Type', allTypes, f.types)}${chip('insts', 'Institution', allInsts, f.insts)}
+        <button class="filter-chip ${ui.wealthGroupByType ? 'on' : ''}" role="switch" aria-checked="${!!ui.wealthGroupByType}" aria-label="Group by type" onclick="ui.wealthGroupByType=!ui.wealthGroupByType;render()">${ui.wealthGroupByType ? ic('check', 13) + ' ' : ''}Group by type</button>
+        ${tab === 'assets' && typeof loanList === 'function' && loanList().some(L => loanPositions(L).length) ? `<button class="filter-chip ${ui.wealthShowLoan ? 'on' : ''}" role="switch" aria-checked="${!!ui.wealthShowLoan}" aria-label="Show the loan portfolio" onclick="ui.wealthShowLoan=!ui.wealthShowLoan;render()">${ui.wealthShowLoan ? ic('check', 13) + ' ' : ''}Loan portfolio</button>` : ''}
       </div>
+      ${tab === 'assets' && ui.wealthShowLoan ? '<div class="wt-note">The loan portfolio is shown dimmed: not your money, never in the totals.</div>' : ''}
     </div>
-    ${tab === 'assets' && typeof loanList === 'function' && loanList().some(L => loanPositions(L).length) ? `<label class="switch-row" style="margin:-4px 0 10px;"><button class="toggle ${ui.wealthShowLoan ? 'on' : ''}" onclick="ui.wealthShowLoan=!ui.wealthShowLoan;render()" aria-label="Show the loan portfolio"></button><span>Show the loan portfolio <span style="opacity:.65;">(not your money, never in the totals)</span></span></label>` : ''}
     <div class="wt">
       <div class="wt-head">
         ${th('name', 'Name', 'c-name')}${th('type', 'Type', 'c-type')}${th('alloc', 'Allocation', 'c-alloc')}${th('value', 'Value', 'c-val')}${th('pl', '+/- value', 'c-pl')}${th('var', `Change ${periodLbl}`, 'c-var')}<span class="c-menu"></span>
       </div>
       <div class="wt-row wt-total">
-        <div class="c-name"><b>Total</b> <span class="count-pill">${shown.length} line${shown.length !== 1 ? 's' : ''}</span></div>
+        <div class="c-name"><span class="eyebrow">Total · ${shown.length} line${shown.length !== 1 ? 's' : ''}</span></div>
         <div class="c-type"></div><div class="c-alloc"></div>
         <div class="c-val"><b>${tab === 'liabilities' && total ? '−' : ''}${fmtMoney(total)}</b></div>
         <div class="c-pl">${sumCost ? plCellHtml(sumValWithCost - sumCost, sumCost) : '<span class="dim">—</span>'}</div>

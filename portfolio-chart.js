@@ -81,7 +81,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   const typeShort = t => (t === 'Private Equity' ? 'PE' : t === 'Real Estate' ? 'RE' : String(t || '?').slice(0, 2));
   function logoChip(it, size) {
-    if (it.type_) return `<span class="pc-dot" style="background:${typeof assetGroupColor === 'function' ? assetGroupColor(it.type) : assetTypeColor(it.type)};"></span>`;
+    if (it.type_) return `<span class="pc-dot" style="background:${it.shade};"></span>`;
     return assetLogoHtml(it.logo, it.type, size);
   }
   function gainHtml(v, pct) {
@@ -96,6 +96,8 @@ if (typeof module !== 'undefined' && module.exports) {
   window.portfolioChartHtml = function () {
     const mode = ui.pcMode === 'types' ? 'types' : 'positions';
     const items = pcItems(mode).sort((a, b) => b.value - a.value);
+    // Types: greys by size (or the colour you picked for that type).
+    items.forEach((it, i) => { if (it.type_) it.shade = chartShade(it.type, i, items.length); });
     const total = items.reduce((s, x) => s + x.value, 0), cost = items.reduce((s, x) => s + x.cost, 0);
     const gain = total - cost, gpct = cost ? gain / cost * 100 : 0;
     const head = `<div class="pc-head">
@@ -116,7 +118,7 @@ if (typeof module !== 'undefined' && module.exports) {
       <div class="pc-body">
         <div class="pc-chart ${sel >= 0 ? 'has-sel' : ''} ${mode === 'types' ? 'typed' : ''}">
           <svg viewBox="0 0 520 520" role="img" aria-label="Your ${mode} by value">
-            <g class="pc-ring">${arcs.map((a, i) => `<path class="pc-slice ${i === sel ? 'on' : ''}" data-k="${escHtml(items[i].key)}" d="${arcPath(a.a0, a.a1)}" style="--d:${(i * 0.035).toFixed(3)}s;${items[i].type_ && typeof assetGroupColor === 'function' ? `--c:${assetGroupColor(items[i].type)};` : ''}" onpointerenter="pcHover('${escHtml(items[i].key)}')" onclick="pcPick('${escHtml(items[i].key)}')"><title>${escHtml(items[i].name)} · ${a.share.toFixed(1)}%</title></path>`).join('')}</g>
+            <g class="pc-ring">${arcs.map((a, i) => `<path class="pc-slice ${i === sel ? 'on' : ''}" data-k="${escHtml(items[i].key)}" d="${arcPath(a.a0, a.a1)}" style="--d:${(i * 0.035).toFixed(3)}s;${items[i].type_ ? `--c:${items[i].shade};` : ''}" onpointerenter="pcHover('${escHtml(items[i].key)}')" onclick="pcPick('${escHtml(items[i].key)}')"><title>${escHtml(items[i].name)} · ${a.share.toFixed(1)}%</title></path>`).join('')}</g>
           </svg>
           ${placeLabels(labelled).map(({ a, i, x, y }, n) => `<button class="pc-lbl ${i === sel ? 'on' : ''}" data-k="${escHtml(items[i].key)}" style="left:${(x / 5.2).toFixed(2)}%;top:${(y / 5.2).toFixed(2)}%;--d:${(0.35 + n * 0.05).toFixed(2)}s" onpointerenter="pcHover('${escHtml(items[i].key)}')" onclick="pcPick('${escHtml(items[i].key)}')" aria-label="${escHtml(items[i].name)} ${a.share.toFixed(1)}%">${logoChip(items[i], 22)}<b>${a.share.toFixed(2)}%</b></button>`).join('')}
           <button class="pc-center" onclick="pcPick(null)" aria-label="Show the total">${centerHtml(items[sel], total, sel >= 0 ? arcs[sel].share : 0)}</button>
@@ -125,8 +127,8 @@ if (typeof module !== 'undefined' && module.exports) {
           <div class="pc-list-head"><label class="pc-sort">Sort by <select onchange="ui.pcSort=this.value;render()">${[['size', 'Size'], ['gain', 'Gain'], ['name', 'Name']].map(([k, l]) => `<option value="${k}" ${(ui.pcSort || 'size') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label><span class="dim">${items.length} ${mode === 'types' ? 'type' : 'position'}${items.length === 1 ? '' : 's'}</span></div>
           <div class="pc-rows">${list.map((it, n) => `<div class="pc-row ${it.key === ui.pcSel ? 'on' : ''}" data-k="${escHtml(it.key)}" style="--d:${(0.2 + n * 0.03).toFixed(2)}s" onpointerenter="pcHover('${escHtml(it.key)}')" onclick="pcPick('${escHtml(it.key)}')">
               ${logoChip(it, 32)}
-              <div class="pc-nm"><div class="pc-n1">${escHtml(it.name)}</div><div class="pc-n2">${it.type_ ? `<span class="pc-q">${it.n} position${it.n === 1 ? '' : 's'}</span> <b>${fmtMoney(it.value)}</b> <span class="dim">· invested ${fmtMoney(it.cost)}${it.ret != null ? ` · 5-yr avg ${it.ret.toFixed(1)}%` : ''}</span>` : `<span class="pc-q">×${fmtQty(it.qty)}</span> <b>${fmtMoney(it.value)}</b>`}</div></div>
-              <div class="pc-g">${gainHtml(it.gain, it.type_ ? it.pct : null)}</div>
+              <div class="pc-nm"><div class="pc-n1">${escHtml(it.name)}</div><div class="pc-n2">${(total ? it.value / total * 100 : 0).toFixed(1)}% · ${it.type_ ? `${it.n} position${it.n === 1 ? '' : 's'} · invested ${fmtMoney(it.cost)}${it.ret != null ? ` · 5-yr avg ${it.ret.toFixed(1)}%` : ''}` : `×${fmtQty(it.qty)}`}</div></div>
+              <div class="pc-v"><b>${fmtMoney(it.value)}</b><div class="pc-g">${gainHtml(it.gain, it.pct)}</div></div>
               ${it.open && it.key === ui.pcSel ? `<button class="icon-btn-round pc-open" aria-label="Open ${escHtml(it.name)}" onclick="event.stopPropagation();${it.open}">${ic('chevronRight', 15)}</button>` : ''}
             </div>`).join('')}</div>
         </div>

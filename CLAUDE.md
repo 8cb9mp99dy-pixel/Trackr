@@ -4,7 +4,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 
 ## Hard rules
 
-1. **Look.** Minimalist black and white, very few emojis. Don't change the logo. No new hues (since 23 Oct 2026): greys and opacities of ink/paper only (`futuristic.css` tokens); green/red only for gains and losses, user-chosen colours for categories. Animate only transform and opacity; every animation needs a still fallback under reduced motion.
+1. **Look.** Minimalist black and white, very few emojis. Don't change the logo. No new hues (since 23 Oct 2026): greys and opacities of ink/paper only (`futuristic.css` tokens); green/red only for gains and losses, user-chosen colours for categories. Chart slices use `fxShade(i, n)` / `chartShade(type, i, n)` (app.js): greys by size, or the colour the user picked for that type. Animate only transform and opacity; every animation needs a still fallback under reduced motion.
 2. **No connections.** Nothing connects to banks or brokers. Data is typed in, imported from Excel/CSV, or priced from free public market data.
 3. **No real money.** Nothing places a real order or moves real money. Buy/Sell/Convert only *record* a trade; "apply to holdings" is opt-in and asks first.
 4. **The loan.** The invested bank loan is "not my money" and stays OUT of net worth everywhere. It appears only on its own card and page, in X-ray "loan covered", and in the box 3 estimate (as an asset plus a debt, for tax only).

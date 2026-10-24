@@ -143,9 +143,8 @@ function brokerBreakdownRows() {
     (data.cryptoAssets || []).forEach(c => cryptoByExchange(c.symbol).filter(x => txNameKey(x.exchange) === txNameKey(acc.name)).forEach(x => { cost += x.costEUR; valueWithCost += x.valueEUR; }));
     const value = holdings.reduce((s, h) => s + h.value, 0) + cash;
     return { acc, key: acc.kind + ':' + acc.id, name: acc.name, logo: acc.logo, value, cash, count: holdings.length, gain: valueWithCost - cost, cost };
-  }).filter(r => r.value > 0).sort((a, b) => b.value - a.value).map((r, i) => Object.assign(r, { color: BROKER_COLORS[i % BROKER_COLORS.length] }));
+  }).filter(r => r.value > 0).sort((a, b) => b.value - a.value).map((r, i, all) => Object.assign(r, { color: fxShade(i, all.length) }));
 }
-const BROKER_COLORS = ['#3B5BDB', '#4FA6D9', '#22A39F', '#E8963C', '#8B5CF6', '#E5484D', '#9AA3B5'];
 function overviewBrokersCardHtml() {
   const rows = brokerBreakdownRows();
   const total = rows.reduce((s, r) => s + r.value, 0);
@@ -169,7 +168,8 @@ function overviewBrokersCardHtml() {
    own), Investments (only what's invested) — same donut, legend and colours as Wealth, whose page
    adds grouping and the target comparison on top. Hovering or tapping a line highlights it. */
 function allocationCardHtml(opts) {
-  const segs = opts.segs.filter(s => s.value > 0).sort((a, b) => b.value - a.value);
+  const segs = opts.segs.filter(s => s.value > 0).sort((a, b) => b.value - a.value)
+    .map((s, i, all) => Object.assign({}, s, { color: chartShade(s.label, i, all.length) }));
   const total = segs.reduce((s, x) => s + x.value, 0);
   const focus = ui.wealthFocus != null ? segs[ui.wealthFocus] : null;
   return `

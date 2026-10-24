@@ -310,7 +310,38 @@ html[data-mode="dark"] .ov-ring-fg.up, html[data-mode="dark"] .ov-ring-fg.down {
 .pc-slice:nth-child(3n) { fill-opacity: .32; }
 .pc-chart.has-sel .pc-slice, html[data-mode="dark"] .pc-chart.has-sel .pc-slice { fill: var(--fx-ink); fill-opacity: .1; }
 .pc-chart .pc-slice.on, .pc-chart.has-sel .pc-slice.on { fill: var(--fx-ink); fill-opacity: 1; }
-.pc-chart.typed .pc-slice, .pc-chart.typed.has-sel .pc-slice, .pc-chart.typed.has-sel .pc-slice.on { fill: var(--c, var(--fx-faint)); fill-opacity: 1; }
+.pc-chart.typed .pc-slice, .pc-chart.typed .pc-slice.on { fill: var(--c, var(--fx-faint)); fill-opacity: 1; }
+.pc-chart.typed.has-sel .pc-slice { fill: var(--c, var(--fx-faint)); fill-opacity: .2; }
+.pc-chart.typed.has-sel .pc-slice.on { fill-opacity: 1; }
+
+/* Portfolio list: name and share on the left, value and gain on the right; nothing spills out */
+.pc-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-auto-flow: column; gap: 12px; padding: 10px; border-radius: 10px; }
+.pc-row .pc-dot { width: 14px; height: 14px; margin: 0 9px; border-radius: 4px; }
+.pc-n2 { display: block; margin-top: 2px; font-size: 12px; color: var(--fx-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-v { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.pc-v b { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pc-v .pc-g { font-size: 12px; font-weight: 600; }
+.pc-list-head { padding: 0 10px; color: var(--fx-dim); }
+.pc-list-head .pc-sort { color: var(--fx-ink); }
+@media (max-width: 640px) {
+  .pc-lbl { display: none; }   /* the list says each share; labels around a small ring only crowd it */
+  .pc-chart { max-width: 340px; margin: -34px auto -26px; }   /* the room kept for labels isn't needed here */
+  .pc-row { padding: 10px 4px; gap: 10px; }
+}
+
+/* Wealth list: search on top, then one row of filter chips; hairlines, no grey blocks */
+.wt-tools { display: flex; flex-direction: column; align-items: stretch; gap: 10px; margin-bottom: 14px; }
+.wt-search { display: flex; width: 100%; padding: 10px 12px; gap: 8px; border-radius: 12px; border: 1px solid var(--fx-line); background: var(--fx-fill); color: var(--fx-dim); }
+.wt-search input { flex: 1; width: auto; min-width: 0; font-size: 14px; color: var(--fx-ink); }
+.wt-search:focus-within { border-color: var(--fx-ink); }
+.wt-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-chip { border: 1px solid var(--fx-line); color: var(--fx-ink); background: none; padding: 7px 12px; }
+.filter-chip:hover { border-color: var(--fx-line-strong); }
+.wt-note { font-size: 12px; color: var(--fx-dim); }
+.wt-total, html[data-mode="dark"] .wt-total { background: none; border-radius: 0; margin: 0; border-bottom: 1px solid var(--fx-line-strong); }
+.wt-total .eyebrow { margin: 0; }
+.wt-row .nm-2 { color: var(--fx-dim); }
+.wt-row:not(.wt-total):hover { background: var(--fx-fill); }
 html[data-mode="dark"] .pc-slice { stroke: var(--fx-paper); }
 html[data-mode="dark"] .pc-lbl { background: var(--fx-fill-2); }
 html[data-mode="dark"] .pc-lbl.on { background: #1A1A1C; }

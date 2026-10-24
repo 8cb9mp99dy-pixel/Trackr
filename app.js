@@ -31,6 +31,13 @@ const ASSET_TYPE_COLORS = { Stocks: '#6C63FF', ETFs: '#4FA6D9', Crypto: '#E8963C
 function assetTypeColor(type) {
   return (data.settings.assetTypeColors && data.settings.assetTypeColors[type]) || ASSET_TYPE_COLORS[type] || '#8A8DA0';
 }
+/* Black and white: the i-th of n slices of a chart is a grey, darkest first (mixed with the
+   paper, so it's solid in both modes). A colour you picked for a type (assetTypeColors) stays. */
+function fxShade(i, n) {
+  const k = n > 1 ? Math.min(1, i / (n - 1)) : 0;
+  return `color-mix(in srgb, var(--fx-ink) ${Math.round(88 - k * 66)}%, var(--fx-paper))`;
+}
+function chartShade(type, i, n) { return (data.settings.assetTypeColors && data.settings.assetTypeColors[type]) || fxShade(i, n); }
 /* ---- Investment type (your own grouping) and 5-year average return ----
    Separate from the asset category (Stocks / ETFs / Gold… which decides the tab it shows in):
    what the investment really is — World equities, Bonds, Gold, Energy… — used by "Invested by
@@ -4961,7 +4968,7 @@ function positionQuickActionsHtml(opts) {
     <div class="grid-3" style="margin-bottom:22px;">
       <button class="btn primary" onclick="${addAction}">${addLabel}</button>
       <button class="btn" onclick="goPositionsImport()" title="Update all positions, prices and cash of your brokers from one Excel/CSV file">Import Excel</button>
-      <button class="btn" style="background:#F5E7C4;color:#12141C;border-color:#F5E7C4;" onclick="goManualPrices()">Manual Prices</button>
+      <button class="btn" onclick="goManualPrices()">Manual Prices</button>
     </div>`;
 }
 /* Shared "Brokers" card, used the same way on both the Stocks & ETFs tab (full detail: cash
