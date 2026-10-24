@@ -111,7 +111,6 @@ const ICON_PATHS = {
   maximize: '<path d="M4 8v-2a2 2 0 0 1 2 -2h2"/><path d="M4 16v2a2 2 0 0 0 2 2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M16 20h2a2 2 0 0 0 2 -2v-2"/>',
   swap: '<path d="M7 10h14l-4 -4"/><path d="M17 14h-14l4 4"/>',
   folder: '<path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/>',
-  arrowUp: '<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>',
   x: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
   check: '<path d="M5 12l5 5l10 -10"/>',
   refresh: '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>',
@@ -397,7 +396,7 @@ function defaultData() {
       budgetLimitsBeta: false, // Settings → Display → "Category budgets (beta)"
       newNav: false, // the beta's switch, no longer read (nav.js)
       mainAccountId: null, // the account new incomes / expenses use by default (Accounts → an account → Main account)
-      sageHidden: false, // Settings → Display → Sage (sage.js): hide the round assistant
+      sageHidden: false, // unused since Sage was removed (24 Oct 2026); kept so old documents keep their shape
       payday: null, // day of the month the salary arrives (spend.js); null = guessed from the biggest recurring income
       spendBuffer: 0, // kept aside in "Safe to spend" (spend.js)
       classicNav: false, // Settings → Display → "Classic navigation": every page in the side bar (nav.js)
@@ -2275,7 +2274,6 @@ function render() {
     document.documentElement.classList.toggle('no-perf', data.settings.showPerformanceIndicators === false);
     if (typeof afterRenderMotion === 'function') afterRenderMotion(app);
     if (typeof notifyAfterRender === 'function') notifyAfterRender();
-    if (typeof sageAfterRender === 'function') sageAfterRender();
   } catch (e) {
     console.error('Render failed', e);
     renderCrashScreen(app, e);
@@ -2412,7 +2410,7 @@ function renderModal() {
 }
 window.__modalRenderers = {};
 /* Registries the feature files add to: pages, Action required lines, notifications, the Add menu,
-   the palette, sheets for Export for AI / Sage, Overview cards and the transaction form. */
+   the palette, sheets for Export for AI, Overview cards and the transaction form. */
 window.__pageRenderers = window.__pageRenderers || {};
 ['__attention', '__notifiers', '__addMenu', '__palette', '__aiSheets', '__overviewCards', '__txFormBlocks'].forEach(k => { window[k] = window[k] || []; });
 function runHooks(name, fn) { (window[name] || []).forEach(h => { try { fn(h); } catch (e) { console.warn(name, e); } }); }
@@ -6465,7 +6463,6 @@ function settingsDisplayHtml() {
       ${boolSettingRow('Compact mode', 'compactMode', 'Tighter spacing and smaller headline numbers, so more fits on the screen.')}
       <div class="row-flex"><div><div style="font-size:13.5px;">Dutch box 3 estimate</div><div style="font-size:12px;opacity:.65;margin-top:2px;">A card in Analysis estimating the Dutch wealth tax from your 1 January figures (2026 rules, editable). An estimate, not tax advice.</div></div><div class="toggle ${data.settings.box3 && data.settings.box3.enabled ? 'on' : ''}" style="flex:none;" onclick="setBox3('enabled', !(data.settings.box3 && data.settings.box3.enabled))"></div></div>
       ${typeof appearanceSettingHtml === 'function' ? appearanceSettingHtml() : ''}
-      ${typeof sageSettingHtml === 'function' ? sageSettingHtml() : ''}
       ${boolSettingRow('Classic navigation', 'classicNav', 'Every page in the side bar, as before. Off: Home · Money (budget, receipts, freelance) · Wealth (overview, cash, investments, watchlist, debts) · Plan (goals, future, emergency, insights). Same pages, grouped differently.')}
       ${boolSettingRow('Update holdings when I record a trade', 'applyTradesToHoldings', 'After Buy / Sell / Convert (or a plan) on an account page, show how quantities, average price and cash would change, and apply it if you confirm. Never places a real order.')}
       ${boolSettingRow('Category budgets (beta)', 'budgetLimitsBeta', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}

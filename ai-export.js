@@ -196,7 +196,7 @@
     ws['!freeze'] = { xSplit: 0, ySplit: 1 };
     return ws;
   }
-  /* Every sheet as [name, header, rows], newest transactions first (the workbook and Sage read these). */
+  /* Every sheet as [name, header, rows], newest transactions first (the workbook reads these). */
   function allSheets() {
     const txs = (data.budgetTransactions || []).filter(t => t.date && t.date <= todayYmd()).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
     const M = monthlySheets(txs);
@@ -209,7 +209,6 @@
     const more = typeof TrackrExcelBackup !== 'undefined' ? TrackrExcelBackup.readableSheets(data).filter(([n]) => !skip.has(n)) : [];
     return { all: mine.concat(more), txs };
   }
-  window.aiDataSheets = function () { return { sheets: allSheets().all, guide: SHEET_GUIDE }; };
   /* The workbook, without saving it (also used by the tests). */
   window.buildAiWorkbook = function () {
     const { all, txs } = allSheets();

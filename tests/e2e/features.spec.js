@@ -144,7 +144,6 @@ test('patterns and the month-end check', async ({ page }) => {
 
 test('scan a receipt: Claude reads it, the expense form opens filled in', async ({ page }) => {
   const errors = await openApp(page);
-  await page.evaluate(() => localStorage.setItem('trackr-sage', JSON.stringify({ apiKey: 'test-key-not-real' })));
   let body = null;
   const cat = await page.evaluate(() => data.categories.expense[0].id);
   await page.route('https://api.anthropic.com/**', async route => {
@@ -153,6 +152,11 @@ test('scan a receipt: Claude reads it, the expense form opens filled in', async 
     await route.fulfill({ status: 200, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'msg_t', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [{ type: 'text', text: JSON.stringify(answer) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } }) });
   });
   await page.evaluate(() => openSnap());
+  // The first time, it asks for the key; it stays on this device, out of the synced data.
+  await page.locator('#sn-key').fill('test-key-not-real');
+  await page.locator('.modal').getByRole('button', { name: 'Save' }).click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('trackr-claude')).apiKey)).toBe('test-key-not-real');
+  expect(await page.evaluate(() => JSON.stringify(data).includes('test-key-not-real'))).toBe(false);
   // A tiny real PNG (4×4 grey).
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAAAAACMmsGiAAAAEklEQVR4nGNgYGD4z8DAwMDAAAAMBAEAg8QnUgAAAABJRU5ErkJggg==', 'base64');
   await page.locator('.sn-pick input').setInputFiles({ name: 'receipt.png', mimeType: 'image/png', buffer: png });
@@ -161,6 +165,7 @@ test('scan a receipt: Claude reads it, the expense form opens filled in', async 
   expect([p.amount, p.comment, p.date, p.categoryId, p.description]).toEqual(['12.4', 'Demo Bakery', '2026-10-17', cat, 'Bread 3.20']);
   expect(p.receipts.length).toBe(1);
   expect(body.output_config.format.type).toBe('json_schema');
+  expect(body.model).toBe('claude-opus-5-5');
   expect(body.messages[0].content[0].type).toBe('image');
   expect(errors).toEqual([]);
 });
