@@ -13,5 +13,6 @@ Nothing in this folder is active.
 | `server-snapshot/` | Saves a value every day, even when Trackr isn't opened | Supabase (Edge Function + SQL) | see its README (security review) |
 | `price-fx-cache.yml` | Daily cache of ECB rates and coin prices | the private repo | URL, anon key, sync secret (no service-role key) |
 | `claude-routine.md` | A future overnight run | Claude Code | — |
+| `chatgpt-inbox.md` | Two GPTs that send expenses and trades to Trackr for review | ChatGPT + Supabase (`003_chatgpt_inbox.sql`) | ChatGPT Plus, Supabase sync |
 
 **SQL changes** are proposals in `supabase/migrations/` that you review and run yourself.

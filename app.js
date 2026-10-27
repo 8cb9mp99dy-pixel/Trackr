@@ -408,6 +408,7 @@ function defaultData() {
       spendBuffer: 0, // kept aside in "Safe to spend" (spend.js)
       classicNav: false, // Settings → Display → "Classic navigation": every page in the side bar (nav.js)
       applyTradesToHoldings: false, // Investments → an account → Buy: "Also update my holdings and cash"
+      inboxChannels: {}, // ChatGPT inbox (inbox.js): { budget: 'YYYY-MM-DD', invest: … } the GPTs that are on
       privacyMode: false,
       eurUsdRate: 1.08, // used to blend USD crypto purchases into one EUR average price
       eurUsdRateAuto: true, // true = kept in sync from a live FX rate; false = manually overridden
@@ -6455,6 +6456,7 @@ function deleteTrade(id) {
 /* ===================== Settings ===================== */
 const SETTINGS_SECTIONS = [
   { id: 'supabasesync', icon: '🔄', title: 'Supabase Sync (iPhone access)' },
+  { id: 'chatgpt', icon: '💬', title: 'ChatGPT inbox' },
   { id: 'display', icon: '🖥️', title: 'Display Preferences' },
   { id: 'categories', icon: '🏷️', title: 'Categories' },
   { id: 'assetcategories', icon: '📦', title: 'Asset Categories' },
@@ -6468,6 +6470,7 @@ const SETTINGS_SECTIONS = [
 const SETTINGS_BODY = {
   supabasesync: settingsSupabaseSyncHtml,
   display: settingsDisplayHtml,
+  chatgpt: () => (typeof inboxSettingsHtml === 'function' ? inboxSettingsHtml() : ''),
   // One place to edit categories: Budget → Categories (same editor, so nothing is lost here).
   categories: () => `<div style="font-size:13px;opacity:.7;line-height:1.5;margin-bottom:12px;">Income and spending categories, their sub-categories and payment methods are edited in one place: Budget → Categories.</div>
     <button class="btn" onclick="goPage('budget');setBudgetTab('categories')">Open Budget → Categories ${ic('chevronRight', 14)}</button>`,

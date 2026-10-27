@@ -216,3 +216,28 @@
 .lu-row .num { font-size: 13.5px; white-space: nowrap; }
 .lu-row select { grid-column: 1 / -1; width: 100%; }
 .lu-moves { margin: 12px 0 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--fx-fill); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+
+/* ---------- ChatGPT inbox (inbox.js) ---------- */
+.ib-warn { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--fx-line-strong); font-size: 13px; line-height: 1.45; }
+.ib-list { display: flex; flex-direction: column; gap: 10px; max-height: min(58vh, 560px); overflow-y: auto; }
+.ib-item { border: 1px solid var(--fx-line); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.ib-item.blocked { border-style: dashed; }
+.ib-top { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; }
+.ib-ch { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fx-dim); }
+.ib-top .dim { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; }
+.ib-txt { min-width: 0; display: flex; flex-direction: column; }
+.ib-txt b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-txt span { font-size: 12px; }
+.ib-main .num { font-size: 14px; white-space: nowrap; }
+.ib-probs { margin: 0; padding-left: 16px; font-size: 12px; color: var(--fx-dim); line-height: 1.45; }
+.ib-probs li.block { color: var(--fx-ink); font-weight: 600; }
+.ib-acts { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.ib-note { font-size: 12.5px; line-height: 1.5; color: var(--fx-dim); margin-bottom: 12px; }
+.ib-note b { color: var(--fx-ink); }
+.ib-step { border-top: 1px solid var(--fx-line); padding: 12px 0; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
+.ib-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ib-row a.btn { text-decoration: none; }
+.ib-howto { margin: 4px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 6px; }
+.ib-howto .btn { margin-left: 4px; }
+.ib-howto code { font-size: 12px; padding: 1px 5px; border-radius: 4px; background: var(--fx-fill); }
