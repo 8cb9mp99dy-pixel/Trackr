@@ -1,10 +1,12 @@
-/* ChatGPT inbox: what an item from ChatGPT becomes, pasted answers, the GPT's schema and
-   instructions, and the SQL kept in the app = the migration file. */
+/* Claude inbox: what an item from Claude becomes, pasted answers, the projects' instructions,
+   the connector (the MCP server in supabase/functions/trackr-inbox), and the SQL and function
+   texts kept in the app = their files. */
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { INBOX_SQL_TEXT, inboxNormalize, inboxParsePasted, inboxOpenApi, inboxInstructions } = require('../../inbox.js');
+const vm = require('vm');
+const { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxParsePasted, inboxInstructions } = require('../../inbox.js');
 
 const ctx = {
   today: '2026-10-18', currency: 'EUR', defaultAccountId: 'acc_main',
@@ -80,22 +82,78 @@ test('pasted answers: the JSON block, with words and code fences around it', () 
   assert.deepEqual(inboxParsePasted('nothing here'), []);
 });
 
-test('the GPT action schema and instructions', () => {
-  const s = JSON.parse(inboxOpenApi('https://abc.supabase.co/', 'budget'));
-  assert.equal(s.openapi, '3.1.0');
-  assert.equal(s.servers[0].url, 'https://abc.supabase.co');
-  assert.deepEqual(Object.keys(s.paths), ['/rest/v1/rpc/inbox_context', '/rest/v1/rpc/inbox_add']);
-  assert.equal(s.paths['/rest/v1/rpc/inbox_add'].post.operationId, 'addToTrackrInbox');
-  const inv = JSON.parse(inboxOpenApi('https://abc.supabase.co', 'invest'));
-  assert.deepEqual(inv.paths['/rest/v1/rpc/inbox_add'].post.requestBody.content['application/json'].schema.properties.items.items.properties.action.enum, ['buy', 'sell', 'dividend', 'deposit', 'withdrawal']);
-  const ins = inboxInstructions('budget', 'trk_budget_test');
-  assert.match(ins, /getTrackrContext/);
-  assert.match(ins, /trk_budget_test/);
-  assert.ok(ins.length < 8000); // the GPT editor's limit
-  assert.ok(inboxInstructions('invest', 'k').length < 8000);
+test('the projects\' instructions', () => {
+  const b = inboxInstructions('budget'), i = inboxInstructions('invest');
+  assert.match(b, /get_trackr_context/);
+  assert.match(b, /add_budget_items/);
+  assert.match(i, /add_investment_items/);
+  assert.ok(!/trk_/.test(b + i)); // the key is in the connector URL, not here
+  assert.ok(b.length < 8000 && i.length < 8000);
 });
 
-test('the SQL in the app is the migration file', () => {
-  const file = fs.readFileSync(path.join(__dirname, '../../supabase/migrations/003_chatgpt_inbox.sql'), 'utf8');
-  assert.equal(INBOX_SQL_TEXT, file);
+/* The Edge Function, run here: the same file, with Supabase's RPCs faked. */
+function loadFunction() {
+  const sandbox = { module: { exports: {} }, URL, Response, Request, JSON, console };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../supabase/functions/trackr-inbox/index.ts'), 'utf8'), sandbox);
+  return sandbox.module.exports;
+}
+const KEY = 'trk_claude_' + 'a'.repeat(32);
+async function call(fn, body, rpcs, url) {
+  const calls = [];
+  const fetchFn = async (u, init) => {
+    const name = u.split('/rpc/')[1], args = JSON.parse(init.body);
+    calls.push({ url: u, name, args, headers: init.headers });
+    const r = rpcs[name];
+    if (r instanceof Error) return new Response(JSON.stringify({ message: r.message }), { status: 400 });
+    return new Response(JSON.stringify(typeof r === 'function' ? r(args) : r), { status: 200 });
+  };
+  const req = new Request(url || 'http://localhost/trackr-inbox/' + KEY, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await fn.handle(req, { url: 'https://demo.supabase.co', anon: 'test-anon-not-real' }, fetchFn);
+  const text = await res.text();
+  return { status: res.status, body: text ? JSON.parse(text) : null, calls };
+}
+
+test('connector: initialize, tools, and calls that go to the inbox with the key', async () => {
+  const fn = loadFunction();
+  const init = await call(fn, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude', version: '1' } } }, {});
+  assert.equal(init.status, 200);
+  assert.equal(init.body.result.protocolVersion, '2025-06-18');
+  assert.ok(init.body.result.capabilities.tools);
+  const old = await call(fn, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05' } }, {});
+  assert.equal(old.body.result.protocolVersion, '2024-11-05');
+  const note = await call(fn, { jsonrpc: '2.0', method: 'notifications/initialized' }, {});
+  assert.equal(note.status, 202);
+  const list = await call(fn, { jsonrpc: '2.0', id: 2, method: 'tools/list' }, {});
+  assert.deepEqual(list.body.result.tools.map(t => t.name), ['get_trackr_context', 'add_budget_items', 'add_investment_items']);
+
+  const ctx = await call(fn, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_trackr_context', arguments: {} } }, { inbox_context: { channel: 'claude', today: '2026-10-18', context: { categories: {} } } });
+  assert.deepEqual(ctx.calls.map(c => [c.name, c.args.inbox_key, c.headers.apikey]), [['inbox_context', KEY, 'test-anon-not-real']]);
+  assert.match(ctx.body.result.content[0].text, /2026-10-18/);
+
+  const add = await call(fn, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'add_investment_items', arguments: { items: [{ action: 'buy', ticker: 'WRLD' }], source: 'screenshot' } } }, { inbox_add: a => ({ added: a.items.length }) });
+  assert.deepEqual([add.calls[0].name, add.calls[0].args.channel, add.calls[0].args.source], ['inbox_add', 'invest', 'screenshot']);
+  assert.equal(add.body.result.structuredContent.added, 1);
+  const budget = await call(fn, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'add_budget_items', arguments: { items: [{ type: 'expense' }] } } }, { inbox_add: { added: 1 } });
+  assert.equal(budget.calls[0].args.channel, 'budget');
+});
+
+test('connector: errors come back to Claude, nothing is sent without a key or items', async () => {
+  const fn = loadFunction();
+  const refused = await call(fn, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'add_budget_items', arguments: { items: [{ type: 'expense' }] } } }, { inbox_add: new Error('Unknown inbox key.') });
+  assert.equal(refused.body.result.isError, true);
+  assert.match(refused.body.result.content[0].text, /Unknown inbox key/);
+  const empty = await call(fn, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'add_budget_items', arguments: { items: [] } } }, {});
+  assert.equal(empty.body.result.isError, true);
+  assert.equal(empty.calls.length, 0);
+  const unknown = await call(fn, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'delete_everything', arguments: {} } }, {});
+  assert.equal(unknown.body.error.code, -32602);
+  const nokey = await call(fn, { jsonrpc: '2.0', id: 4, method: 'tools/list' }, {}, 'http://localhost/trackr-inbox');
+  assert.equal(nokey.status, 404);
+  const method = await call(fn, { jsonrpc: '2.0', id: 5, method: 'resources/list' }, {});
+  assert.equal(method.body.error.code, -32601);
+});
+
+test('the SQL and the function in the app are their files', () => {
+  assert.equal(INBOX_SQL_TEXT, fs.readFileSync(path.join(__dirname, '../../supabase/migrations/003_trackr_inbox.sql'), 'utf8'));
+  assert.equal(INBOX_FUNCTION_TEXT, fs.readFileSync(path.join(__dirname, '../../supabase/functions/trackr-inbox/index.ts'), 'utf8'));
 });

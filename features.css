@@ -217,7 +217,7 @@
 .lu-row select { grid-column: 1 / -1; width: 100%; }
 .lu-moves { margin: 12px 0 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--fx-fill); font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
 
-/* ---------- ChatGPT inbox (inbox.js) ---------- */
+/* ---------- Claude inbox (inbox.js) ---------- */
 .ib-warn { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius-md); border: 1px solid var(--fx-line-strong); font-size: 13px; line-height: 1.45; }
 .ib-list { display: flex; flex-direction: column; gap: 10px; max-height: min(58vh, 560px); overflow-y: auto; }
 .ib-item { border: 1px solid var(--fx-line); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }

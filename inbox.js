@@ -1,42 +1,46 @@
-/* ===================== ChatGPT inbox =====================
+/* ===================== Claude inbox =====================
  * Its own file, loaded after invest.js (uses the trade panel) and before safety.js.
  *
- * Two GPTs in ChatGPT ("Trackr Budget", "Trackr Investments") read what you send them (receipts,
- * screenshots of a bank or broker app, plain text) and drop each transaction into an inbox in your
- * own Supabase (supabase/migrations/003_chatgpt_inbox.sql, same text as INBOX_SQL below). Trackr
- * fetches it and lists every item in Action required → "From ChatGPT": nothing touches your data
- * until you approve it here.
+ * Two Claude projects ("Trackr Budget", "Trackr Investments") read what you send them (receipts,
+ * screenshots of a bank or broker app, plain text) and, through a custom connector, drop each
+ * transaction into an inbox in your own Supabase:
+ *   Claude → connector URL …/functions/v1/trackr-inbox/<inbox key> (the MCP server in
+ *   supabase/functions/trackr-inbox/index.ts, an Edge Function) → inbox_add (the SQL in
+ *   supabase/migrations/003_trackr_inbox.sql) → Trackr fetches it with your sync secret.
+ * Every item waits in Action required → "From Claude": nothing touches your data until you
+ * approve it here.
  *   - Budget items: "Add" (ready ones), "Edit" (the expense form, filled in) or "Reject".
  *   - Investment items: buy / sell open the broker's trade panel filled in (you press Buy / Sell
  *     there, as usual); dividend, deposit and withdrawal open the transaction form filled in.
- *   - No GPT action, or it failed: the GPT gives a JSON block you paste in Add → Paste from ChatGPT.
+ *   - No connector, or it failed: Claude gives a JSON block you paste in Add → Paste from Claude.
  *
- * Keys: each GPT gets its own inbox key, made here. Supabase only keeps its hash. A key can only
- * add items to the queue and read the names Trackr publishes for it (categories, accounts,
- * brokers, assets: no amounts). Keys live on this device (localStorage 'trackr-inbox-keys', never
- * synced); data.settings.inboxChannels says which channels are on, so every device fetches.
+ * The key: one per connector, made here; Supabase only keeps its hash. It can only add items to
+ * the queue and read the names Trackr publishes for it (categories, accounts, brokers, assets: no
+ * amounts). It lives on this device (localStorage 'trackr-inbox-keys', never synced);
+ * data.settings.inboxChannels says the inbox is on, so every device fetches it.
  * Fetched items and answers not sent yet: localStorage 'trackr-inbox'.
  *
- * inboxNormalize(), inboxParsePasted(), inboxOpenApi() and inboxInstructions() are pure
- * (Node-tested), and so is INBOX_SQL.
+ * inboxNormalize(), inboxParsePasted() and inboxInstructions() are pure (Node-tested), and the
+ * SQL and function texts are kept equal to their files by a test.
  */
-const INBOX_SQL = [
-  '-- Trackr inbox — ChatGPT (your "Trackr Budget" and "Trackr Investments" GPTs) drops expenses and',
-  '-- trades here; Trackr shows them for review and only adds what you approve.',
-  '-- An inbox key can only ADD items to this queue and read the names Trackr published (categories,',
-  '-- accounts, brokers, assets: no amounts, no balances). It can\'t read or change your data.',
-  '-- Your sync secret never leaves Trackr. Safe to run on a project that has Trackr\'s setup SQL, and',
-  '-- safe to re-run. (Settings → ChatGPT inbox → "Copy the SQL" gives this same text.)',
-];
-// The SQL itself is long: it's kept in the migration file's words, joined at load (see the test).
-INBOX_SQL.push(...`
+// The SQL and the Edge Function, word for word (a test keeps them equal to the files).
+const INBOX_SQL_TEXT = String.raw`-- Trackr inbox — Claude (your "Trackr Budget" and "Trackr Investments" projects, through the
+-- trackr-inbox connector) drops expenses and trades here; Trackr shows them for review and only
+-- adds what you approve.
+-- An inbox key can only ADD items to this queue and read the names Trackr published (categories,
+-- accounts, brokers, assets: no amounts, no balances). It can't read or change your data.
+-- Your sync secret never leaves Trackr. Safe to run on a project that has Trackr's setup SQL, and
+-- safe to re-run. (Settings → Claude inbox → "Copy the SQL" gives this same text.)
+
 create table if not exists trackr_inbox_keys (
   key_hash text primary key,                 -- sha256 of the key; the key itself is never stored
   data_id text not null,                     -- the trackr_data row it files into
-  channel text not null check (channel in ('budget', 'invest')),
+  channel text not null,                     -- 'claude' (sends to both), or 'budget' / 'invest'
   created_at timestamptz not null default now(),
   unique (data_id, channel)
 );
+alter table trackr_inbox_keys drop constraint if exists trackr_inbox_keys_channel_check;
+alter table trackr_inbox_keys add constraint trackr_inbox_keys_channel_check check (channel in ('claude', 'budget', 'invest'));
 create table if not exists trackr_inbox (
   id uuid primary key default gen_random_uuid(),
   data_id text not null,
@@ -72,7 +76,7 @@ create or replace function inbox_set_key(secret text, channel text, key_hash tex
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare owner text := trackr_inbox_owner(secret);
 begin
-  if channel not in ('budget', 'invest') or key_hash !~ '^[0-9a-f]{64}$' then raise exception 'bad key'; end if;
+  if channel not in ('claude', 'budget', 'invest') or key_hash !~ '^[0-9a-f]{64}$' then raise exception 'bad key'; end if;
   delete from trackr_inbox_keys k where k.data_id = owner and k.channel = inbox_set_key.channel;
   insert into trackr_inbox_keys (key_hash, data_id, channel) values (key_hash, owner, channel);
 end $$;
@@ -94,7 +98,7 @@ begin
     'last', (select max(created_at) from trackr_inbox where data_id = owner));
 end $$;
 
--- The names ChatGPT may see (Trackr sends them; nothing with an amount in it).
+-- The names Claude may see (Trackr sends them; nothing with an amount in it).
 create or replace function inbox_set_context(secret text, context jsonb)
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare owner text := trackr_inbox_owner(secret);
@@ -125,29 +129,33 @@ begin
   return n;
 end $$;
 
--- ---- Called by ChatGPT (with an inbox key) ----
+-- ---- Called by the trackr-inbox connector (with an inbox key) ----
 create or replace function inbox_context(inbox_key text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare k trackr_inbox_keys;
 begin
   select * into k from trackr_inbox_keys where key_hash = encode(digest(coalesce(inbox_key, ''), 'sha256'), 'hex');
-  if not found then raise exception 'Unknown inbox key. Create a new one in Trackr: Settings → ChatGPT inbox.'; end if;
+  if not found then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
   return jsonb_build_object('channel', k.channel, 'today', to_char(now() at time zone 'Europe/Amsterdam', 'YYYY-MM-DD'),
     'context', coalesce((select context from trackr_inbox_context where data_id = k.data_id), '{}'::jsonb));
 end $$;
 
-create or replace function inbox_add(inbox_key text, items jsonb, source text default null)
+-- channel: 'budget' or 'invest' (a 'claude' key sends to either; a single-channel key ignores it).
+drop function if exists inbox_add(text, jsonb, text);
+create or replace function inbox_add(inbox_key text, items jsonb, source text default null, channel text default null)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
-declare k trackr_inbox_keys; n integer; open_now integer;
+declare k trackr_inbox_keys; n integer; open_now integer; ch text;
 begin
   select * into k from trackr_inbox_keys where key_hash = encode(digest(coalesce(inbox_key, ''), 'sha256'), 'hex');
-  if not found then raise exception 'Unknown inbox key. Create a new one in Trackr: Settings → ChatGPT inbox.'; end if;
+  if not found then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
+  ch := case when k.channel = 'claude' then coalesce(nullif(inbox_add.channel, ''), 'budget') else k.channel end;
+  if ch not in ('budget', 'invest') then raise exception 'channel must be budget or invest'; end if;
   if jsonb_typeof(items) <> 'array' or jsonb_array_length(items) = 0 then raise exception 'items must be a non-empty array'; end if;
   if jsonb_array_length(items) > 50 then raise exception 'at most 50 items per call'; end if;
   select count(*) into open_now from trackr_inbox where data_id = k.data_id and status = 'new';
   if open_now + jsonb_array_length(items) > 300 then raise exception 'Trackr already has 300 items waiting for review: review them in Trackr first.'; end if;
   insert into trackr_inbox (data_id, channel, item, source)
-  select k.data_id, k.channel, it, left(source, 200) from jsonb_array_elements(items) it
+  select k.data_id, ch, it, left(source, 200) from jsonb_array_elements(items) it
    where jsonb_typeof(it) = 'object' and octet_length(it::text) <= 8000;
   get diagnostics n = row_count;
   return jsonb_build_object('added', n, 'skipped', jsonb_array_length(items) - n, 'waiting_for_review', open_now + n,
@@ -155,17 +163,180 @@ begin
 end $$;
 
 revoke all on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
-  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text) from public;
+  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text) from public;
 grant execute on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
-  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text) to anon;
+  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text) to anon;
 notify pgrst, 'reload schema';
-`.split('\n'));
-const INBOX_SQL_TEXT = INBOX_SQL.join('\n');
+`;
+const INBOX_FUNCTION_TEXT = String.raw`// @ts-nocheck
+// Trackr inbox for Claude: a small MCP server, run as a Supabase Edge Function named "trackr-inbox".
+// Claude (a custom connector) calls it; it drops what Claude read from your receipts and
+// screenshots into the Trackr inbox, where Trackr asks you to review each item.
+// Its URL is your project URL + /functions/v1/trackr-inbox/ + your inbox key (Trackr makes it).
+// The key can only add to the review queue and read names (no amounts); it is checked by the
+// database (003_trackr_inbox.sql), never stored here. No other secret is needed.
+// Deploy: Supabase → Edge Functions → Deploy a new function → Via editor → name "trackr-inbox",
+// paste this file, Deploy. Then in its settings turn OFF "Verify JWT" (Claude has no Supabase login).
+
+const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.0.0' };
+const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, authorization' };
+
+const str = d => ({ type: 'string', description: d });
+const num = d => ({ type: 'number', description: d });
+const BUDGET_ITEM = {
+  type: 'object',
+  properties: {
+    type: { type: 'string', enum: ['expense', 'income', 'transfer'], description: 'expense, income, or transfer between two of my own accounts' },
+    date: str('YYYY-MM-DD'),
+    amount: num('Positive amount'),
+    currency: str('ISO code, e.g. EUR'),
+    name: str('Shop, company or person, short (e.g. "Albert Heijn")'),
+    category_id: str('Category id from get_trackr_context (categories.expense / categories.income)'),
+    subcategory_id: str('Sub-category id of that category'),
+    account_id: str('Account id it was paid from / into (accounts[].id); leave out if unsure'),
+    payment_method_id: str('Payment method id (paymentMethods[].id), e.g. card or cash'),
+    from_account: str('Transfer only: account or broker name the money leaves'),
+    to_account: str('Transfer only: account or broker name it goes to'),
+    note: str('Short note, e.g. what was bought'),
+  },
+  required: ['type', 'date', 'amount', 'name'],
+};
+const INVEST_ITEM = {
+  type: 'object',
+  properties: {
+    action: { type: 'string', enum: ['buy', 'sell', 'dividend', 'deposit', 'withdrawal'], description: 'buy / sell a position; dividend received; deposit (cash from a bank account to the broker) or withdrawal (back to the bank)' },
+    date: str('Trade or payment date, YYYY-MM-DD'),
+    broker_key: str('The broker key from get_trackr_context (investAccounts[].key)'),
+    broker: str('Broker name if no key fits'),
+    asset_key: str('The asset key from get_trackr_context (investAccounts[].assets[].key)'),
+    ticker: str('Ticker or coin symbol'),
+    isin: str('ISIN when shown'),
+    asset: str('Asset name'),
+    quantity: num('Number of shares / coins'),
+    price: num('Price per share / coin'),
+    amount: num('Total value of the trade, or the cash amount of a dividend / deposit / withdrawal'),
+    fee: num('Fees paid, if any'),
+    currency: str('ISO code, e.g. EUR, USD'),
+    bank_account: str('Deposit / withdrawal: the bank account name (accounts[].name)'),
+    note: str('Short note'),
+  },
+  required: ['action', 'date'],
+};
+const itemsInput = item => ({
+  type: 'object',
+  properties: { items: { type: 'array', minItems: 1, maxItems: 50, items: item }, source: str('What I sent, e.g. "Revolut screenshot"') },
+  required: ['items'],
+});
+const TOOLS = [
+  {
+    name: 'get_trackr_context', title: 'Trackr names',
+    description: 'My Trackr categories and sub-categories, accounts, payment methods, brokers and the assets at each (ids, names, tickers, ISINs), and today\'s date. Names only: no amounts. Call it once per conversation before adding items, and use its ids.',
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: 'add_budget_items', title: 'Send expenses to Trackr',
+    description: 'Send expenses, incomes or transfers to my Trackr inbox (up to 50 at once). They wait there until I review them in Trackr: nothing is added to my accounts before I approve it.',
+    inputSchema: itemsInput(BUDGET_ITEM),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: 'add_investment_items', title: 'Send trades to Trackr',
+    description: 'Send executed buys, sells, dividends, deposits or withdrawals to my Trackr inbox (up to 50 at once). They wait there until I review them in Trackr: nothing changes before I approve it.',
+    inputSchema: itemsInput(INVEST_ITEM),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+];
+
+async function rpc(env, fetchFn, fn, body) {
+  const res = await fetchFn(env.url + '/rest/v1/rpc/' + fn, {
+    method: 'POST',
+    headers: { apikey: env.anon, Authorization: 'Bearer ' + env.anon, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    let msg = text;
+    try { msg = JSON.parse(text).message || text; } catch (e) { /* not JSON */ }
+    throw new Error(msg || 'HTTP ' + res.status);
+  }
+  return text ? JSON.parse(text) : null;
+}
+
+async function callTool(name, args, key, env, fetchFn) {
+  if (name === 'get_trackr_context') return rpc(env, fetchFn, 'inbox_context', { inbox_key: key });
+  if (name === 'add_budget_items' || name === 'add_investment_items') {
+    const items = args && Array.isArray(args.items) ? args.items.filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [];
+    if (!items.length) throw new Error('items must be a non-empty list of objects');
+    if (items.length > 50) throw new Error('at most 50 items at once');
+    const source = args && typeof args.source === 'string' ? args.source.slice(0, 200) : null;
+    return rpc(env, fetchFn, 'inbox_add', { inbox_key: key, items, source, channel: name === 'add_budget_items' ? 'budget' : 'invest' });
+  }
+  const e = new Error('Unknown tool: ' + name);
+  e.code = -32602;
+  throw e;
+}
+
+async function handleMessage(msg, key, env, fetchFn) {
+  const id = msg && msg.id !== undefined ? msg.id : null;
+  if (!msg || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') return { jsonrpc: '2.0', id, error: { code: -32600, message: 'Invalid request' } };
+  if (msg.id === undefined || msg.method.startsWith('notifications/')) return null; // nothing to answer
+  const reply = result => ({ jsonrpc: '2.0', id, result });
+  if (msg.method === 'initialize') {
+    const asked = msg.params && msg.params.protocolVersion;
+    return reply({
+      protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
+      capabilities: { tools: { listChanged: false } },
+      serverInfo: SERVER,
+      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids, then send what you read with add_budget_items or add_investment_items. Items wait for my review in Trackr.',
+    });
+  }
+  if (msg.method === 'ping') return reply({});
+  if (msg.method === 'tools/list') return reply({ tools: TOOLS });
+  if (msg.method === 'tools/call') {
+    const p = msg.params || {};
+    try {
+      const out = await callTool(p.name, p.arguments || {}, key, env, fetchFn);
+      return reply({ content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out && typeof out === 'object' && !Array.isArray(out) ? out : undefined });
+    } catch (e) {
+      if (e.code === -32602) return { jsonrpc: '2.0', id, error: { code: -32602, message: e.message } };
+      return reply({ content: [{ type: 'text', text: 'Trackr inbox: ' + e.message }], isError: true });
+    }
+  }
+  return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found: ' + msg.method } };
+}
+
+const json = (status, body) => new Response(JSON.stringify(body), { status, headers: Object.assign({ 'Content-Type': 'application/json' }, CORS) });
+
+async function handle(req, env, fetchFn) {
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
+  const parts = new URL(req.url).pathname.split('/').filter(Boolean);
+  const key = decodeURIComponent(parts[parts.length - 1] || '');
+  if (!/^trk_[A-Za-z0-9_-]{20,200}$/.test(key)) return json(404, { error: 'The URL must end with your inbox key: …/trackr-inbox/<key> (Trackr → Settings → Claude inbox).' });
+  if (req.method !== 'POST') return new Response('Trackr inbox (MCP). Add this URL to Claude as a custom connector.', { status: 405, headers: Object.assign({ Allow: 'POST, OPTIONS' }, CORS) });
+  let body;
+  try { body = await req.json(); } catch (e) { return json(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); }
+  const msgs = Array.isArray(body) ? body : [body];
+  const out = [];
+  for (const m of msgs) {
+    const r = await handleMessage(m, key, env, fetchFn);
+    if (r) out.push(r);
+  }
+  if (!out.length) return new Response(null, { status: 202, headers: CORS });
+  return json(200, Array.isArray(body) ? out : out[0]);
+}
+
+if (typeof Deno !== 'undefined') {
+  Deno.serve(req => handle(req, { url: Deno.env.get('SUPABASE_URL'), anon: Deno.env.get('SUPABASE_ANON_KEY') }, fetch));
+}
+if (typeof module !== 'undefined') module.exports = { handle, TOOLS };
+`;
 
 const INBOX_BUDGET_KINDS = ['expense', 'income', 'transfer'];
 const INBOX_INVEST_KINDS = ['buy', 'sell', 'dividend', 'deposit', 'withdrawal'];
 
-/* One item from ChatGPT → what Trackr would add, and what to check first.
+/* One item from Claude → what Trackr would add, and what to check first.
  * ctx: { today, currency, categories: { expense, income }, accounts: [{ id, name }], defaultAccountId,
  *        paymentMethods: [{ id, name }], investAccounts: [{ key, name, ref, assets: [{ key, ticker, name, isin }] }],
  *        toEUR?: (amount, currency) => number }
@@ -269,7 +440,7 @@ function inboxNormalize(raw, channel, ctx) {
   return result(kind, 'tx', Object.assign(draft, { categoryId: cat ? cat.id : '', subCategoryId: sub ? sub.id : '', accountId: (acc || fallback || {}).id || '', paymentMethodId: pm ? pm.id : '' }));
 }
 
-/* Text pasted from ChatGPT → [{ channel, item }]. Takes the JSON block it gave ({"trackr":
+/* Text pasted from Claude → [{ channel, item }]. Takes the JSON block it gave ({"trackr":
  * "budget" | "invest", "items": [...]}, or just an array), even with words around it. */
 function inboxParsePasted(text) {
   const s = String(text || '');
@@ -292,93 +463,39 @@ function inboxParsePasted(text) {
   return [];
 }
 
-/* The GPT's Action schema (OpenAPI 3.1), for your Supabase project. */
-function inboxOpenApi(projectUrl, channel) {
-  const invest = channel === 'invest';
-  const str = d => ({ type: 'string', description: d });
-  const n = d => ({ type: 'number', description: d });
-  const item = invest ? {
-    type: 'object',
-    properties: {
-      action: { type: 'string', enum: INBOX_INVEST_KINDS, description: 'buy / sell a position; dividend received; deposit (cash from a bank account to the broker) or withdrawal (back to the bank)' },
-      date: str('Trade or payment date, YYYY-MM-DD'),
-      broker_key: str('The broker\'s key from getTrackrContext (investAccounts[].key)'),
-      broker: str('Broker name if no key fits'),
-      asset_key: str('The asset\'s key from getTrackrContext (investAccounts[].assets[].key)'),
-      ticker: str('Ticker or coin symbol'), isin: str('ISIN when shown'), asset: str('Asset name'),
-      quantity: n('Number of shares / coins'), price: n('Price per share / coin'), amount: n('Total value of the trade, or the cash amount for dividend / deposit / withdrawal'),
-      fee: n('Fees paid, if any'), currency: str('ISO code, e.g. EUR, USD'),
-      bank_account: str('For deposit / withdrawal: the bank account name (accounts[].name)'),
-      note: str('Short note'),
-    },
-    required: ['action', 'date'],
-  } : {
-    type: 'object',
-    properties: {
-      type: { type: 'string', enum: INBOX_BUDGET_KINDS, description: 'expense, income, or transfer between two of my own accounts' },
-      date: str('YYYY-MM-DD'),
-      amount: n('Positive amount'),
-      currency: str('ISO code, e.g. EUR'),
-      name: str('Shop, company or person, short (e.g. "Albert Heijn")'),
-      category_id: str('Category id from getTrackrContext (categories.expense / categories.income)'),
-      subcategory_id: str('Sub-category id from that category'),
-      account_id: str('Account id it was paid from / into (accounts[].id); leave out if unsure'),
-      payment_method_id: str('Payment method id (paymentMethods[].id), e.g. card or cash'),
-      from_account: str('For a transfer: account or broker name it leaves'),
-      to_account: str('For a transfer: account or broker name it goes to'),
-      note: str('Short note, e.g. items bought'),
-    },
-    required: ['type', 'date', 'amount', 'name'],
-  };
-  const body = (props, req) => ({ required: true, content: { 'application/json': { schema: { type: 'object', properties: props, required: req } } } });
-  const ok = d => ({ 200: { description: d, content: { 'application/json': { schema: { type: 'object', additionalProperties: true } } } } });
-  return JSON.stringify({
-    openapi: '3.1.0',
-    info: { title: invest ? 'Trackr investments inbox' : 'Trackr budget inbox', version: '1.0.0', description: 'Drops transactions into the Trackr inbox. Nothing is added to the accounts until it is approved in the Trackr app.' },
-    servers: [{ url: String(projectUrl || 'https://YOUR-PROJECT.supabase.co').replace(/\/+$/, '') }],
-    paths: {
-      '/rest/v1/rpc/inbox_context': { post: { operationId: 'getTrackrContext', summary: invest ? 'My brokers, their assets (keys, tickers, ISINs), my bank accounts and today\'s date' : 'My categories, sub-categories, accounts, payment methods and today\'s date', requestBody: body({ inbox_key: str('My inbox key') }, ['inbox_key']), responses: ok('Names and ids only') } },
-      '/rest/v1/rpc/inbox_add': { post: { operationId: 'addToTrackrInbox', summary: 'Send transactions to my Trackr inbox for review (up to 50 per call)', requestBody: body({ inbox_key: str('My inbox key'), source: str('What I sent, e.g. "Revolut screenshot"'), items: { type: 'array', maxItems: 50, items: item } }, ['inbox_key', 'items']), responses: ok('How many were saved and wait for review') } },
-    },
-  }, null, 2);
-}
-
-/* The GPT's instructions, with its inbox key. */
-function inboxInstructions(channel, key) {
+/* A Claude project's instructions (the key is in the connector's URL, not here). */
+function inboxInstructions(channel) {
   const invest = channel === 'invest';
   return (invest ? [
-    'You are Trackr Investments. You file my investment activity into my Trackr app: I send screenshots or notes from my broker apps (trades, order confirmations, dividends, deposits).',
+    'You are Trackr Investments. You file my investment activity into my Trackr app with the Trackr connector: I send screenshots or notes from my broker apps (trades, order confirmations, dividends, deposits).',
     '',
     'Every time:',
-    '1. Call getTrackrContext once per conversation to get my brokers (investAccounts: key, name) and the assets at each one (key, ticker, name, isin), my bank accounts and today\'s date. Use those keys.',
+    '1. Call get_trackr_context once per conversation to get my brokers (investAccounts: key, name), the assets at each one (key, ticker, name, isin), my bank accounts and today\'s date. Use those keys.',
     '2. Read every executed trade or cash movement: action (buy, sell, dividend, deposit, withdrawal), date (YYYY-MM-DD), broker_key, asset_key (match by ISIN first, then ticker, then name), quantity, price per unit, total amount, fee, currency.',
     '3. Only executed orders count: skip pending, cancelled or rejected orders, price alerts and portfolio totals. Never invent a number; if one is unreadable, leave it out.',
     '4. If an asset is not in the context, still send it with ticker / isin / asset name: Trackr will ask me to add the position first.',
-    '5. Send everything in ONE addToTrackrInbox call (up to 50 items), with source saying what I sent (e.g. "Trading 212 screenshot").',
+    '5. Send everything with ONE add_investment_items call (up to 50 items), with source saying what I sent (e.g. "Trading 212 screenshot").',
     '6. Then reply with a short table (date, action, asset, quantity, total) and say it waits in Trackr → Action required for my review. Nothing changes in Trackr until I approve it there.',
   ] : [
-    'You are Trackr Budget. You file my spending into my Trackr app: I send receipts, screenshots of my bank or card apps, photos, or plain text ("12,40 bakery yesterday").',
+    'You are Trackr Budget. You file my spending into my Trackr app with the Trackr connector: I send receipts, screenshots of my bank or card apps, photos, or plain text ("12,40 bakery yesterday").',
     '',
     'Every time:',
-    '1. Call getTrackrContext once per conversation to get my categories and sub-categories (ids and names), accounts, payment methods and today\'s date. Use those ids.',
+    '1. Call get_trackr_context once per conversation to get my categories and sub-categories (ids and names), accounts, payment methods and today\'s date. Use those ids.',
     '2. Read every transaction: type (expense, income, or transfer between two of my own accounts), date (YYYY-MM-DD; turn "yesterday" etc. into a date from today), amount as a positive number, currency, name (the shop, company or person, short and normally capitalised), the best category_id and subcategory_id, account_id when it is clear which account paid (else leave it out: Trackr uses my main account), payment_method_id when visible, and a short note (e.g. what was bought).',
     '3. Only completed transactions count: skip pending or declined payments, balances, ads and totals. A receipt is ONE expense (its total), not one per line. Never invent an amount.',
-    '4. Send everything in ONE addToTrackrInbox call (up to 50 items), with source saying what I sent (e.g. "Revolut screenshot").',
+    '4. Send everything with ONE add_budget_items call (up to 50 items), with source saying what I sent (e.g. "Revolut screenshot").',
     '5. Then reply with a short table (date, name, amount, category) and say it waits in Trackr → Action required for my review. Nothing is added to my accounts until I approve it there.',
   ]).concat([
     '',
-    `If the action fails or is not available, give me the items as one JSON code block {"trackr": "${invest ? 'invest' : 'budget'}", "items": [...]} with the same fields, so I can paste it in Trackr (Add → Paste from ChatGPT).`,
+    `If the Trackr connector is off or fails, give me the items as one JSON code block {"trackr": "${invest ? 'invest' : 'budget'}", "items": [...]} with the same fields, so I can paste it in Trackr (Add → Paste from Claude).`,
     'Reply in the language I write in. Keep answers short.',
-    '',
-    `My inbox key (send it as inbox_key in every call, never show it): ${key || 'CREATE-A-KEY-IN-TRACKR'}`,
   ]).join('\n');
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { INBOX_SQL_TEXT, inboxNormalize, inboxParsePasted, inboxOpenApi, inboxInstructions };
+  module.exports = { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxParsePasted, inboxInstructions };
 } else {
   const STATE_KEY = 'trackr-inbox', KEYS_KEY = 'trackr-inbox-keys';
-  const CHANNELS = [['budget', 'Trackr Budget', 'Expenses, income and transfers: receipts, bank and card screenshots'], ['invest', 'Trackr Investments', 'Buys, sells, dividends and deposits: broker screenshots']];
   const readLs = (k, d) => { try { return Object.assign(d, JSON.parse(localStorage.getItem(k) || '{}')); } catch (e) { return d; } };
   const writeLs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage blocked: kept in memory only */ } };
   // { items: [{ id, channel, item, source, created_at, local? }], done: { id: 'added' | 'rejected' }, ctxSig, missing }
@@ -400,7 +517,7 @@ if (typeof module !== 'undefined' && module.exports) {
       toEUR: (v, c) => toEUR(v, c),
     };
   }
-  /* What the GPTs may read: names and ids, never an amount. */
+  /* What Claude may read: names and ids, never an amount. */
   function publicContext() {
     const c = ctxForNormalize();
     const cats = list => (list || []).map(x => ({ id: x.id, name: x.name, subcategories: (x.subcategories || []).map(s => ({ id: s.id, name: s.name })) }));
@@ -415,9 +532,9 @@ if (typeof module !== 'undefined' && module.exports) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
     return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
-  function newKey(channel) {
+  function newKey() {
     const b = crypto.getRandomValues(new Uint8Array(24));
-    return `trk_${channel}_` + btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return 'trk_claude_' + btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
   const missingFn = e => e && (e.status === 404 || /inbox_|function .* does not exist|schema cache/i.test(e.message || ''));
 
@@ -489,9 +606,9 @@ if (typeof module !== 'undefined' && module.exports) {
     const ready = rows.filter(r => r.n.form === 'tx' && r.n.ready);
     const on = channelsOn();
     return `
-      <div class="modal-head"><div class="modal-title">From ChatGPT</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
-      <p class="dim" style="font-size:13px;margin:0 0 12px;">What your GPTs read from your screenshots and receipts. Nothing is in Trackr until you add it here.</p>
-      ${state.missing ? '<div class="ib-warn">The inbox isn\'t in your Supabase yet: Settings → ChatGPT inbox → step 1.</div>' : lastError ? `<div class="ib-warn">${escHtml(lastError)}</div>` : ''}
+      <div class="modal-head"><div class="modal-title">From Claude</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
+      <p class="dim" style="font-size:13px;margin:0 0 12px;">What Claude read from your screenshots and receipts. Nothing is in Trackr until you add it here.</p>
+      ${state.missing ? '<div class="ib-warn">The inbox isn\'t in your Supabase yet: Settings → Claude inbox → step 1.</div>' : lastError ? `<div class="ib-warn">${escHtml(lastError)}</div>` : ''}
       ${rows.length ? `<div class="ib-list">${rows.map(({ x, n }) => {
         const l = itemLine(x, n);
         return `<div class="ib-item ${n.ok ? '' : 'blocked'}">
@@ -503,10 +620,10 @@ if (typeof module !== 'undefined' && module.exports) {
             ${n.form === 'trade' ? `<button class="btn small primary" ${n.draft.accountKey ? '' : 'disabled'} onclick="inboxOpen('${escHtml(x.id)}')">${n.ok ? 'Review the trade' : 'Open the broker'}</button>`
               : `<button class="btn small" onclick="inboxOpen('${escHtml(x.id)}')">Edit</button>${n.ok ? `<button class="btn small primary" onclick="inboxAdd('${escHtml(x.id)}')">Add</button>` : ''}`}
           </div></div>`;
-      }).join('')}</div>` : `<div class="empty-state" style="padding:22px 10px;"><div class="title">Nothing to review</div><div class="sub">${on.length ? 'Send a screenshot or a receipt to your GPT: it shows up here.' : 'Set up your GPTs in Settings → ChatGPT inbox, or paste what ChatGPT gave you.'}</div></div>`}
+      }).join('')}</div>` : `<div class="empty-state" style="padding:22px 10px;"><div class="title">Nothing to review</div><div class="sub">${on.length ? 'Send a screenshot or a receipt to your Trackr project in Claude: it shows up here.' : 'Connect Claude in Settings → Claude inbox, or paste what Claude gave you.'}</div></div>`}
       <div class="modal-actions">
-        <button class="btn" onclick="openInboxPaste()">Paste from ChatGPT</button>
-        ${ready.length > 1 ? `<button class="btn primary" onclick="inboxAddAllReady()">Add the ${ready.length} ready</button>` : on.length ? '<button class="btn" onclick="inboxRefresh(true)">Check now</button>' : '<button class="btn" onclick="closeModal();goPage(\'settings\');ui.settingsOpenSections={chatgpt:true};render()">Set up</button>'}
+        <button class="btn" onclick="openInboxPaste()">Paste from Claude</button>
+        ${ready.length > 1 ? `<button class="btn primary" onclick="inboxAddAllReady()">Add the ${ready.length} ready</button>` : on.length ? '<button class="btn" onclick="inboxRefresh(true)">Check now</button>' : '<button class="btn" onclick="closeModal();goPage(\'settings\');ui.settingsOpenSections={claude:true};render()">Set up</button>'}
       </div>`;
   };
   const findItem = id => state.items.find(x => x.id === id);
@@ -568,14 +685,14 @@ if (typeof module !== 'undefined' && module.exports) {
     return r;
   };
 
-  /* ---- Paste (no GPT action needed) ---- */
+  /* ---- Paste (no connector needed) ---- */
   window.openInboxPaste = function () { ui.modal = { type: 'inboxPaste', payload: { text: '', error: '' } }; render(); };
   window.__modalRenderers.inboxPaste = function (p) {
     return `
-      <div class="modal-head"><div class="modal-title">Paste from ChatGPT</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
-      <p class="dim" style="font-size:13px;margin:0 0 12px;">Paste ChatGPT's answer with its JSON block. The items wait for your review, like the ones its action sends.</p>
+      <div class="modal-head"><div class="modal-title">Paste from Claude</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
+      <p class="dim" style="font-size:13px;margin:0 0 12px;">Paste Claude's answer with its JSON block. The items wait for your review, like the ones the connector sends.</p>
       ${p.error ? `<div class="ib-warn">${escHtml(p.error)}</div>` : ''}
-      <label class="field"><span class="label-text">ChatGPT's answer</span><textarea id="ib-paste" rows="8" placeholder='{"trackr": "budget", "items": [ … ]}' oninput="ui.modal.payload.text=this.value">${escHtml(p.text)}</textarea></label>
+      <label class="field"><span class="label-text">Claude's answer</span><textarea id="ib-paste" rows="8" placeholder='{"trackr": "budget", "items": [ … ]}' oninput="ui.modal.payload.text=this.value">${escHtml(p.text)}</textarea></label>
       <div class="modal-actions"><button class="btn" onclick="openInbox()">Back</button><button class="btn primary" onclick="inboxPasteSave()">Review them</button></div>`;
   };
   window.inboxPasteSave = function () {
@@ -586,41 +703,56 @@ if (typeof module !== 'undefined' && module.exports) {
     saveState(); openInbox();
   };
 
-  /* ---- Settings → ChatGPT inbox ---- */
-  ui.inboxShow = ui.inboxShow || null;
+  /* ---- Settings → Claude inbox ---- */
+  const fnUrl = c => `${String(c.url || '').replace(/\/+$/, '')}/functions/v1/trackr-inbox/${keys.claude || ''}`;
   window.inboxSettingsHtml = function () {
     const c = cfg();
-    if (!c || !c.secret) return `<div class="ib-note">The inbox lives in your Supabase project, so turn on <b>Supabase Sync</b> first (above). You can still paste what ChatGPT gives you: Add → Paste from ChatGPT.</div>`;
+    if (!c || !c.secret) return `<div class="ib-note">The inbox lives in your Supabase project, so turn on <b>Supabase Sync</b> first (above). You can still paste what Claude gives you: Add → Paste from Claude.</div>`;
     const ref = (String(c.url).match(/https:\/\/([a-z0-9]+)\.supabase\.co/) || [])[1];
-    const on = channelsOn();
+    const dash = path => ref ? `<a class="btn small" href="https://supabase.com/dashboard/project/${escHtml(ref)}/${path}" target="_blank" rel="noopener">Open in Supabase ${ic('chevronRight', 14)}</a>` : '';
+    const on = channelsOn().length > 0, has = !!keys.claude;
     const copyBtn = (label, what, ch) => `<button class="btn small" onclick="inboxCopy('${what}','${ch || ''}')">${ic('copy', 14)} ${label}</button>`;
     return `
-      <div class="ib-note">Send receipts and screenshots to two GPTs in ChatGPT; each item waits in <b>Action required → From ChatGPT</b> until you add it. ChatGPT only gets an inbox key: it can drop items there and read your category, account and asset names, never an amount. You need ChatGPT Plus to make a GPT.</div>
+      <div class="ib-note">Send receipts and screenshots to two projects in Claude, <b>Trackr Budget</b> and <b>Trackr Investments</b>. Through a connector, each item waits in <b>Action required → From Claude</b> until you add it. Claude only gets an inbox key: it can drop items there and read your category, account and asset names, never an amount.</div>
       <div class="ib-step"><b>1. Add the inbox to Supabase</b> <span class="dim">(once)</span>
-        <div class="ib-row">${copyBtn('Copy the SQL', 'sql')}${ref ? `<a class="btn small" href="https://supabase.com/dashboard/project/${escHtml(ref)}/sql/new" target="_blank" rel="noopener">Open the SQL editor ${ic('chevronRight', 14)}</a>` : ''}<button class="btn small" onclick="inboxCheck()">Check</button></div>
-        <div class="dim" style="font-size:12px;">Paste it in a new query, press Run, then Check.${state.missing ? ' <b>Not there yet.</b>' : ''}</div>
+        <div class="ib-row">${copyBtn('Copy the SQL', 'sql')}${dash('sql/new')}<button class="btn small" onclick="inboxCheck()">Check</button></div>
+        <div class="dim" style="font-size:12px;">SQL editor → New query → paste → Run, then Check.${state.missing ? ' <b>Not there yet.</b>' : ''}</div>
       </div>
-      ${CHANNELS.map(([ch, name, what]) => {
-        const has = !!keys[ch], live = on.includes(ch), open = ui.inboxShow === ch && has;
-        return `<div class="ib-step"><div class="row-flex"><b>${ch === 'budget' ? '2' : '3'}. ${name}</b><span class="dim" style="font-size:12px;">${live ? (has ? 'on' : 'on (key made on another device)') : 'off'}</span></div>
-          <div class="dim" style="font-size:12px;">${what}</div>
-          <div class="ib-row">${has ? `<button class="btn small ${open ? '' : 'primary'}" onclick="ui.inboxShow=${open ? 'null' : `'${ch}'`};render()">${open ? 'Hide the setup' : 'Show the GPT setup'}</button><button class="btn small ghost" onclick="inboxMakeKey('${ch}')">New key</button><button class="btn small ghost" onclick="inboxTurnOff('${ch}')">Turn off</button>`
-            : `<button class="btn small primary" onclick="inboxMakeKey('${ch}')">${live ? 'Make a key on this device' : 'Create its key'}</button>`}</div>
-          ${open ? `<ol class="ib-howto">
-            <li>Open <a href="https://chatgpt.com/gpts/editor" target="_blank" rel="noopener">chatgpt.com/gpts/editor</a> → <b>Configure</b>.</li>
-            <li>Name: <b>${name}</b>. Instructions: ${copyBtn('Copy the instructions', 'instructions', ch)}</li>
-            <li><b>Create new action</b> → Authentication: <b>API Key</b>, Auth Type <b>Custom</b>, header name <code>apikey</code>, and as the key your Supabase anon key: ${copyBtn('Copy the anon key', 'anon', ch)}</li>
-            <li>Schema: ${copyBtn('Copy the schema', 'schema', ch)}</li>
-            <li>Save it for <b>Only me</b>. Then send it a screenshot to try.</li>
-          </ol>
-          <div class="dim" style="font-size:11.5px;">The key is in the instructions: keep the GPT private. New key = the old one stops working (paste the new instructions).</div>` : ''}
-        </div>`;
-      }).join('')}`;
+      <div class="ib-step"><b>2. Add the connector to Supabase</b> <span class="dim">(once)</span>
+        <div class="ib-row">${copyBtn('Copy the function', 'function')}${dash('functions')}</div>
+        <div class="dim" style="font-size:12px;">Edge Functions → Deploy a new function → Via editor. Name it <code>trackr-inbox</code>, paste, Deploy. Then in its Details turn off <b>Verify JWT</b> (Claude has no Supabase login) and save.</div>
+      </div>
+      <div class="ib-step"><div class="row-flex"><b>3. Connect Claude</b><span class="dim" style="font-size:12px;">${on ? (has ? 'on' : 'on (key made on another device)') : 'off'}</span></div>
+        <div class="ib-row">${has ? `${copyBtn('Copy the connector URL', 'url')}<button class="btn small" onclick="inboxTest()">Test</button><button class="btn small ghost" onclick="inboxMakeKey()">New key</button><button class="btn small ghost" onclick="inboxTurnOff()">Turn off</button>`
+          : `<button class="btn small primary" onclick="inboxMakeKey()">${on ? 'Make a key on this device' : 'Make the key'}</button>`}</div>
+        ${has ? `<div class="dim" style="font-size:12px;">Claude → Settings → Connectors → <b>Add custom connector</b>. Name it <b>Trackr</b>, paste the URL, Add. The key is in the URL: keep it to yourself. New key = paste the new URL in Claude.</div>` : ''}
+      </div>
+      <div class="ib-step"><b>4. Make the two projects in Claude</b>
+        <div class="dim" style="font-size:12px;">Claude → Projects → New project. In its instructions paste:</div>
+        <div class="ib-row">${copyBtn('Trackr Budget instructions', 'instructions', 'budget')}${copyBtn('Trackr Investments instructions', 'instructions', 'invest')}</div>
+        <div class="dim" style="font-size:12px;">In each chat, the Trackr connector must be on (the tools button under the message box). Then send a screenshot to try.</div>
+      </div>`;
   };
   window.inboxCopy = async function (what, ch) {
     const c = cfg() || {};
-    const text = what === 'sql' ? INBOX_SQL_TEXT : what === 'anon' ? c.anonKey : what === 'schema' ? inboxOpenApi(c.url, ch) : inboxInstructions(ch, keys[ch]);
+    const text = what === 'sql' ? INBOX_SQL_TEXT : what === 'function' ? INBOX_FUNCTION_TEXT : what === 'url' ? fnUrl(c) : inboxInstructions(ch);
     try { await navigator.clipboard.writeText(text || ''); if (typeof fxSuccess === 'function') fxSuccess('Copied'); } catch (e) { prompt('Copy this:', text || ''); }
+  };
+  /* Calls the connector like Claude would (initialize, then the names), from here. */
+  window.inboxTest = async function () {
+    const c = cfg(); if (!c || !keys.claude) return;
+    const post = async (id, method, params) => {
+      const res = await fetch(fnUrl(c), { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id, method, params }) });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body) throw new Error(res.status === 401 ? 'Supabase asks for a login: turn off "Verify JWT" on the trackr-inbox function (step 2).' : res.status === 404 ? 'No trackr-inbox function yet (step 2).' : `The function answered ${res.status}.`);
+      return body;
+    };
+    try {
+      await post(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'trackr-test', version: '1' } });
+      const r = await post(2, 'tools/call', { name: 'get_trackr_context', arguments: {} });
+      if (r.result && r.result.isError) throw new Error(r.result.content[0].text);
+      alert('It works: Claude can reach your Trackr inbox.');
+    } catch (e) { alert(e && e.message && !/Failed to fetch|NetworkError|Load failed/i.test(e.message) ? e.message : 'No answer from the function: is it deployed (step 2)?'); }
   };
   window.inboxCheck = async function () {
     const c = cfg(); if (!c) return;
@@ -628,20 +760,21 @@ if (typeof module !== 'undefined' && module.exports) {
     catch (e) { state.missing = missingFn(e); saveState(); alert(state.missing ? 'The inbox isn\'t in Supabase yet: run the SQL first.' : (e.message || String(e))); }
     render();
   };
-  window.inboxMakeKey = async function (ch) {
+  window.inboxMakeKey = async function () {
     const c = cfg(); if (!c) return;
-    if (keys[ch] && !confirm('Make a new key? The GPT stops working until you paste its new instructions.')) return;
-    const key = newKey(ch);
+    const ch = 'claude';
+    if (keys[ch] && !confirm('Make a new key? Claude stops reaching Trackr until you paste the new connector URL.')) return;
+    const key = newKey();
     try { await supabaseRpc('inbox_set_key', { secret: c.secret, channel: ch, key_hash: await sha256Hex(key) }); }
     catch (e) { state.missing = missingFn(e); saveState(); alert(state.missing ? 'Run the SQL in Supabase first (step 1).' : (e.message || String(e))); render(); return; }
     keys[ch] = key; writeLs(KEYS_KEY, keys);
     data.settings.inboxChannels = Object.assign({}, data.settings.inboxChannels, { [ch]: todayYmd() });
     state.ctxSig = ''; state.missing = false; saveState();
-    ui.inboxShow = ch;
     save(); render(); inboxRefresh(true);
   };
-  window.inboxTurnOff = async function (ch) {
-    const c = cfg(); if (!c || !confirm('Turn it off? The GPT can no longer send anything.')) return;
+  window.inboxTurnOff = async function () {
+    const ch = 'claude';
+    const c = cfg(); if (!c || !confirm('Turn it off? Claude can no longer send anything.')) return;
     try { await supabaseRpc('inbox_drop_key', { secret: c.secret, channel: ch }); } catch (e) { alert(e.message || String(e)); return; }
     delete keys[ch]; writeLs(KEYS_KEY, keys);
     const next = Object.assign({}, data.settings.inboxChannels); delete next[ch]; data.settings.inboxChannels = next;
@@ -652,11 +785,11 @@ if (typeof module !== 'undefined' && module.exports) {
   window.__attention.push(() => {
     const n = openItems().length;
     return n ? [{ key: 'inbox:' + n, icon: `<span class="add-ic" style="width:30px;height:30px;">${ic('receipt', 16)}</span>`,
-      name: `${n} from ChatGPT to review`, detail: 'Read from your screenshots and receipts. Nothing is in Trackr until you add it.',
+      name: `${n} from Claude to review`, detail: 'Read from your screenshots and receipts. Nothing is in Trackr until you add it.',
       actions: [{ label: 'Review', onclick: 'closeModal();openInbox()', primary: true }] }] : [];
   });
-  window.__addMenu.push({ label: 'Paste from ChatGPT', sub: 'Review what it read', icon: 'copy', go: 'openInboxPaste()' });
-  window.__palette.push(add => { add('Actions', 'From ChatGPT', 'Review what your GPTs sent', () => openInbox(), 'receipt'); add('Pages', 'ChatGPT inbox setup', 'Settings → ChatGPT inbox', () => { goPage('settings'); ui.settingsOpenSections = { chatgpt: true }; render(); }, 'settings'); });
+  window.__addMenu.push({ label: 'Paste from Claude', sub: 'Review what it read', icon: 'copy', go: 'openInboxPaste()' });
+  window.__palette.push(add => { add('Actions', 'From Claude', 'Review what Claude sent', () => openInbox(), 'receipt'); add('Pages', 'Claude inbox setup', 'Settings → Claude inbox', () => { goPage('settings'); ui.settingsOpenSections = { claude: true }; render(); }, 'settings'); });
 
   // Fetch at start, when you come back to the app, and every minute while it's open.
   setTimeout(() => inboxRefresh(), 2500);

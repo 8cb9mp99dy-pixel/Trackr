@@ -1,17 +1,20 @@
--- Trackr inbox — ChatGPT (your "Trackr Budget" and "Trackr Investments" GPTs) drops expenses and
--- trades here; Trackr shows them for review and only adds what you approve.
+-- Trackr inbox — Claude (your "Trackr Budget" and "Trackr Investments" projects, through the
+-- trackr-inbox connector) drops expenses and trades here; Trackr shows them for review and only
+-- adds what you approve.
 -- An inbox key can only ADD items to this queue and read the names Trackr published (categories,
 -- accounts, brokers, assets: no amounts, no balances). It can't read or change your data.
 -- Your sync secret never leaves Trackr. Safe to run on a project that has Trackr's setup SQL, and
--- safe to re-run. (Settings → ChatGPT inbox → "Copy the SQL" gives this same text.)
+-- safe to re-run. (Settings → Claude inbox → "Copy the SQL" gives this same text.)
 
 create table if not exists trackr_inbox_keys (
   key_hash text primary key,                 -- sha256 of the key; the key itself is never stored
   data_id text not null,                     -- the trackr_data row it files into
-  channel text not null check (channel in ('budget', 'invest')),
+  channel text not null,                     -- 'claude' (sends to both), or 'budget' / 'invest'
   created_at timestamptz not null default now(),
   unique (data_id, channel)
 );
+alter table trackr_inbox_keys drop constraint if exists trackr_inbox_keys_channel_check;
+alter table trackr_inbox_keys add constraint trackr_inbox_keys_channel_check check (channel in ('claude', 'budget', 'invest'));
 create table if not exists trackr_inbox (
   id uuid primary key default gen_random_uuid(),
   data_id text not null,
@@ -47,7 +50,7 @@ create or replace function inbox_set_key(secret text, channel text, key_hash tex
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare owner text := trackr_inbox_owner(secret);
 begin
-  if channel not in ('budget', 'invest') or key_hash !~ '^[0-9a-f]{64}$' then raise exception 'bad key'; end if;
+  if channel not in ('claude', 'budget', 'invest') or key_hash !~ '^[0-9a-f]{64}$' then raise exception 'bad key'; end if;
   delete from trackr_inbox_keys k where k.data_id = owner and k.channel = inbox_set_key.channel;
   insert into trackr_inbox_keys (key_hash, data_id, channel) values (key_hash, owner, channel);
 end $$;
@@ -69,7 +72,7 @@ begin
     'last', (select max(created_at) from trackr_inbox where data_id = owner));
 end $$;
 
--- The names ChatGPT may see (Trackr sends them; nothing with an amount in it).
+-- The names Claude may see (Trackr sends them; nothing with an amount in it).
 create or replace function inbox_set_context(secret text, context jsonb)
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare owner text := trackr_inbox_owner(secret);
@@ -100,29 +103,33 @@ begin
   return n;
 end $$;
 
--- ---- Called by ChatGPT (with an inbox key) ----
+-- ---- Called by the trackr-inbox connector (with an inbox key) ----
 create or replace function inbox_context(inbox_key text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare k trackr_inbox_keys;
 begin
   select * into k from trackr_inbox_keys where key_hash = encode(digest(coalesce(inbox_key, ''), 'sha256'), 'hex');
-  if not found then raise exception 'Unknown inbox key. Create a new one in Trackr: Settings → ChatGPT inbox.'; end if;
+  if not found then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
   return jsonb_build_object('channel', k.channel, 'today', to_char(now() at time zone 'Europe/Amsterdam', 'YYYY-MM-DD'),
     'context', coalesce((select context from trackr_inbox_context where data_id = k.data_id), '{}'::jsonb));
 end $$;
 
-create or replace function inbox_add(inbox_key text, items jsonb, source text default null)
+-- channel: 'budget' or 'invest' (a 'claude' key sends to either; a single-channel key ignores it).
+drop function if exists inbox_add(text, jsonb, text);
+create or replace function inbox_add(inbox_key text, items jsonb, source text default null, channel text default null)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
-declare k trackr_inbox_keys; n integer; open_now integer;
+declare k trackr_inbox_keys; n integer; open_now integer; ch text;
 begin
   select * into k from trackr_inbox_keys where key_hash = encode(digest(coalesce(inbox_key, ''), 'sha256'), 'hex');
-  if not found then raise exception 'Unknown inbox key. Create a new one in Trackr: Settings → ChatGPT inbox.'; end if;
+  if not found then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
+  ch := case when k.channel = 'claude' then coalesce(nullif(inbox_add.channel, ''), 'budget') else k.channel end;
+  if ch not in ('budget', 'invest') then raise exception 'channel must be budget or invest'; end if;
   if jsonb_typeof(items) <> 'array' or jsonb_array_length(items) = 0 then raise exception 'items must be a non-empty array'; end if;
   if jsonb_array_length(items) > 50 then raise exception 'at most 50 items per call'; end if;
   select count(*) into open_now from trackr_inbox where data_id = k.data_id and status = 'new';
   if open_now + jsonb_array_length(items) > 300 then raise exception 'Trackr already has 300 items waiting for review: review them in Trackr first.'; end if;
   insert into trackr_inbox (data_id, channel, item, source)
-  select k.data_id, k.channel, it, left(source, 200) from jsonb_array_elements(items) it
+  select k.data_id, ch, it, left(source, 200) from jsonb_array_elements(items) it
    where jsonb_typeof(it) = 'object' and octet_length(it::text) <= 8000;
   get diagnostics n = row_count;
   return jsonb_build_object('added', n, 'skipped', jsonb_array_length(items) - n, 'waiting_for_review', open_now + n,
@@ -130,7 +137,7 @@ begin
 end $$;
 
 revoke all on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
-  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text) from public;
+  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text) from public;
 grant execute on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
-  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text) to anon;
+  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text) to anon;
 notify pgrst, 'reload schema';
