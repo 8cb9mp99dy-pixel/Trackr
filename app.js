@@ -460,6 +460,7 @@ function defaultData() {
     ious: [], // money lent / borrowed / split with people (ious.js)
     contracts: [], // subscriptions and contracts with their notice period (contracts.js)
     yearlyBills: [], // irregular bills set aside for every month (setaside.js)
+    cards: [], // the bank cards on the Accounts page: a picture and a link, no card data (cards.js)
     photoThumbs: {}, // photo id → a very small copy of a goal's cover, for your other devices (photos.js)
     inboxRejected: [], // what you rejected on From Claude, kept 30 days to put back (inbox.js)
     trips: [], // trips with dates and a budget (trips.js)
@@ -2285,6 +2286,7 @@ function render() {
     if (typeof afterRenderMotion === 'function') afterRenderMotion(app);
     if (typeof notifyAfterRender === 'function') notifyAfterRender();
     if (typeof navAfterRender === 'function') navAfterRender(app);
+    if (typeof cardsAfterRender === 'function') cardsAfterRender(app);
   } catch (e) {
     console.error('Render failed', e);
     renderCrashScreen(app, e);
@@ -2653,6 +2655,8 @@ function renderAccounts() {
         <div class="page-subtitle">${active} active · ${hidden} hidden</div>
       </div>
     </div>
+
+    ${typeof cardsHtml === 'function' ? cardsHtml() : ''}
 
     <div class="card-dark stack-gap-16" style="margin-bottom:20px;">
       <div class="row-flex">

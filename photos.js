@@ -138,7 +138,7 @@ async function removePhoto(id) {
 }
 /* Photos on this device that no goal uses any more (e.g. added, then the form was cancelled). */
 async function photoCleanup() {
-  const used = new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id)));
+  const used = new Set(photoUsedIds());
   // Receipts on transactions (receipts.js) live in the same place.
   if (typeof receiptIds === 'function') receiptIds().forEach(id => used.add(id));
   const pl = (ui.modal && ui.modal.payload) || {};
@@ -148,7 +148,7 @@ async function photoCleanup() {
 /* Each goal's cover, very small, in the data itself. Only the device that holds a photo can make
    its copy; a copy no cover uses any more goes. */
 async function photoKeepThumbs() {
-  const covers = (data.goals || []).map(g => g.photos && g.photos[0] && g.photos[0].id).filter(Boolean);
+  const covers = (data.goals || []).map(g => g.photos && g.photos[0] && g.photos[0].id).concat((data.cards || []).map(c => c.photo)).filter(Boolean);
   if (!data.photoThumbs) data.photoThumbs = {};
   let changed = false;
   Object.keys(data.photoThumbs).forEach(id => { if (!covers.includes(id)) { delete data.photoThumbs[id]; changed = true; } });
@@ -173,7 +173,7 @@ setTimeout(() => { photoBackground().catch(() => {}); }, 4000);
 setInterval(() => { if (!document.hidden) photoBackground().catch(() => {}); }, 5 * 60 * 1000);
 
 /* ---- Where your photos are ---- */
-const photoUsedIds = () => Array.from(new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id)).concat(typeof receiptIds === 'function' ? receiptIds() : [])));
+const photoUsedIds = () => Array.from(new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id)).concat(typeof receiptIds === 'function' ? receiptIds() : [], (data.cards || []).map(c => c.photo).filter(Boolean))));
 async function photoRefreshStatus(again) {
   ui.photoStatusAt = Date.now();
   if (again) { photoCloud = null; await photoSyncPending().catch(() => {}); }
@@ -236,7 +236,7 @@ function shrinkDataUrl(dataUrl, max, quality) {
   });
 }
 async function photosForBackup() {
-  const ids = Array.from(new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id)).concat(typeof receiptIds === 'function' ? receiptIds() : [])));
+  const ids = photoUsedIds();
   const out = [];
   for (const id of ids) {
     const rec = await photoGet(id).catch(() => null);
