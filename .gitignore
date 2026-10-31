@@ -15,7 +15,7 @@ Trackr-backup-*.xlsx
 *.xlsx.enc
 
 # Dev tooling (package.json is dev-only; the app never needs node_modules)
-node_modules/
+node_modules
 test-results/
 playwright-report/
 .lighthouseci/
