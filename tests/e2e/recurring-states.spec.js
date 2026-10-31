@@ -57,3 +57,51 @@ test('a transfer can repeat every month; one the pocket can\'t cover is missed',
   await expect(page.locator('.grid-3')).toContainText('Moved / month');
   expect(errors).toEqual([]);
 });
+
+test('deleting a recurring entry warns first: Cancel keeps it, and the series goes on', async ({ page }) => {
+  const errors = await openApp(page);
+  const said = [];
+  let answer = false;
+  page.on('dialog', d => { said.push(d.message()); return answer ? d.accept() : d.dismiss(); });
+  const id = await page.evaluate(() => recurringOccurrences('rs_expense_streambox').pop().id);
+  const entry = () => page.evaluate(i => data.budgetTransactions.some(t => t.id === i), id);
+
+  // From the form: Cancel leaves the entry and the form open.
+  await page.evaluate(i => { goPage('budget'); openTxForm(i); }, id);
+  await page.locator('.tx-footer').getByRole('button', { name: 'Delete' }).click();
+  expect(said[0]).toContain('Delete only this entry?');
+  expect(said[0]).toContain('The next ones will still be added');
+  expect(await entry()).toBe(true);
+  await expect(page.locator('.tx-steps')).toBeVisible();
+  expect(await page.locator('#safety-toast.show').count()).toBe(0);
+
+  // OK: only that entry goes, the series stays, and it can be undone.
+  answer = true;
+  await page.locator('.tx-footer').getByRole('button', { name: 'Delete' }).click();
+  await expect.poll(entry).toBe(false);
+  await expect(page.locator('.tx-steps')).toHaveCount(0);
+  expect(await page.evaluate(() => activeRecurringSeries().some(x => x.id === 'rs_expense_streambox'))).toBe(true);
+  await page.locator('#safety-toast').getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(entry).toBe(true);
+
+  // An ordinary expense is deleted without a question.
+  const n = said.length;
+  const plain = await page.evaluate(() => data.budgetTransactions.find(t => t.nature !== 'Fixed').id);
+  await page.evaluate(i => deleteBudgetTx(i), plain);
+  expect(said.length).toBe(n);
+  expect(errors).toEqual([]);
+});
+
+test('the warning says when deleting ends the repeat, or when nothing repeats any more', async ({ page }) => {
+  await openApp(page);
+  const out = await page.evaluate(() => {
+    openTxForm(null, { type: 'expense', categoryId: 'exp_food', amount: '5', comment: 'Demo Once', accountId: 'acc_demo1', date: todayYmd(), nature: 'Fixed' });
+    saveTxForm(); if (ui.modal) closeModal();
+    const t = data.budgetTransactions.find(x => x.comment === 'Demo Once');
+    const only = recurringDeleteWarning(t);
+    data.recurring[t.recurringId].stopped = true;
+    return [only, recurringDeleteWarning(t)];
+  });
+  expect(out[0]).toContain('Deleting it also ends the repeat');
+  expect(out[1]).toContain('It no longer repeats');
+});

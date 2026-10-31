@@ -3894,7 +3894,8 @@ function txRowDisplayHtml(t) {
 
    - Logging or importing the real entry for a month replaces the automatic one, so nothing is
      counted twice (e.g. importing the bank statement with your rent in it).
-   - Deleting one month's entry doesn't bring it back; "Stop" in Budget → Recurring ends a series.
+   - Deleting one month's entry doesn't bring it back (the app warns first); "Stop" in Budget →
+     Recurring ends a series.
    - Series ids and automatic entries are built only from the data itself (no random ids, no
      timestamps), so two devices that both add the same month produce the identical result and
      sync without asking which version to keep.
@@ -4320,8 +4321,16 @@ function txNetEUR(t) {
   if (t.type === 'transfer') return 0;
   return toEUR(t.type === 'income' ? t.amount : -t.amount, t.currency);
 }
+/* What deleting one entry of a recurring item really does. */
+function recurringDeleteWarning(t) {
+  const name = t.comment || 'This entry', st = data.recurring && data.recurring[t.recurringId];
+  if (!st || st.stopped) return `Delete this entry of "${name}"? It no longer repeats, so nothing comes back.\n\nYou can undo for 10 seconds.`;
+  if (recurringOccurrences(t.recurringId).length < 2) return `"${name}" repeats, and this is its only entry. Deleting it also ends the repeat.\n\nYou can undo for 10 seconds.`;
+  return `"${name}" is a recurring item. Delete only this entry?\n\nThe next ones will still be added. To end it, use Stop in Budget → Recurring.\n\nYou can undo for 10 seconds.`;
+}
 function deleteBudgetTx(id) {
   const t = data.budgetTransactions.find(x => x.id === id);
+  if (t && t.nature === 'Fixed' && !confirm(recurringDeleteWarning(t))) return false;
   if (t) applyTxToAccountBalance(t, -1);
   data.budgetTransactions = data.budgetTransactions.filter(t => t.id !== id);
   save(); render();
@@ -4685,7 +4694,7 @@ window.__modalRenderers.tx = function (p) {
     <div class="tx-steps">${steps.map(([l, n]) => `<button type="button" class="tx-step ${step === n ? 'on' : ''} ${n < 3 && done[n] ? 'done' : ''}" onclick="txGo(${n})" ${n > 1 && !done[1] && !isEdit ? 'disabled' : ''}><span>${n < 3 && done[n] && step !== n ? '✓' : n}</span>${l}</button>`).join('')}</div>
     <div class="tx-body">${body}</div>
     <div class="tx-footer">
-      ${step > 1 ? `<button class="btn" onclick="txGo(${step - 1})">← Back</button>` : (isEdit ? `<button class="btn danger ghost" onclick="deleteBudgetTx('${p.id}');closeModal();">Delete</button>` : '<span></span>')}
+      ${step > 1 ? `<button class="btn" onclick="txGo(${step - 1})">← Back</button>` : (isEdit ? `<button class="btn danger ghost" onclick="if(deleteBudgetTx('${p.id}')!==false)closeModal();">Delete</button>` : '<span></span>')}
       ${step < 3 && !(p._inboxId && complete) ? `<button class="btn ${complete && step === 1 ? '' : 'primary'}" id="tx-next" onclick="txNext()" ${done[step] ? '' : 'disabled'}>Next →</button>` : ''}
       ${complete && p._inboxId ? inboxFormActions() : complete && (step === 3 || isEdit || p._fromSuggestion) ? `<button class="btn primary" onclick="saveTxForm()">Save</button>` : ''}
     </div>`;
