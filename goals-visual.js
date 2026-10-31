@@ -43,7 +43,9 @@ if (typeof module !== 'undefined' && module.exports) {
   window.goalsOverviewHtml = function () {
     const all = goalEntries().filter(e => e.s.target > 0);
     if (!all.length) return '';
-    const saved = all.reduce((t, e) => t + Math.min(e.s.current, e.s.target), 0), target = all.reduce((t, e) => t + e.s.target, 0);
+    // Closed goals are done with: what's left to save is about the others.
+    const open = all.filter(e => !e.s.reachedAt);
+    const saved = open.reduce((t, e) => t + Math.min(e.s.current, e.s.target), 0), target = open.reduce((t, e) => t + e.s.target, 0);
     const count = st => all.filter(e => e.s.status === st).length;
     const pct = target ? saved / target * 100 : 0;
     const next = all.find(e => e.s.status !== 'done' && (e.aim || e.s.eta));
@@ -67,16 +69,18 @@ if (typeof module !== 'undefined' && module.exports) {
 
   /* ---- The list ---- */
   window.goalsListHtml = function () {
-    const cards = goalEntries().map(e => {
+    const card = e => {
       const [label, tone] = GOAL_STATUS[e.s.status] || GOAL_STATUS.none;
-      const when = e.s.status === 'done' ? 'Target reached' : e.aim ? `Aim ${monthYear(e.aim)}` : e.s.eta ? `Around ${monthYear(e.s.eta)}` : 'No date yet';
+      const when = e.s.reachedAt ? `Reached on ${shortDay(e.s.reachedAt)}` : e.s.status === 'done' ? 'Target reached' : e.aim ? `Aim ${monthYear(e.aim)}` : e.s.eta ? `Around ${monthYear(e.s.eta)}` : 'No date yet';
       const pace = e.s.status !== 'done' && e.s.perMonth > 0 ? ` · ${fmtMoney(e.s.perMonth)} a month` : '';
       return `<button class="gp-card" onclick="${e.open}">
         <span class="gp-card-top">${tile(e)}<span class="gp-card-name"><b>${escHtml(e.name)}</b><span>${escHtml(when)}${pace}</span></span><span class="status-pill ${tone}">${label}</span></span>
         <span class="gp-amts"><b>${fmtMoney(e.s.current)}</b><span>of ${fmtMoney(e.s.target)}</span><em>${e.s.pct.toFixed(0)}%</em></span>
         <span class="goal-bar gp-bar"><span style="width:${e.s.pct.toFixed(1)}%;"></span></span>
       </button>`;
-    }).join('');
-    return `<div class="gp-grid">${cards || `<button class="gp-add" onclick="openGoalForm()">${ic('plus', 18)}<span><b>Your first goal</b><span>A trip, a car, a flat deposit…</span></span></button>`}</div>`;
+    };
+    const all = goalEntries(), open = all.filter(e => !e.s.reachedAt), closed = all.filter(e => e.s.reachedAt);
+    return `<div class="gp-grid">${open.map(card).join('') || (closed.length ? '' : `<button class="gp-add" onclick="openGoalForm()">${ic('plus', 18)}<span><b>Your first goal</b><span>A trip, a car, a flat deposit…</span></span></button>`)}</div>
+      ${closed.length ? `<div class="gp-closed"><div class="eyebrow">Reached · ${closed.length}</div><div class="gp-grid">${closed.map(card).join('')}</div></div>` : ''}`;
   };
 }

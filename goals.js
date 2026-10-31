@@ -78,7 +78,10 @@ function linksMonthlyPace(links) {
 }
 
 function goalState(g) {
-  const current = linksValue(g.links), target = goalTarget(g);
+  const target = goalTarget(g);
+  // Marked reached: it stays reached, even once the money is spent on what it was for.
+  if (g.reachedAt) return { current: +g.reachedAmount || target, target, pct: 100, perMonth: null, typed: false, pace: null, months: 0, eta: null, status: 'done', left: 0, reachedAt: g.reachedAt };
+  const current = linksValue(g.links);
   // A pocket goal: the pace is what you really moved into the pocket over the last 3 months
   // (at least one month counted). Otherwise: how fast the followed money grew (daily history).
   let pace = null;
@@ -170,6 +173,39 @@ function pocketByRef(ref) {
   return p ? { a, p, ref } : null;
 }
 function goalForPocket(accId, pkId) { return (data.goals || []).find(g => g.pocket === `pk:${accId}:${pkId}`) || null; }
+/* The pockets a goal fills: its own, and the ones it follows. */
+function goalPockets(g) { return Array.from(new Set([g.pocket].concat(g.links || []))).map(r => (/^pk:/.test(r || '') ? pocketByRef(r) : null)).filter(Boolean); }
+/* Reached: the goal is closed and its pockets are finished, unless another open goal still uses
+   them. A finished pocket only leaves the bank page: what it holds still counts everywhere. */
+function markGoalReached(id) {
+  const g = (data.goals || []).find(x => x.id === id); if (!g || g.reachedAt) return;
+  const s = goalState(g), day = todayYmd();
+  Object.assign(g, { reachedAt: day, reachedAmount: Math.round((s.current > 0 ? s.current : s.target) * 100) / 100 });
+  goalPockets(g).forEach(pk => { if (!(data.goals || []).some(o => !o.reachedAt && goalPockets(o).some(x => x.ref === pk.ref))) pk.p.finishedAt = day; });
+  save(); render();
+  if (typeof fxSuccess === 'function') fxSuccess('Goal reached');
+}
+function unmarkGoalReached(id) {
+  const g = (data.goals || []).find(x => x.id === id); if (!g) return;
+  delete g.reachedAt; delete g.reachedAmount;
+  goalPockets(g).forEach(pk => { delete pk.p.finishedAt; });
+  save(); render();
+}
+/* The same thing from the bank page: a pocket and its goal finish together. */
+function finishPocket(accId, pkId) {
+  const a = accountById(accId), p = a && (a.pockets || []).find(x => x.id === pkId); if (!p) return;
+  const g = goalForPocket(accId, pkId);
+  if (g && !g.reachedAt) { markGoalReached(g.id); return; }
+  p.finishedAt = todayYmd();
+  save(); render();
+}
+function reopenPocket(accId, pkId) {
+  const a = accountById(accId), p = a && (a.pockets || []).find(x => x.id === pkId); if (!p) return;
+  const g = goalForPocket(accId, pkId);
+  if (g && g.reachedAt) { unmarkGoalReached(g.id); return; }
+  delete p.finishedAt;
+  save(); render();
+}
 function goalTarget(g) {
   const pk = pocketByRef(g.pocket);
   return pk && +pk.p.targetAmount > 0 ? toEUR(+pk.p.targetAmount, pk.a.currency) : (+g.target || 0);
@@ -226,7 +262,7 @@ window.__modalRenderers.goalView = function (p) {
       </div>
       <div class="gv-info">
         <div class="row-flex" style="gap:10px;align-items:flex-start;">
-          <div><div class="gv-name">${escHtml(g.icon || '')} ${escHtml(g.name)}</div><div class="nm-2" style="font-size:13px;">${s.status === 'done' ? 'Target reached' : s.eta ? `${durationText(s.months)} · ${s.eta.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}` : 'No date yet'}${g.targetDate ? ` · aim: ${ymdToDate(g.targetDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''}</div></div>
+          <div><div class="gv-name">${escHtml(g.icon || '')} ${escHtml(g.name)}</div><div class="nm-2" style="font-size:13px;">${s.reachedAt ? `Reached on ${escHtml(shortDay(s.reachedAt))}` : s.status === 'done' ? 'Target reached' : s.eta ? `${durationText(s.months)} · ${s.eta.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}` : 'No date yet'}${g.targetDate ? ` · aim: ${ymdToDate(g.targetDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : ''}</div></div>
           <span class="status-pill ${tone}">${label}</span>
         </div>
         ${g.description ? `<p class="gv-desc">${escHtml(g.description).replace(/\n/g, '<br>')}</p>` : ''}
@@ -234,8 +270,8 @@ window.__modalRenderers.goalView = function (p) {
           <div class="gv-big"><b class="count-up">${fmtMoney(s.current)}</b><span>of ${fmtMoney(s.target)} · ${s.pct.toFixed(0)}%</span></div>
           <div class="goal-bar gs-bar"><span style="width:${s.pct.toFixed(1)}%;"></span></div>
           <div class="gv-stats">
-            <div><span class="eyebrow">Still to save</span><b>${fmtMoney(s.left)}</b></div>
-            <div><span class="eyebrow">Pace</span><b style="font-size:13px;">${paceTxt}</b></div>
+            ${s.reachedAt ? '' : `<div><span class="eyebrow">Still to save</span><b>${fmtMoney(s.left)}</b></div>
+            <div><span class="eyebrow">Pace</span><b style="font-size:13px;">${paceTxt}</b></div>`}
             ${pk ? `<div><span class="eyebrow">Put in</span><b class="positive">+${fmtMoney(putIn)}</b></div><div><span class="eyebrow">Taken out</span><b>${takenOut ? '−' + fmtMoney(takenOut) : '—'}</b></div>` : ''}
           </div>
         </div>
@@ -246,8 +282,11 @@ window.__modalRenderers.goalView = function (p) {
           ${moves.slice(0, 6).map(m => `<div class="row-flex"><span>${escHtml(fmtDate(ymdToDate(m.date)))} <span class="dim">${escHtml(m.comment || m.other)}</span></span><b class="${m.amount >= 0 ? 'positive' : ''}">${m.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(m.amount))}</b></div>`).join('') || '<div class="dim">No transfers yet.</div>'}
           ${startedWith > 0.005 ? `<div class="row-flex"><span class="dim">Already in the pocket before</span><b>${fmtMoney(startedWith)}</b></div>` : ''}
         </div>` : ''}
+        ${s.reachedAt ? `<div class="gv-where">${ic('check', 15)}<span>${goalPockets(g).length ? `This goal is closed and its pocket is hidden from your bank account. Whatever it still holds keeps counting in your totals.` : 'This goal is closed.'}</span></div>`
+          : s.status === 'done' ? `<div class="gv-where">${ic('target', 15)}<span>You have the full amount. Mark it as reached to close the goal${goalPockets(g).length ? ' and hide its pocket from your bank account' : ''}.</span></div>` : ''}
         <div class="gv-actions">
-          ${pk ? `<button class="btn primary" onclick="addMoneyToGoal('${g.id}')">${ic('plus', 15)} Add money</button>` : ''}
+          ${pk && !s.reachedAt ? `<button class="btn ${s.status === 'done' ? '' : 'primary'}" onclick="addMoneyToGoal('${g.id}')">${ic('plus', 15)} Add money</button>` : ''}
+          ${s.reachedAt ? `<button class="btn" onclick="unmarkGoalReached('${g.id}')">Not reached after all</button>` : `<button class="btn ${s.status === 'done' ? 'primary' : ''}" onclick="markGoalReached('${g.id}')">${ic('check', 15)} Mark as reached</button>`}
           <button class="btn" onclick="openGoalForm('${g.id}')">${ic('edit', 15)} Edit</button>
           <button class="btn ghost" style="color:var(--negative);" onclick="deleteGoal('${g.id}')" aria-label="Delete">${ic('trash', 15)}</button>
         </div>
@@ -317,7 +356,7 @@ window.__modalRenderers.goal = function (p) {
     ${p.mode === 'pocket' ? (accs.length ? `
       <label class="field"><span class="label-text">Pocket</span><select id="gf-pocket" onchange="ui.modal.payload.pocket=this.value">
         ${accs.map(a => `<option value="new:${a.id}" ${p.pocket === 'new:' + a.id ? 'selected' : ''}>＋ New pocket in ${escHtml(a.name)}</option>`).join('')}
-        ${accs.flatMap(a => (a.pockets || []).map(pk => { const ref = `pk:${a.id}:${pk.id}`, other = goalForPocket(a.id, pk.id); return `<option value="${ref}" ${p.pocket === ref ? 'selected' : ''} ${other && other.id !== p.id ? 'disabled' : ''}>${escHtml(pk.icon || '')} ${escHtml(pk.name)} · ${escHtml(a.name)} · ${fmtMoney(pk.amountSaved, a.currency)}${other && other.id !== p.id ? ' (goal: ' + escHtml(other.name) + ')' : ''}</option>`; })).join('')}
+        ${accs.flatMap(a => (a.pockets || []).filter(pk => !pk.finishedAt || p.pocket === `pk:${a.id}:${pk.id}`).map(pk => { const ref = `pk:${a.id}:${pk.id}`, other = goalForPocket(a.id, pk.id); return `<option value="${ref}" ${p.pocket === ref ? 'selected' : ''} ${other && other.id !== p.id ? 'disabled' : ''}>${escHtml(pk.icon || '')} ${escHtml(pk.name)} · ${escHtml(a.name)} · ${fmtMoney(pk.amountSaved, a.currency)}${other && other.id !== p.id ? ' (goal: ' + escHtml(other.name) + ')' : ''}</option>`; })).join('')}
       </select></label>
       <div class="dim" style="margin-top:6px;">The goal shows the pocket's balance, kept up to date by your transfers in Budget. Its target becomes the pocket's target.</div>`
       : '<div class="dim">Add a bank account first (Accounts) to keep this goal in a pocket.</div>') : `

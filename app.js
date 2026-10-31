@@ -2727,9 +2727,18 @@ function accountExpandedHtml(acc) {
         <button class="btn small" onclick="openPocketForm('${acc.id}')">+ Add pocket</button>
       </div>
       <div class="stack-gap-8">
-        ${(acc.pockets || []).slice().sort((a, b) => b.amountSaved - a.amountSaved).map(p => pocketRowHtml(acc, p)).join('') || '<div style="opacity:.5;font-size:13px;">No pockets yet.</div>'}
+        ${(acc.pockets || []).filter(p => !p.finishedAt).sort((a, b) => b.amountSaved - a.amountSaved).map(p => pocketRowHtml(acc, p)).join('') || '<div style="opacity:.5;font-size:13px;">No pockets yet.</div>'}
+        ${pocketsFinishedHtml(acc)}
       </div>
     </div>`;
+}
+/* Finished pockets, out of the way. What they still hold is shown, so nothing seems to vanish. */
+function pocketsFinishedHtml(acc) {
+  const done = (acc.pockets || []).filter(p => p.finishedAt), open = !!(ui.pocketsDone || {})[acc.id];
+  if (!done.length) return '';
+  const held = done.reduce((s, p) => s + (+p.amountSaved || 0), 0);
+  return `<button class="pk-done" aria-expanded="${open}" onclick="ui.pocketsDone=ui.pocketsDone||{};ui.pocketsDone['${acc.id}']=${!open};render()"><span>Finished · ${done.length}${held ? ` · ${fmtMoney(held, acc.currency)}` : ''}</span>${ic(open ? 'chevronDown' : 'chevronRight', 14)}</button>
+    ${open ? done.map(p => pocketRowHtml(acc, p)).join('') : ''}`;
 }
 
 function pocketRowHtml(acc, p) {
@@ -2747,6 +2756,7 @@ function pocketRowHtml(acc, p) {
         </div>
       </div>
       <div style="display:flex;gap:2px;">
+        ${p.finishedAt ? `<button class="btn small" onclick="reopenPocket('${acc.id}','${p.id}')">Bring back</button>` : `<button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="finishPocket('${acc.id}','${p.id}')" aria-label="Mark ${escHtml(p.name)} as finished" title="Finished: hide it from this account">${ic('check')}</button>`}
         <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="openPocketForm('${acc.id}','${p.id}')" aria-label="Edit">${ic('edit')}</button>
         <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="deletePocket('${acc.id}','${p.id}')" aria-label="Delete">${ic('trash')}</button>
       </div>
@@ -4329,9 +4339,12 @@ function transferEndpoint(ref) {
 }
 /* Every place a transfer can start or end, grouped for the form's dropdowns. */
 function transferEndpointOptions() {
+  // A finished pocket stays if it holds money (to take it out) or if this very transfer uses it.
+  const pl = (ui.modal && ui.modal.payload) || {};
+  const shown = (a, p) => !p.finishedAt || +p.amountSaved > 0 || [pl.from, pl.to].includes(`pk:${a.id}:${p.id}`);
   const groups = [
     { label: 'Bank accounts', items: data.accounts.map(a => ({ ref: 'acc:' + a.id, label: `${a.icon || '🏦'} ${a.name}` })) },
-    { label: 'Pockets', items: data.accounts.flatMap(a => (a.pockets || []).map(p => ({ ref: `pk:${a.id}:${p.id}`, label: `${p.icon || '🎯'} ${a.name} › ${p.name}` }))) },
+    { label: 'Pockets', items: data.accounts.flatMap(a => (a.pockets || []).filter(p => shown(a, p)).map(p => ({ ref: `pk:${a.id}:${p.id}`, label: `${p.icon || '🎯'} ${a.name} › ${p.name}` }))) },
     { label: 'Stock brokers (cash)', items: data.brokers.map(b => ({ ref: 'brk:' + b.id, label: `${b.name}` })) },
     { label: 'Crypto exchanges (cash)', items: cryptoBrokerNames().map(n => ({ ref: 'cx:' + n, label: `${n}` })) },
   ];

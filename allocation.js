@@ -55,7 +55,7 @@ if (typeof window !== 'undefined') {
     }
     if (/pocket/i.test(s.label)) {
       // A pocket still short of its target (not the VAT one), else any other pocket.
-      const all = data.accounts.flatMap(a => (a.pockets || []).map(p => ({ ref: `pk:${a.id}:${p.id}`, p }))).filter(x => !/vat|btw|tva|tax/i.test(x.p.name));
+      const all = data.accounts.flatMap(a => (a.pockets || []).filter(p => !p.finishedAt).map(p => ({ ref: `pk:${a.id}:${p.id}`, p }))).filter(x => !/vat|btw|tva|tax/i.test(x.p.name));
       const open = all.find(x => x.p.targetAmount > 0 && x.p.amountSaved < x.p.targetAmount) || all[0];
       return open ? open.ref : '';
     }
