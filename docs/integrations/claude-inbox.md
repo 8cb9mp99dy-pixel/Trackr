@@ -46,7 +46,8 @@ queue: make a new key in Trackr and paste the new URL in Claude (the old one sto
 
 ## Review in Trackr
 
-The page reads like Budget: logos, one card per day, the amounts for the day. Three tabs:
+The page reads like Budget: logos, one card per day, the amounts for the day. Each row has **Add**,
+**Edit** and **Reject**. Four tabs:
 
 - **New**: nothing like it in Trackr. All ticked: press **Add** for the whole list, or untick what
   you don't want first.
@@ -54,13 +55,16 @@ The page reads like Budget: logos, one card per day, the amounts for the day. Th
   Pick the category in the row: it goes to the other items of that name too.
 - **Already in Trackr**: it matches a saved transaction (same type and amount, same or next day,
   similar name). Each saved transaction answers for one item only, so two 45 euro payments with one
-  saved give one match and one new. **Skip** them at once, or add the one that really is new.
+  saved give one match and one new. **Reject** them at once, or add the one that really is new.
+- **Rejected**: what you turned down. None of it went into Trackr. It stays 30 days, then it's
+  deleted; **Put back** returns an item to review. Only items rejected from now on are listed here.
 
 Your rules and the names you've used before fill in the category, account and logo. The comparison
 happens in the app: Claude still sees names only, no amounts. Every action on many items has
 **Undo** for 10 seconds; undone items come back as items on this device.
 
-- Tap a row for the transaction form, filled in.
+- **Edit** (or a tap on the row) opens the transaction form, filled in. **Save changes** keeps your
+  version in review to add later; **Save and add** adds it now.
 - Investments: a buy or sell opens the broker's trade panel filled in. Recording it there settles
   the item. An asset that isn't in Trackr yet must be added first. A dividend, deposit or
   withdrawal opens the transaction form.

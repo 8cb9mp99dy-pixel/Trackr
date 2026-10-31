@@ -460,6 +460,7 @@ function defaultData() {
     ious: [], // money lent / borrowed / split with people (ious.js)
     contracts: [], // subscriptions and contracts with their notice period (contracts.js)
     yearlyBills: [], // irregular bills set aside for every month (setaside.js)
+    inboxRejected: [], // what you rejected on From Claude, kept 30 days to put back (inbox.js)
     trips: [], // trips with dates and a budget (trips.js)
     monthClose: {}, // 'YYYY-MM' → { at, note }: the month-end check (monthclose.js)
     vat: { rate: 21, pocket: '', freelanceIncludesVat: true, paid: {} },
@@ -4680,13 +4681,13 @@ window.__modalRenderers.tx = function (p) {
         </label>`}` : ''}`;
   }
   return `
-    <div class="modal-head"><div class="modal-title">${isEdit ? 'Edit transaction' : 'New transaction'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
+    <div class="modal-head"><div class="modal-title">${p._inboxId ? 'Edit before adding' : isEdit ? 'Edit transaction' : 'New transaction'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="tx-steps">${steps.map(([l, n]) => `<button type="button" class="tx-step ${step === n ? 'on' : ''} ${n < 3 && done[n] ? 'done' : ''}" onclick="txGo(${n})" ${n > 1 && !done[1] && !isEdit ? 'disabled' : ''}><span>${n < 3 && done[n] && step !== n ? '✓' : n}</span>${l}</button>`).join('')}</div>
     <div class="tx-body">${body}</div>
     <div class="tx-footer">
       ${step > 1 ? `<button class="btn" onclick="txGo(${step - 1})">← Back</button>` : (isEdit ? `<button class="btn danger ghost" onclick="deleteBudgetTx('${p.id}');closeModal();">Delete</button>` : '<span></span>')}
-      ${step < 3 ? `<button class="btn ${complete && step === 1 ? '' : 'primary'}" id="tx-next" onclick="txNext()" ${done[step] ? '' : 'disabled'}>Next →</button>` : ''}
-      ${complete && (step === 3 || isEdit || p._fromSuggestion) ? `<button class="btn primary" onclick="saveTxForm()">Save</button>` : ''}
+      ${step < 3 && !(p._inboxId && complete) ? `<button class="btn ${complete && step === 1 ? '' : 'primary'}" id="tx-next" onclick="txNext()" ${done[step] ? '' : 'disabled'}>Next →</button>` : ''}
+      ${complete && p._inboxId ? inboxFormActions() : complete && (step === 3 || isEdit || p._fromSuggestion) ? `<button class="btn primary" onclick="saveTxForm()">Save</button>` : ''}
     </div>`;
 };
 /* Which steps are filled in: 1 = an amount above 0; 2 = a category (or both ends of a transfer). */

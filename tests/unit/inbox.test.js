@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxSameName, inboxMatch, inboxRepeats, inboxParsePasted, inboxInstructions } = require('../../inbox.js');
+const { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxSameName, inboxMatch, inboxRepeats, inboxKeptRejected, inboxParsePasted, inboxInstructions } = require('../../inbox.js');
 
 const ctx = {
   today: '2026-10-18', currency: 'EUR', defaultAccountId: 'acc_main',
@@ -210,4 +210,10 @@ test('sent twice: a later batch repeats, the same batch does not', () => {
   assert.deepEqual(inboxRepeats([it('b', '2'), it('a', '1')]), { b: 'a' });
   assert.deepEqual(Object.keys(inboxRepeats([it('a', '1'), it('b', '1'), it('c', '2'), it('d', '2'), it('e', '2')])), ['c', 'd']);
   assert.deepEqual(inboxRepeats([it('a', '1'), it('b', '2', { amount: 4 })]), {});
+});
+
+test('rejected: kept 30 days, older ones go, an old document has none', () => {
+  const kept = inboxKeptRejected([{ id: 'a', rejectedOn: '2026-10-18' }, { id: 'b', rejectedOn: '2026-09-18' }, { id: 'c', rejectedOn: '2026-09-17' }], '2026-10-18');
+  assert.deepEqual(kept.map(x => x.id), ['a', 'b']);
+  assert.deepEqual(inboxKeptRejected(undefined, '2026-10-18'), []);
 });

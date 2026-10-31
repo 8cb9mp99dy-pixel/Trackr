@@ -440,6 +440,12 @@ function inboxNormalize(raw, channel, ctx) {
   return result(kind, 'tx', Object.assign(draft, { categoryId: cat ? cat.id : '', subCategoryId: sub ? sub.id : '', accountId: (acc || fallback || {}).id || '', paymentMethodId: pm ? pm.id : '' }));
 }
 
+/* What you rejected stays on its tab for 30 days, like the copy on the server. */
+function inboxKeptRejected(list, today, days) {
+  const from = new Date(new Date(today + 'T00:00:00Z').getTime() - (days || 30) * 864e5).toISOString().slice(0, 10);
+  return (list || []).filter(x => x.rejectedOn >= from);
+}
+
 /* A name in a form two sources can agree on: no case, accents, spaces or punctuation. */
 const inboxNameKey = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 /* "Temper" = "Temper (Finqle)", "TradeRepublic" = "Trade Republic", "ALBERT HEIJN 1234" = "Albert Heijn". */
@@ -550,12 +556,12 @@ function inboxInstructions(channel) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxSameName, inboxMatch, inboxRepeats, inboxParsePasted, inboxInstructions };
+  module.exports = { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxSameName, inboxMatch, inboxRepeats, inboxKeptRejected, inboxParsePasted, inboxInstructions };
 } else {
   const STATE_KEY = 'trackr-inbox', KEYS_KEY = 'trackr-inbox-keys';
   const readLs = (k, d) => { try { return Object.assign(d, JSON.parse(localStorage.getItem(k) || '{}')); } catch (e) { return d; } };
   const writeLs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage blocked: kept in memory only */ } };
-  // { items: [{ id, channel, item, source, created_at, local? }], done: { id: 'added' | 'rejected' }, edits: { id: fields you changed here }, ctxSig, missing }
+  // { items: [{ id, channel, item, source, created_at, local? }], done: { id: 'added' | 'rejected' }, edits: { id: fields you changed here, _draft: the form as you left it }, ctxSig, missing }
   const state = readLs(STATE_KEY, { items: [], done: {}, edits: {}, ctxSig: '', missing: false });
   const keys = readLs(KEYS_KEY, {});
   const saveState = () => writeLs(STATE_KEY, state);
@@ -640,12 +646,14 @@ if (typeof module !== 'undefined' && module.exports) {
   /* ---- Review: a page like Budget, day by day ---- */
   window.openInbox = function () { goPage('inbox'); inboxRefresh(); };
   window.inboxCount = () => openItems().length;
-  window.inboxTabOn = () => openItems().length > 0 || channelsOn().length > 0 || ui.page === 'inbox';
+  window.inboxTabOn = () => openItems().length > 0 || channelsOn().length > 0 || ui.page === 'inbox' || rejectedNow().length > 0;
+  const rejectedNow = () => inboxKeptRejected(data.inboxRejected, todayYmd());
   const failed = {}; // id → why it couldn't be added in a batch (a transfer bigger than the pocket…)
   /* What you taught Trackr comes first: your rules, then the name you've used before. Claude's
    * category stays for a name only partly known; its account is kept if it named one. */
   function normalized(x, ctx) {
     const item = Object.assign({}, x.item, state.edits[x.id]);
+    if (item._draft) return { channel: x.channel, kind: item._draft.type, form: 'tx', draft: Object.assign({}, item._draft), problems: [], ok: true, ready: true, edited: true };
     let n = inboxNormalize(item, x.channel, ctx);
     if (n.form !== 'tx') return n;
     const d = n.draft;
@@ -747,7 +755,9 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (r.twice) hints.unshift('<li>Claude sent this twice.</li>');
     if (r.fail) hints.unshift(`<li class="block">${escHtml(r.fail)}</li>`);
-    const addLabel = r.status === 'new' ? 'Add' : 'Add anyway';
+    if (n.edited) hints.push('<li>Edited by you.</li>');
+    const addLabel = r.status === 'new' || !isAddable(r) ? 'Add' : 'Add anyway';
+    const tradeBtn = n.ok ? 'Review the trade' : 'Open the broker';
     return `<div class="ib-item ${n.ok ? '' : 'blocked'}" title="${escHtml(x.local ? 'Pasted' : x.source || '')}">
       <input class="ib-tick" type="checkbox" aria-label="Select ${escHtml(l.title)}" ${isPicked(r) ? 'checked' : ''} onchange="inboxPick('${id}',this.checked)">
       <div class="ib-mid">
@@ -758,25 +768,37 @@ if (typeof module !== 'undefined' && module.exports) {
       <div class="ib-end">
         <b class="num ${l.cls}">${l.amount}</b>
         <span class="ib-btns">
-          ${isAddable(r) ? `<button class="ib-act on" aria-label="${addLabel}" title="${addLabel}" onclick="inboxAdd('${id}')">${ic('check', 15)}</button>` : ''}
-          ${n.form === 'trade' && d.accountKey ? `<button class="btn small" onclick="inboxOpen('${id}')">${n.ok ? 'Review the trade' : 'Open the broker'}</button>` : ''}
-          <button class="ib-act" aria-label="Reject" title="Reject" onclick="inboxReject('${id}')">${ic('x', 15)}</button>
+          ${n.form === 'tx' ? `<button class="ib-act on" ${isAddable(r) ? '' : 'disabled title="Fill in what\'s missing first"'} onclick="inboxAdd('${id}')">${ic('check', 14)} ${addLabel}</button>
+          <button class="ib-act" title="Change it before it goes in" onclick="inboxOpen('${id}')">${ic('edit', 14)} Edit</button>` : d.accountKey ? `<button class="ib-act on" onclick="inboxOpen('${id}')">${tradeBtn}</button>` : ''}
+          <button class="ib-act" title="Don't add it. It moves to the Rejected tab." onclick="inboxReject('${id}')">${ic('x', 14)} Reject</button>
         </span>
       </div>
     </div>`;
   }
-  function daysHtml(rows) {
+  function rejectedRowHtml({ x, n }) {
+    const id = escHtml(x.id), l = itemLine(n);
+    return `<div class="ib-item ib-gone">
+      <div class="ib-mid"><div class="ib-open">${avatarOf(n)}<span class="ib-txt"><b>${escHtml(l.title)}</b><span>${escHtml(l.meta || '—')}</span></span></div></div>
+      <div class="ib-end">
+        <b class="num ${l.cls}">${l.amount}</b>
+        <span class="ib-btns"><button class="ib-act" onclick="inboxPutBack('${id}')">${ic('refresh', 14)} Put back</button></span>
+      </div>
+    </div>`;
+  }
+  function daysHtml(rows, html) {
     const days = {};
     rows.forEach(r => { (days[r.n.draft.date] = days[r.n.draft.date] || []).push(r); });
     return Object.keys(days).sort().reverse().map(date => {
-      const net = days[date].reduce((s, r) => s + signedEUR(r.n), 0);
+      const net = html ? 0 : days[date].reduce((s, r) => s + signedEUR(r.n), 0);
       return `<div class="row-flex ib-day"><div>${dayLabel(date)}</div>${net ? `<div class="${net > 0 ? 'positive' : 'negative'}">${net > 0 ? '+' : ''}${fmtMoney(net)}</div>` : ''}</div>
-        <div class="card ib-card">${days[date].map(rowHtml).join('')}</div>`;
+        <div class="card ib-card">${days[date].map(html || rowHtml).join('')}</div>`;
     }).join('');
   }
   window.__pageRenderers.inbox = function () {
-    const rows = reviewRows(), tab = tabOf(rows), shown = shownRows(rows), on = channelsOn();
-    const count = t => rows.filter(r => r.status === t).length;
+    const rows = reviewRows(), shown = shownRows(rows), on = channelsOn();
+    const ctx = ctxForNormalize(), gone = rejectedNow().map(x => ({ x, n: normalized(x, ctx) }));
+    const tab = ui.ibTab === 'rejected' && gone.length ? 'rejected' : tabOf(rows);
+    const count = t => (t === 'rejected' ? gone.length : rows.filter(r => r.status === t).length);
     const waiting = rows.filter(r => r.status !== 'same');
     const sum = sign => waiting.reduce((s, r) => { const v = signedEUR(r.n); return s + (v * sign > 0 ? Math.abs(v) : 0); }, 0);
     const sources = {};
@@ -784,7 +806,8 @@ if (typeof module !== 'undefined' && module.exports) {
     const names = Object.keys(sources);
     const picked = shown.filter(isPicked), adds = picked.filter(isAddable), net = sign => adds.reduce((s, r) => { const v = signedEUR(r.n); return s + (v * sign > 0 ? Math.abs(v) : 0); }, 0);
     const js = v => escHtml(String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
-    const labels = { new: 'New', check: 'To check', same: 'Already in Trackr' };
+    const labels = { new: 'New', check: 'To check', same: 'Already in Trackr', rejected: 'Rejected' };
+    const nothing = `<div class="card"><div class="empty-state"><div class="title">Nothing to review</div><div class="sub">${on.length ? 'Send a screenshot or a statement to your Trackr project in Claude: it shows up here.' : 'Connect Claude in Settings → Claude inbox, or paste what Claude gave you.'}</div></div></div>`;
     return `
     <div class="page surface-light">
       <div class="page-head">
@@ -795,24 +818,24 @@ if (typeof module !== 'undefined' && module.exports) {
         </div>
       </div>
       ${state.missing ? '<div class="ib-warn">The inbox isn\'t in your Supabase yet: Settings → Claude inbox → step 1.</div>' : lastError ? `<div class="ib-warn">${escHtml(lastError)}</div>` : ''}
-      ${rows.length ? `
-      <div class="card bt-summary">
+      ${rows.length || gone.length ? `
+      ${rows.length ? `<div class="card bt-summary">
         <div><div class="eyebrow">To add</div><b>${waiting.length}</b></div>
         <div><div class="eyebrow">In</div><b class="positive">${fmtMoney(sum(1))}</b></div>
         <div><div class="eyebrow">Out</div><b class="negative">${fmtMoney(sum(-1))}</b></div>
         <div><div class="eyebrow">Already in Trackr</div><b>${count('same')}</b></div>
-      </div>
-      <div class="tab-row ib-tabs">${['new', 'check', 'same'].map(t => `<button class="tab-btn ${tab === t ? 'active' : ''}" onclick="inboxTab('${t}')">${labels[t]} <span class="ib-n">${count(t)}</span></button>`).join('')}</div>
+      </div>` : ''}
+      <div class="tab-row ib-tabs">${['new', 'check', 'same'].concat(gone.length ? ['rejected'] : []).map(t => `<button class="tab-btn ${tab === t ? 'active' : ''}" onclick="inboxTab('${t}')">${labels[t]} <span class="ib-n">${count(t)}</span></button>`).join('')}</div>
       ${names.length > 1 ? `<div class="ib-sources"><button class="ib-src ${ui.ibSource && names.includes(ui.ibSource) ? '' : 'on'}" onclick="inboxSource('')">All</button>${names.map(s => `<button class="ib-src ${ui.ibSource === s ? 'on' : ''}" onclick="inboxSource('${js(s)}')">${escHtml(s)} <span class="ib-n">${sources[s]}</span></button>`).join('')}</div>` : names.length ? `<div class="ib-from">${escHtml(names[0])}</div>` : ''}
-      ${tab === 'same' ? '<div class="ib-note">These match transactions you already have, each one only once. Skip them, or add the one that really is new.</div>' : ''}
-      ${daysHtml(shown)}
+      ${tab === 'same' ? '<div class="ib-note">These match transactions you already have, each one only once. Reject them, or add the one that really is new.</div>' : ''}
+      ${tab === 'rejected' ? `<div class="ib-note">None of these went into Trackr. They stay here for 30 days, then they're deleted. Put one back to review it again.</div>${daysHtml(gone, rejectedRowHtml)}` : !rows.length ? nothing : `${daysHtml(shown)}
       <div class="ib-bar">
         <label class="ib-all"><input class="ib-tick" type="checkbox" aria-label="Select all" ${picked.length === shown.length ? 'checked' : ''} onchange="inboxPickAll(this.checked)"><span>${picked.length} selected</span></label>
         <span class="ib-sum">${adds.length ? [net(1) ? `<span class="positive">+${fmtMoney(net(1))}</span>` : '', net(-1) ? `<span class="negative">-${fmtMoney(net(-1))}</span>` : ''].filter(Boolean).join(' ') : ''}</span>
         <span class="ib-bar-acts">${tab === 'same'
-          ? `${adds.length ? `<button class="btn small" onclick="inboxAddPicked()">Add anyway</button>` : ''}<button class="btn small primary" ${picked.length ? '' : 'disabled'} onclick="inboxRejectPicked()">Skip ${picked.length}</button>`
+          ? `${adds.length ? `<button class="btn small" onclick="inboxAddPicked()">Add anyway</button>` : ''}<button class="btn small primary" ${picked.length ? '' : 'disabled'} onclick="inboxRejectPicked()">Reject ${picked.length}</button>`
           : `<button class="btn small" ${picked.length ? '' : 'disabled'} onclick="inboxRejectPicked()">Reject ${picked.length}</button><button class="btn small primary" ${adds.length ? '' : 'disabled'} onclick="inboxAddPicked()">Add ${adds.length}</button>`}</span>
-      </div>` : `<div class="card"><div class="empty-state"><div class="title">Nothing to review</div><div class="sub">${on.length ? 'Send a screenshot or a statement to your Trackr project in Claude: it shows up here.' : 'Connect Claude in Settings → Claude inbox, or paste what Claude gave you.'}</div></div></div>`}
+      </div>`}` : nothing}
     </div>`;
   };
   window.inboxTab = function (t) { ui.ibTab = t; render(); };
@@ -860,13 +883,23 @@ if (typeof module !== 'undefined' && module.exports) {
     if (done.length) offerUndo(`${done.length} added`, before, putBack(done));
     render();
   }
+  /* Rejected: never in Trackr, kept on its own tab so it can be put back. */
   function rejectRows(rows) {
-    const before = JSON.stringify(data), list = rows.map(r => r.x), back = putBack(list);
+    const before = JSON.stringify(data), list = rows.map(r => r.x), back = putBack(list), on = todayYmd();
+    data.inboxRejected = rejectedNow().concat(list.map(x => ({ id: x.id, channel: x.channel, item: Object.assign({}, x.item, state.edits[x.id]), source: x.source, rejectedOn: on })));
     list.forEach(x => resolveItem(x.id, 'rejected', true));
+    save();
     inboxRefresh();
-    if (list.length) offerUndo(`${list.length} removed`, before, back);
+    if (list.length) offerUndo(`${list.length} rejected: not in Trackr, see the Rejected tab`, before, back);
     render();
   }
+  window.inboxPutBack = function (id) {
+    const x = (data.inboxRejected || []).find(q => q.id === id); if (!x) return;
+    data.inboxRejected = data.inboxRejected.filter(q => q !== x);
+    state.items.push({ id: uid('local'), channel: x.channel, item: x.item, source: x.source, created_at: new Date().toISOString(), local: true });
+    saveState(); save(); render();
+    safetyToast('<span>Back in review</span>', { ms: 3000 });
+  };
   window.inboxAdd = function (id) {
     const r = reviewRows().find(q => q.x.id === id); if (!r) return;
     if (!isAddable(r)) return inboxOpen(id);
@@ -875,7 +908,7 @@ if (typeof module !== 'undefined' && module.exports) {
   window.inboxReject = function (id) { const r = reviewRows().find(q => q.x.id === id); if (r) rejectRows([r]); };
   window.inboxAddPicked = function () { addRows(shownRows(reviewRows()).filter(r => isPicked(r) && isAddable(r))); };
   window.inboxRejectPicked = function () { rejectRows(shownRows(reviewRows()).filter(isPicked)); };
-  /* Open it where you'd normally enter it, filled in. */
+  /* Open it where you'd normally enter it, filled in: nothing goes in until you say so. */
   window.inboxOpen = function (id) {
     const x = findItem(id); if (!x) return;
     const n = normalized(x, ctxForNormalize());
@@ -890,6 +923,17 @@ if (typeof module !== 'undefined' && module.exports) {
       return;
     }
     openTxForm(null, Object.assign({}, n.draft, { _inboxId: id }));
+  };
+  /* In the form: keep your changes here to add later, or add it now. */
+  window.inboxFormActions = () => '<button class="btn" onclick="inboxKeepEdit()">Save changes</button><button class="btn primary" onclick="saveTxForm()">Save and add</button>';
+  window.inboxKeepEdit = function () {
+    const p = ui.modal.payload, id = p._inboxId, draft = Object.assign({}, p);
+    delete draft.step; delete draft._inboxId;
+    state.edits[id] = Object.assign({}, state.edits[id], { _draft: draft });
+    delete failed[id];
+    saveState(); closeModal();
+    const r = reviewRows().find(q => q.x.id === id);
+    safetyToast(`<span>Changes saved${r ? `, under ${{ new: 'New', check: 'To check', same: 'Already in Trackr' }[r.status]}` : ''}. Not in Trackr until you add it.</span>`, { ms: 4000 });
   };
   // Saved through the form or the trade panel: that item is done.
   const origSaveTx = window.saveTxForm;

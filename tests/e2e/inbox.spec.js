@@ -76,7 +76,7 @@ test('Claude inbox: make a key, review, add an expense and a buy, reject, paste'
   await page.locator('.ib-tabs .tab-btn', { hasText: 'To check' }).click();
   const mistake = page.locator('.ib-item', { hasText: 'Demo Mistake' });
   await expect(mistake).toContainText('Pick a category');
-  await expect(mistake.getByRole('button', { name: 'Add' })).toHaveCount(0);
+  await expect(mistake.getByRole('button', { name: 'Add' })).toBeDisabled();
   await mistake.getByRole('button', { name: 'Reject' }).click();
   await expect.poll(() => sb.items[1].status).toBe('rejected');
   await page.evaluate(() => { ui.ibTab = 'new'; render(); });
@@ -164,9 +164,77 @@ test('a statement: what Trackr has is matched one to one, the rest is added at o
   // The two already there: skipped at once.
   await tab(page, 'Already in Trackr').click();
   await expect(page.locator('.ib-item', { hasText: 'Demo Client (Agency)' })).toContainText('Already in Trackr');
-  await page.locator('.ib-bar').getByRole('button', { name: 'Skip 2' }).click();
+  await page.locator('.ib-bar').getByRole('button', { name: 'Reject 2' }).click();
   await expect.poll(() => sb.items.filter(x => x.status === 'rejected').length).toBe(2);
   expect(await page.evaluate(() => data.budgetTransactions.length)).toBe(n0);
+  expect(errors).toEqual([]);
+});
+
+test('Edit: your changes stay in review until you add them, and a reject can be put back', async ({ page }) => {
+  const { errors, sb, ids } = await statement(page);
+  const n0 = await page.evaluate(() => data.budgetTransactions.length);
+  const bread = page.locator('.ib-item', { hasText: 'Demo Bread' });
+  await expect(bread.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+  await expect(bread.getByRole('button', { name: 'Reject' })).toBeVisible();
+
+  // Edit keeps it here: nothing goes into Trackr, and bulk Add takes the changed version.
+  await bread.getByRole('button', { name: 'Edit' }).click();
+  await expect(page.locator('.modal-title')).toHaveText('Edit before adding');
+  await page.locator('#tx-amount').fill('8.5');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.locator('#safety-toast')).toContainText('Not in Trackr until you add it');
+  expect(await page.evaluate(() => data.budgetTransactions.length)).toBe(n0);
+  await expect(bread).toContainText('Edited by you');
+  await expect(bread).toContainText('8.50');
+  await bread.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (data.budgetTransactions.find(t => t.comment === 'Demo Bread') || {}).amount)).toBe(8.5);
+
+  // Or add right from the form.
+  await page.locator('.ib-item', { hasText: 'Demo Client' }).first().getByRole('button', { name: 'Edit' }).click();
+  await page.locator('#tx-amount').fill('320');
+  await page.getByRole('button', { name: 'Save and add' }).click();
+  await expect.poll(() => page.evaluate(() => data.budgetTransactions.some(t => t.comment === 'Demo Client' && t.amount === 320))).toBe(true);
+  await page.evaluate(() => { if (ui.modal) closeModal(); });
+
+  // Fixing what was missing moves it to New.
+  await tab(page, 'To check').click();
+  await page.locator('.ib-item', { hasText: 'Demo Unknown Shop' }).first().locator('select.ib-fix').selectOption(ids.cat);
+
+  // A reject has a place to go: its own tab, out of Trackr, and it can come back with your changes.
+  await tab(page, 'New').click();
+  const shop = page.locator('.ib-item', { hasText: 'Demo Unknown Shop' }).first();
+  await shop.getByRole('button', { name: 'Edit' }).click();
+  await page.locator('#tx-amount').fill('7');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await shop.getByRole('button', { name: 'Reject' }).click();
+  await expect(page.locator('#safety-toast')).toContainText('see the Rejected tab');
+  await expect(tab(page, 'Rejected')).toContainText('1');
+  await tab(page, 'Rejected').click();
+  await expect(page.locator('.ib-note')).toContainText('None of these went into Trackr');
+  await expect(page.locator('.ib-gone')).toContainText('Demo Unknown Shop');
+  await expect(page.locator('.ib-gone')).toContainText('7.00');
+  await expect.poll(() => sb.items.filter(x => x.status === 'rejected').length).toBe(1);
+  await page.getByRole('button', { name: 'Put back' }).click();
+  await expect(page.locator('.ib-gone')).toHaveCount(0);
+  await expect(page.locator('.ib-item', { hasText: 'Edited by you' })).toContainText('7.00');
+  expect(await page.evaluate(() => data.inboxRejected)).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test('with everything rejected, the Rejected tab is still there', async ({ page }) => {
+  const { errors } = await statement(page);
+  for (const t of ['New', 'To check', 'Already in Trackr']) {
+    await tab(page, t).click();
+    const bar = page.locator('.ib-bar');
+    await bar.locator('input[type=checkbox]').check();
+    await bar.getByRole('button', { name: /^Reject \d/ }).click();
+  }
+  await expect(page.locator('.empty-state')).toContainText('Nothing to review');
+  await expect(tab(page, 'Rejected')).toContainText('7');
+  await page.evaluate(() => togglePrivacy());
+  await tab(page, 'Rejected').click();
+  await expect(page.locator('.ib-gone')).toHaveCount(7);
+  expect(await page.locator('.main .page').innerText()).not.toMatch(/[€£$]\s?\d/);
   expect(errors).toEqual([]);
 });
 
