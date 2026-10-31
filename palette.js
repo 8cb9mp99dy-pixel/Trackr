@@ -7,7 +7,7 @@
 function paletteItems() {
   const items = [];
   const add = (group, label, sub, run, icon) => items.push({ group, label, sub: sub || '', run, icon: icon || 'chevronRight' });
-  [['dashboard', 'Overview', 'home'], ['wealth', 'Wealth', 'pie'], ['goals', 'Goals', 'target'], ['analysis', 'Analysis', 'compass'], ['budget', 'Budget', 'receipt'], ['investments', 'Investments', 'trend'], ['accounts', 'Accounts', 'bank'], ['trading', 'Trading', 'bolt'], ['settings', 'Settings', 'settings']]
+  [['dashboard', 'Overview', 'home'], ['wealth', 'Wealth', 'pie'], ['goals', 'Goals', 'target'], ['analysis', 'Analysis', 'compass'], ['budget', 'Budget', 'receipt'], ['investments', 'Investments', 'trend'], ['accounts', 'Accounts', 'bank'], ['settings', 'Settings', 'settings']]
     .forEach(([id, l, icn]) => add('Pages', l, '', () => goPage(id), icn));
   [['transactions', 'Transactions'], ['recurring', 'Recurring'], ['forecast', 'Forecast'], ['totals', 'Totals'], ['categories', 'Categories & rules'], ['import', 'Import']]
     .forEach(([t, l]) => add('Pages', `Budget › ${l}`, '', () => { goPage('budget'); setBudgetTab(t); }, 'receipt'));

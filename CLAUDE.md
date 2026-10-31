@@ -39,7 +39,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 
 | File | Area |
 |---|---|
-| `app.js` | data model, sync, prices (TradingView, CoinGecko, Twelve Data), Overview, Accounts, Budget, Investments, Trading, Settings, backups |
+| `app.js` | data model, sync, prices (TradingView, CoinGecko, Twelve Data), Overview, Accounts, Budget, Investments, Settings, backups |
 | `topbar.js` | top bar, Action required (+ Notifications tab, data quality), Add menu, More sheet |
 | `overview.js` / `wealth.js` | Overview cards, the shared `allocationCardHtml`, the Wealth page |
 | `goals.js` / `photos.js` | goals page and goal window, emergency savings; goal photos and receipt files (IndexedDB + Supabase; included in backups) |
@@ -72,10 +72,10 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `watchlist.js` | Investments → Watchlist: prices you follow without owning them (ISIN via TradingView, coins via CoinGecko), alerts below/above your levels (bar, notification centre, Action required); never buys |
 | `planner.js` | Wealth → Compare: "where should new money go" (to the types below target, no selling) |
 | `wallet.js` | Accounts → cash wallet (an account with `kind: 'cash'`): add cash, spent, withdraw, count; "Paid with: Cash" picks it |
-| `budget-import.js` / `rules.js` / `excel-import.js` / `trade-import.js` | Excel/CSV imports (transfers included); transaction rules engine; positions import; trades import |
+| `budget-import.js` / `rules.js` / `excel-import.js` | Excel/CSV imports (transfers included); transaction rules engine; positions import |
 | `notify.js` / `insights.js` / `palette.js` / `quickadd.js` / `emergency.js` | alerts and notification centre, weekly summary and `.ics`; Overview insights; Cmd+K palette; Apple Pay quick-add link; emergency pack |
 | `ticker.js`, `report.js`, `motion.js` (calls `fxAfterRender`), `backup-excel.js`, `safety.js`, `sw.js` | live price bar, PDF/share, animations, Excel backup, undo/restore points/offline, service worker |
-| `nav.js` | Navigation: grouped by default (Home · Money: budget, receipts, trips, IOUs, contracts, freelance · Wealth: overview, cash, investments, watchlist, debts · Plan: goals, yearly bills, future, emergency, patterns, insights) with section tabs; Settings → Display → "Classic navigation" brings back every page in the side bar |
+| `nav.js` | Navigation. Computer: the side bar lists every page under its group (Home · Money: budget, receipts, trips, IOUs, contracts, freelance · Wealth: net worth, cash, investments, watchlist, debts · Plan: goals, yearly bills, future, emergency, patterns, insights · Settings). Tablet and phone: the short bar, section tabs at the top, and More shows every page (phone). Settings → Display → "Classic navigation" brings back the old side bar. The Trading page (leveraged positions) was removed at the user's request (31 Oct 2026): don't bring it back; `data.trades` stays in the data and backups. Buy/Sell/Convert on broker pages is a different thing and stays |
 
 Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js`, `receipts.js`, `interest.js`, `portfolio-chart.js`, `overview-hero.js`, `goals-visual.js`, `spend.js`, `ious.js`, `contracts.js`, `setaside.js`, `trips.js`, `patterns.js`, `monthclose.js`, `snap.js` and `inbox.js` is exported with `module.exports` and unit-tested in Node.
 

@@ -24,7 +24,7 @@ test('attach a photo and a PDF, set a warranty, find it in Receipts', async ({ p
   const backup = await page.evaluate(async () => (await backupPayload())._photos.map(p => p.mime || 'image'));
   expect(backup).toContain('application/pdf');
   // Budget → Receipts, searchable.
-  await page.locator('.section-tabs').getByRole('button', { name: 'Receipts' }).click();
+  await page.evaluate(() => goPage('receipts'));
   await expect(page.locator('.page-title')).toHaveText('Receipts');
   await expect(page.locator('.rc-row')).toHaveCount(1);
   await expect(page.locator('.rc-row')).toContainText('Warranty until 9 Aug 2028');

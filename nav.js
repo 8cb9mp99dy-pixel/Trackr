@@ -7,7 +7,12 @@
  *   Money     Budget (Transactions · Recurring · Forecast · Totals · Categories · Import) · Receipts · Trips · IOUs · Contracts · Freelance · From Claude (once connected)
  *   Wealth    Overview · Cash (the old Accounts page) · Investments (+ each account) · Watchlist · Debts
  *   Plan      Goals · Yearly bills · Future · Emergency · Patterns · Insights (the old Analysis page)
- *   Trading, Settings — on the phone under "More" (5 tabs: Home · Money · Wealth · Plan · More)
+ *   Settings
+ *
+ * On a computer the side bar lists every page under its group, so any page is one click away and
+ * there are no section tabs. On a tablet and a phone: the four tabs (+ Settings or More), the
+ * section tabs at the top, and More shows every page. The Trading page was removed at the user's
+ * request (31 Oct 2026): don't bring it back. data.trades stays in the data and backups.
  *
  * Pages grouped under one tab get a row of section tabs at the top. (The old `newNav` setting
  * from the beta is kept in the data but no longer read.)
@@ -17,7 +22,6 @@ const NEW_NAV = [
   { id: 'budget', label: 'Money', icon: 'receipt', phone: true, pages: ['budget', 'receipts', 'trips', 'ious', 'contracts', 'freelance', 'inbox'] },
   { id: 'wealth', label: 'Wealth', icon: 'pie', phone: true, pages: ['wealth', 'accounts', 'investments', 'investAccount', 'manual-prices', 'positions-import', 'watchlist'] },
   { id: 'goals', label: 'Plan', icon: 'target', phone: true, pages: ['goals', 'yearly', 'patterns', 'analysis'] },
-  { id: 'trading', label: 'Trading', icon: 'bolt', pages: ['trading'] },
   { id: 'settings', label: 'Settings', icon: 'settings', pages: ['settings'] },
 ];
 function newNavOn() { return !(typeof data !== 'undefined' && data && data.settings && data.settings.classicNav); }
@@ -39,7 +43,7 @@ const SECTION_TABS = {
     ['From Claude', "goPage('inbox')", () => ui.page === 'inbox', () => typeof inboxTabOn === 'function' && inboxTabOn()],
   ],
   wealth: [
-    ['Overview', "goWealthSection('assets')", () => ui.page === 'wealth' && ui.wealthTab !== 'liabilities'],
+    ['Net worth', "goWealthSection('assets')", () => ui.page === 'wealth' && ui.wealthTab !== 'liabilities'],
     ['Cash', "goPage('accounts')", () => ui.page === 'accounts'],
     ['Investments', "goPage('investments')", () => ['investments', 'investAccount', 'manual-prices', 'positions-import'].includes(ui.page)],
     ['Watchlist', "goPage('watchlist')", () => ui.page === 'watchlist'],
@@ -54,10 +58,34 @@ const SECTION_TABS = {
     ['Insights', "goPage('analysis')", () => ui.page === 'analysis'],
   ],
 };
+const sectionTabs = id => (SECTION_TABS[id] || []).filter(t => !t[3] || t[3]());
 function sectionTabsHtml() {
   if (!newNavOn()) return '';
   const item = NEW_NAV.find(navItemActive);
-  const tabs = item && SECTION_TABS[item.id];
-  if (!tabs) return '';
-  return `<nav class="section-tabs" aria-label="${escHtml(item.label)}">${tabs.filter(t => !t[3] || t[3]()).map(([label, go, on]) => `<button class="${on() ? 'on' : ''}" onclick="${go}">${label}</button>`).join('')}</nav>`;
+  if (!item || !SECTION_TABS[item.id]) return '';
+  return `<nav class="section-tabs" aria-label="${escHtml(item.label)}">${sectionTabs(item.id).map(([label, go, on]) => `<button class="${on() ? 'on' : ''}" onclick="${go}">${label}</button>`).join('')}</nav>`;
+}
+/* The side bar on a computer: every page, under its group. */
+function navTreeHtml() {
+  const top = (item, go, badge) => `<li><button class="nav-item ${navItemActive(item) ? 'active' : ''}" onclick="${go}"><span class="nav-icon">${ic(item.icon, 19)}${badge || ''}</span><span class="label">${item.label}</span></button></li>`;
+  return `<ul class="nav-list nav-tree">
+    ${top(NEW_NAV[0], "goPage('dashboard')")}
+    ${NEW_NAV.filter(i => SECTION_TABS[i.id]).map(i => `<li class="nav-head">${i.label}</li>${sectionTabs(i.id).map(([label, go, on]) => `<li><button class="nav-item nav-sub ${on() ? 'active' : ''}" onclick="${go}"><span class="label">${label}</span></button></li>`).join('')}`).join('')}
+    <li class="nav-end"></li>
+    ${top(NEW_NAV[NEW_NAV.length - 1], settingsNavItemOnClick(), navSyncBadgeHtml())}
+  </ul>`;
+}
+/* The phone's More sheet: the same map. */
+function navMapHtml() {
+  return `${NEW_NAV.filter(i => SECTION_TABS[i.id]).map(i => `<div class="eyebrow more-head">${ic(i.icon, 15)} ${i.label}</div>
+    <div class="more-grid">${sectionTabs(i.id).map(([label, go, on]) => `<button class="more-tile ${on() ? 'active' : ''}" onclick="${go}">${label}</button>`).join('')}</div>`).join('')}`;
+}
+/* A redraw puts the scrolling bars back at their start: keep the side bar where you left it, and
+   the section you're on in view. */
+let navTreeTop = 0;
+document.addEventListener('scroll', e => { if (e.target.classList && e.target.classList.contains('nav-tree')) navTreeTop = e.target.scrollTop; }, true);
+function navAfterRender(app) {
+  const tree = app.querySelector('.nav-tree'), tabs = app.querySelector('.section-tabs'), on = tabs && tabs.querySelector('button.on');
+  if (tree) tree.scrollTop = navTreeTop;
+  if (on) tabs.scrollLeft = on.offsetLeft - (tabs.clientWidth - on.offsetWidth) / 2;
 }

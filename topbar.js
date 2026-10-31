@@ -205,12 +205,14 @@ window.__modalRenderers.addMenu = function () {
     </div>`;
 };
 
-/* Phone: the pages that don't fit in the bottom bar, plus sync and the JSON backup. */
+/* Phone: every page, plus sync and the JSON backup. */
 function openMoreNav() { ui.modal = { type: 'moreNav' }; render(); }
 window.__modalRenderers.moreNav = function () {
   return `
     <div class="modal-head"><div class="modal-title">More</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
-    <div class="stack-gap-8">
+    ${typeof openPalette === 'function' ? `<button class="more-row" style="margin-bottom:6px;" onclick="closeModal();openPalette()">${ic('search', 20)}<span>Search</span></button>` : ''}
+    ${typeof navMapHtml === 'function' && newNavOn() ? navMapHtml() : ''}
+    <div class="stack-gap-8" style="margin-top:14px;">
       ${(typeof currentNavItems === 'function' ? currentNavItems() : NAV_ITEMS).filter(i => !i.phone).map(i => `
         <button class="more-row ${(typeof navItemActive === 'function' ? navItemActive(i) : ui.page === i.id) ? 'active' : ''}" onclick="${i.id === 'settings' ? "ui.modal=null;goPage('settings')" : `goPage('${i.id}')`}">${ic(i.icon, 20)}<span>${i.label}</span>${i.id === 'settings' ? navSyncBadgeHtml() : ''}<span class="more-chev">${ic('chevronRight', 16)}</span></button>`).join('')}
     </div>

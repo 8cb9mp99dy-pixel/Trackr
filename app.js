@@ -141,15 +141,8 @@ const NAV_ITEMS = [
   { id: 'freelance', label: 'Freelance', icon: 'briefcase' },
   { id: 'investments', label: 'Investments', icon: 'trend', phone: true },
   { id: 'accounts', label: 'Accounts', icon: 'bank' },
-  { id: 'trading', label: 'Trading', icon: 'bolt' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
-// Common trade types + platforms, offered as datalist suggestions on top of a free-text field
-// (like crypto exchange names elsewhere) — never a closed list, since leveraged/derivative
-// products vary a lot by broker.
-const TRADE_TYPES = ['Futures', 'CFD', 'Options', 'Forex', 'Perpetual Swap', 'Spot Margin', 'Other'];
-const TRADE_DIRECTIONS = ['Long', 'Short'];
-const COMMON_TRADING_PLATFORMS = ['Binance Futures', 'Bybit', 'IG', 'eToro', 'Interactive Brokers', 'MetaTrader'];
 
 /* Single source of truth for budget categories — used both to seed defaultData() (fresh
    installs) and by migrateBudgetCategories() (existing saves, reconciled by id so nothing the
@@ -579,7 +572,6 @@ let ui = {
   openBrokerId: null, // expanded broker sub-portfolio
   settingsOpenSections: {}, // every accordion starts collapsed
   investmentsTab: 'stocks', // 'stocks' | 'other' | 'crypto'
-  tradingTab: 'open', // 'open' | 'closed'
   categoryEditOpen: null, // key of category/subcategory/payment-method currently being renamed
   emojiPickerOpen: null, // key of category/subcategory/payment-method with its icon picker open
   addingSubcatFor: null, // category id currently showing the "+ Sub-category" input
@@ -1046,6 +1038,7 @@ function migrateCryptoModel() {
   migrateTradingModel();
 }
 function migrateTradingModel() {
+  // data.trades stays in your data and backups: only the Trading page is gone.
   // "Action required" counts 30 days from when a balance was last checked; accounts from before
   // that existed start counting today rather than all showing up as overdue at once.
   (data.accounts || []).forEach(a => { if (!a.balanceCheckedAt) a.balanceCheckedAt = new Date().toISOString(); });
@@ -2289,6 +2282,7 @@ function render() {
     document.documentElement.classList.toggle('no-perf', data.settings.showPerformanceIndicators === false);
     if (typeof afterRenderMotion === 'function') afterRenderMotion(app);
     if (typeof notifyAfterRender === 'function') notifyAfterRender();
+    if (typeof navAfterRender === 'function') navAfterRender(app);
   } catch (e) {
     console.error('Render failed', e);
     renderCrashScreen(app, e);
@@ -2320,7 +2314,6 @@ function renderApp(app) {
     accounts: renderAccounts,
     budget: renderBudget,
     investments: renderInvestments,
-    trading: renderTrading,
     settings: renderSettings,
     wealth: () => (typeof renderWealth === 'function' ? renderWealth() : ''),
     goals: () => (typeof renderGoals === 'function' ? renderGoals() : ''),
@@ -2343,7 +2336,8 @@ function renderApp(app) {
     <div class="shell">
       <div class="sidebar">
         <div class="sidebar-logo">Trackr</div>
-        <ul class="nav-list">
+        ${typeof newNavOn === 'function' && newNavOn() ? navTreeHtml() : ''}
+        <ul class="nav-list ${typeof newNavOn === 'function' && newNavOn() ? 'nav-bar' : ''}">
           ${navItems.map(item => `
             <li class="${item.phone ? 'nav-phone' : 'nav-desk'}">
               <button class="nav-item ${navActive(item) ? 'active' : ''}" onclick="${item.id === 'settings' ? settingsNavItemOnClick() : `goPage('${item.id}')`}">
@@ -3022,7 +3016,7 @@ function budgetGroups() {
   return [
     { id: 'transactions', label: 'Transactions', tabs: [{ id: 'transactions', label: 'Transactions' }] },
     { id: 'totals', label: 'Totals', tabs: [{ id: 'totals', label: 'Totals' }] },
-    { id: 'planning', label: 'Plan', tabs: [
+    { id: 'planning', label: 'Planning', tabs: [
       ...(typeof incomePlanTab === 'function' ? [{ id: 'plan', label: 'Income plan' }] : []),
       { id: 'recurring', label: 'Recurring' },
       ...(typeof budgetForecastTab === 'function' ? [{ id: 'forecast', label: 'Forecast' }] : []),
@@ -6224,241 +6218,6 @@ function saveManualPrices() {
     h.setManual(v === '' ? null : parseFloat(v));
   });
   save(); render();
-}
-
-/* ===================== Trading (leveraged / derivative positions) ===================== */
-/* Kept fully separate from the Investments page's assets/crypto models — these are
-   margin/collateral positions (futures, CFDs, options, forex...), not outright ownership, so
-   they're never folded into portfolioValue()/netWorthTotal(); this page is a standalone tracker
-   for what's currently being traded, not another net-worth input. */
-function tradeById(id) { return data.trades.find(t => t.id === id); }
-function openTrades() { return data.trades.filter(t => t.status !== 'closed').slice().sort((a, b) => new Date(b.openDate) - new Date(a.openDate)); }
-function closedTrades() { return data.trades.filter(t => t.status === 'closed').slice().sort((a, b) => new Date(b.closeDate || b.openDate) - new Date(a.closeDate || a.openDate)); }
-function tradeDirSign(t) { return t.direction === 'Short' ? -1 : 1; }
-/* Unrealized (open) or realized (closed) P&L, in the trade's own currency — leverage affects
-   how much collateral a given quantity needs, not the raw P&L math, so it isn't a factor here. */
-function tradePL(t) {
-  const refPrice = t.status === 'closed' ? t.closePrice : t.currentPrice;
-  if (refPrice == null || t.entryPrice == null || t.quantity == null) return null;
-  return (refPrice - t.entryPrice) * t.quantity * tradeDirSign(t);
-}
-function tradePLPct(t) {
-  const pl = tradePL(t);
-  if (pl == null || !t.collateral) return null;
-  return pl / t.collateral * 100;
-}
-function tradePotential(t, targetPrice) {
-  if (targetPrice == null || t.entryPrice == null || t.quantity == null) return null;
-  return (targetPrice - t.entryPrice) * t.quantity * tradeDirSign(t);
-}
-function tradingTotals() {
-  const open = openTrades();
-  const collateral = open.reduce((s, t) => s + toEUR(t.collateral || 0, t.currency), 0);
-  const pl = open.reduce((s, t) => { const p = tradePL(t); return s + (p != null ? toEUR(p, t.currency) : 0); }, 0);
-  return { collateral, pl, openCount: open.length };
-}
-function tradingPlatformSuggestions() {
-  return Array.from(new Set([
-    ...data.brokers.map(b => b.name),
-    ...cryptoBrokerNames(),
-    ...data.trades.map(t => t.platform).filter(Boolean),
-    ...COMMON_TRADING_PLATFORMS,
-  ].filter(Boolean)));
-}
-function renderTrading() {
-  const totals = tradingTotals();
-  const trades = ui.tradingTab === 'closed' ? closedTrades() : openTrades();
-  return `
-  <div class="page surface-dark">
-    <div class="page-head">
-      <div><h1 class="page-title">Trading</h1><div class="page-subtitle">Leveraged &amp; derivative positions</div></div>
-    </div>
-
-    <div class="grid-3" style="margin-bottom:20px;">
-      <div class="card-dark stack-gap-8">
-        <div class="eyebrow">Open trades</div>
-        <div class="big-number">${totals.openCount}</div>
-      </div>
-      <div class="card-dark stack-gap-8">
-        <div class="eyebrow">Collateral at risk (EUR)</div>
-        <div class="big-number">${fmtMoney(totals.collateral)}</div>
-      </div>
-      <div class="card-dark stack-gap-8">
-        <div class="eyebrow">Unrealized P&amp;L (EUR)</div>
-        <div class="big-number ${totals.pl >= 0 ? 'positive' : 'negative'}">${totals.pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(totals.pl))}</div>
-      </div>
-    </div>
-
-    <div class="grid-2" style="margin-bottom:22px;">
-      <button class="btn primary" onclick="openTradeForm()">+ Add trade</button>
-      <button class="btn" onclick="openTradeImport()" title="Add many trades at once from an Excel or CSV file (a broker export or the template)">Import Excel</button>
-    </div>
-
-    <div class="tab-row" style="margin-bottom:20px;">
-      <button class="tab-btn ${ui.tradingTab === 'open' ? 'active' : ''}" onclick="setTradingTab('open')">Open</button>
-      <button class="tab-btn ${ui.tradingTab === 'closed' ? 'active' : ''}" onclick="setTradingTab('closed')">Closed</button>
-    </div>
-
-    <div class="card-dark">
-      <div class="stack-gap-8">
-        ${trades.map(t => tradeRowHtml(t)).join('') || `
-        <div class="empty-state"><div class="emoji">⚡</div><div class="title">No ${ui.tradingTab} trades</div><div class="sub">${ui.tradingTab === 'open' ? 'Click "+ Add trade" above to log one.' : 'Trades you close will show up here.'}</div></div>`}
-      </div>
-    </div>
-  </div>`;
-}
-function setTradingTab(t) { ui.tradingTab = t; render(); }
-function tradeRowHtml(t) {
-  const pl = tradePL(t);
-  const plPct = tradePLPct(t);
-  const dirColor = t.direction === 'Short' ? 'var(--negative)' : 'var(--positive)';
-  const statusBadge = t.status === 'closed'
-    ? `<span class="badge" style="background:rgba(138,141,160,0.18);color:#8A8DA0;">Closed</span>`
-    : `<span class="badge" style="background:rgba(34,181,115,0.18);color:var(--positive);">Open</span>`;
-  const tpPotential = t.takeProfit != null ? tradePotential(t, t.takeProfit) : null;
-  const slPotential = t.stopLoss != null ? tradePotential(t, t.stopLoss) : null;
-  return `<div class="card-nested" data-trade="${t.id}">
-    <div class="row-flex">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="width:32px;height:32px;border-radius:9px;background:${dirColor}22;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;">${t.direction === 'Short' ? '▼' : '▲'}</span>
-        <div>
-          <div style="font-weight:600;font-size:13.5px;">${escHtml(t.instrument)} <span style="opacity:.65;font-weight:400;">${escHtml(t.tradeType)}</span></div>
-          <div style="font-size:11.5px;opacity:.65;">
-            <span style="color:${dirColor};font-weight:600;">${t.direction}</span> · ${fmtQty(t.quantity)} · entry ${fmtMoney(t.entryPrice, t.currency)}
-            ${t.status === 'closed' ? ` · closed ${t.closePrice != null ? fmtMoney(t.closePrice, t.currency) : '—'}` : ` · now <span style="font-weight:700;">${t.currentPrice != null ? fmtMoney(t.currentPrice, t.currency) : '—'}</span>`}
-            ${t.platform ? ` · <span class="badge" style="background:var(--dark-card-2);">${escHtml(t.platform)}</span>` : ''}
-          </div>
-        </div>
-      </div>
-      <div style="text-align:right;">
-        <div style="font-weight:700;font-size:13.5px;">${pl != null ? fmtMoney(Math.abs(pl), t.currency) : '—'}</div>
-        <div class="${pl != null && pl >= 0 ? 'positive' : 'negative'}" style="font-size:11.5px;">${pl != null ? `${pl >= 0 ? '▲' : '▼'}${plPct != null ? ' ' + fmtPct(Math.abs(plPct), false) : ''}` : ''}</div>
-      </div>
-    </div>
-    <div style="font-size:11px;opacity:.65;margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;">
-      <span>Collateral: <strong style="opacity:.9;">${fmtMoney(t.collateral || 0, t.currency)}</strong>${t.leverage ? ` (${t.leverage}x)` : ''}</span>
-      ${t.takeProfit != null ? `<span>TP ${fmtMoney(t.takeProfit, t.currency)} → potential <strong class="positive">${fmtMoney(Math.abs(tpPotential), t.currency)}</strong></span>` : ''}
-      ${t.stopLoss != null ? `<span>SL ${fmtMoney(t.stopLoss, t.currency)} → potential <strong class="negative">${fmtMoney(Math.abs(slPotential), t.currency)}</strong></span>` : ''}
-    </div>
-    <div class="row-flex" style="margin-top:8px;">
-      <div>${statusBadge}</div>
-      <div style="display:flex;gap:2px;">
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Edit trade" onclick="openTradeForm('${t.id}')">${ic('edit')}</button>
-        ${t.status !== 'closed' ? `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Close trade" onclick="quickCloseTrade('${t.id}')">✓</button>` : ''}
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" title="Delete trade" onclick="deleteTrade('${t.id}')">${ic('trash')}</button>
-      </div>
-    </div>
-  </div>`;
-}
-function quickCloseTrade(id) {
-  const t = tradeById(id);
-  if (!t) return;
-  if (!confirm(`Close ${t.instrument}? This records today as the close date and uses the current price as the close price — you can fine-tune it after via Edit.`)) return;
-  t.status = 'closed';
-  t.closePrice = t.currentPrice;
-  t.closeDate = todayYmd();
-  save(); render();
-}
-function blankTradeDraft() {
-  return {
-    instrument: '', tradeType: 'CFD', direction: 'Long', platform: '', currency: data.settings.defaultCurrency,
-    entryPrice: '', currentPrice: '', quantity: '', leverage: '', collateral: '',
-    stopLoss: '', takeProfit: '', status: 'open', openDate: todayYmd(),
-    closeDate: '', closePrice: '', notes: '',
-  };
-}
-function openTradeForm(id) {
-  const existing = id ? tradeById(id) : null;
-  ui.modal = { type: 'trade', payload: existing ? Object.assign({}, existing) : blankTradeDraft() };
-  render();
-}
-window.__modalRenderers.trade = function (payload) {
-  const isEdit = !!payload.id;
-  return `
-    <div class="modal-head"><div class="modal-title">${isEdit ? 'Edit trade' : 'Add trade'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
-    <div class="form-grid">
-      <label class="field span-2"><span class="label-text">Instrument / symbol</span><input id="tr-instrument" value="${escHtml(payload.instrument || '')}" placeholder="e.g. BTC/USD, NVDA, EUR/USD"></label>
-      <label class="field"><span class="label-text">Trade type</span><input id="tr-type" list="trade-type-list" value="${escHtml(payload.tradeType || '')}" placeholder="e.g. Futures, CFD"></label>
-      <label class="field"><span class="label-text">Direction</span>
-        <select id="tr-direction">${TRADE_DIRECTIONS.map(d => `<option ${payload.direction === d ? 'selected' : ''}>${d}</option>`).join('')}</select>
-      </label>
-      <label class="field span-2"><span class="label-text">Platform <span style="opacity:.6;">(optional)</span></span><input id="tr-platform" list="trade-platform-list" value="${escHtml(payload.platform || '')}" placeholder="e.g. Binance Futures"></label>
-      <label class="field"><span class="label-text">Currency</span><select id="tr-currency">${CURRENCIES.map(c => `<option ${payload.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-      <label class="field"><span class="label-text">Quantity / size</span><input id="tr-quantity" type="number" step="any" value="${payload.quantity}"></label>
-      <label class="field"><span class="label-text">Entry price</span><input id="tr-entry" type="number" step="any" value="${payload.entryPrice}"></label>
-      <label class="field"><span class="label-text">Current / mark price</span><input id="tr-current" type="number" step="any" value="${payload.currentPrice}"></label>
-      <label class="field"><span class="label-text">Leverage <span style="opacity:.6;">(optional, e.g. 10)</span></span><input id="tr-leverage" type="number" step="any" value="${payload.leverage}"></label>
-      <label class="field"><span class="label-text">Collateral / margin</span><input id="tr-collateral" type="number" step="any" value="${payload.collateral}"></label>
-      <label class="field"><span class="label-text">Stop loss <span style="opacity:.6;">(optional)</span></span><input id="tr-sl" type="number" step="any" value="${payload.stopLoss}"></label>
-      <label class="field"><span class="label-text">Take profit <span style="opacity:.6;">(optional)</span></span><input id="tr-tp" type="number" step="any" value="${payload.takeProfit}"></label>
-      <label class="field"><span class="label-text">Open date</span><input id="tr-opendate" type="date" value="${payload.openDate}"></label>
-      <label class="field"><span class="label-text">Status</span>
-        <select id="tr-status" onchange="toggleTradeCloseFields(this.value)">
-          <option value="open" ${payload.status !== 'closed' ? 'selected' : ''}>Open</option>
-          <option value="closed" ${payload.status === 'closed' ? 'selected' : ''}>Closed</option>
-        </select>
-      </label>
-      <div class="span-2" id="trade-close-fields" style="display:${payload.status === 'closed' ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:16px;">
-        <label class="field"><span class="label-text">Close date</span><input id="tr-closedate" type="date" value="${payload.closeDate || ''}"></label>
-        <label class="field"><span class="label-text">Close price</span><input id="tr-closeprice" type="number" step="any" value="${payload.closePrice}"></label>
-      </div>
-      <label class="field span-2"><span class="label-text">Notes <span style="opacity:.6;">(optional)</span></span><input id="tr-notes" value="${escHtml(payload.notes || '')}"></label>
-    </div>
-    <datalist id="trade-type-list">${TRADE_TYPES.map(t => `<option value="${t}">`).join('')}</datalist>
-    <datalist id="trade-platform-list">${tradingPlatformSuggestions().map(p => `<option value="${escHtml(p)}">`).join('')}</datalist>
-    <div class="modal-actions">
-      ${isEdit ? `<button class="btn danger ghost" onclick="deleteTrade('${payload.id}')">Delete</button>` : ''}
-      <button class="btn primary" onclick="saveTradeForm()">Save</button>
-    </div>`;
-};
-function toggleTradeCloseFields(status) {
-  const el = document.getElementById('trade-close-fields');
-  if (el) el.style.display = status === 'closed' ? 'grid' : 'none';
-}
-function saveTradeForm() {
-  const p = ui.modal.payload;
-  const instrument = document.getElementById('tr-instrument').value.trim();
-  const quantity = parseFloat(document.getElementById('tr-quantity').value);
-  const entryPrice = parseFloat(document.getElementById('tr-entry').value);
-  if (!instrument || isNaN(quantity) || isNaN(entryPrice)) return;
-  const currentRaw = document.getElementById('tr-current').value;
-  const leverageRaw = document.getElementById('tr-leverage').value;
-  const collateralRaw = document.getElementById('tr-collateral').value;
-  const slRaw = document.getElementById('tr-sl').value;
-  const tpRaw = document.getElementById('tr-tp').value;
-  const status = document.getElementById('tr-status').value;
-  const closeDateEl = document.getElementById('tr-closedate');
-  const closePriceEl = document.getElementById('tr-closeprice');
-  const record = {
-    id: p.id || uid('trade'),
-    instrument, tradeType: document.getElementById('tr-type').value.trim() || 'Other',
-    direction: document.getElementById('tr-direction').value,
-    platform: document.getElementById('tr-platform').value.trim(),
-    currency: document.getElementById('tr-currency').value,
-    quantity, entryPrice,
-    currentPrice: currentRaw === '' ? null : parseFloat(currentRaw),
-    leverage: leverageRaw === '' ? null : parseFloat(leverageRaw),
-    collateral: collateralRaw === '' ? 0 : parseFloat(collateralRaw),
-    stopLoss: slRaw === '' ? null : parseFloat(slRaw),
-    takeProfit: tpRaw === '' ? null : parseFloat(tpRaw),
-    openDate: document.getElementById('tr-opendate').value,
-    status,
-    closeDate: status === 'closed' ? ((closeDateEl && closeDateEl.value) || todayYmd()) : null,
-    closePrice: status === 'closed' ? (closePriceEl && closePriceEl.value !== '' ? parseFloat(closePriceEl.value) : null) : null,
-    notes: document.getElementById('tr-notes').value.trim(),
-  };
-  if (p.id) {
-    const idx = data.trades.findIndex(t => t.id === p.id);
-    if (idx !== -1) data.trades[idx] = record;
-  } else {
-    data.trades.push(record);
-  }
-  save(); closeModal();
-}
-function deleteTrade(id) {
-  if (!confirm("Delete this trade? This can't be undone.")) return;
-  data.trades = data.trades.filter(t => t.id !== id);
-  save(); closeModal();
 }
 
 /* ===================== Settings ===================== */

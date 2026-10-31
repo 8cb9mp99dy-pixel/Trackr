@@ -3,10 +3,16 @@
 const { test, expect } = require('@playwright/test');
 const { openApp } = require('./helpers');
 
-test('indicators sit under the active page and tab, and glide to the next one', async ({ page }) => {
+test('indicators sit under the active page and tab, and glide to the next one', async ({ page }, info) => {
   const errors = await openApp(page);
   await expect(page.locator('.nav-list .fx-ind.on')).toHaveCount(1);
   await page.evaluate(() => goPage('budget'));
+  if (info.project.name === 'desktop') { // every page is in the side bar: the page's own tabs have the line
+    await expect(page.locator('.nav-tree .fx-ind.on')).toHaveCount(1);
+    await expect(page.locator('.tab-row .fx-ind.on')).toHaveCount(1);
+    expect(errors).toEqual([]);
+    return;
+  }
   await expect(page.locator('.section-tabs .fx-ind.on')).toHaveCount(1);
   // The section-tab line is as wide as the active tab and sits right under it.
   await expect.poll(() => page.evaluate(() => {

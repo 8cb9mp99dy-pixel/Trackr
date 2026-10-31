@@ -43,8 +43,6 @@ just open a file in your browser.
 - `notify.js` — Settings → Notifications: negative-balance warning, weekly summary (a card on
   the Overview from Monday), goal reached; shown in the app's bottom bar and, if allowed on the
   device, as system notifications. Checked whenever the app is open (there's no server).
-- `trade-import.js` — Trading → Import Excel: leveraged trades from an Excel/CSV file (a broker
-  export or the template it can download), with a preview before anything is added.
 - `loan.js` — Investments → Loan: a bank loan you invested, what you owe and the interest
   over time, the real and projected value of the positions bought with it, and when they
   pass what you owe.

@@ -15,7 +15,7 @@ function motionViewKey() {
   return [ui.page, ui.investAccount].join('|');
 }
 function motionTabKey() {
-  return [ui.budgetTab, ui.investmentsTab, ui.wealthTab, ui.goalsTab, ui.investTab, ui.totalsTab, ui.tradingTab, ui.recurringView, ui.actionTab].join('|');
+  return [ui.budgetTab, ui.investmentsTab, ui.wealthTab, ui.goalsTab, ui.investTab, ui.totalsTab, ui.recurringView, ui.actionTab].join('|');
 }
 let motionLastTabs = null;
 function afterRenderMotion(app) {
