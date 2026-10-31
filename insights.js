@@ -64,7 +64,7 @@ if (typeof window !== 'undefined') {
     (typeof activeRecurringSeries === 'function' ? activeRecurringSeries() : []).filter(x => x.model.type === 'expense').forEach(x => {
       const occ = recurringOccurrences(x.id).map(t => ({ date: t.date, amount: toEUR(t.amount, t.currency) }));
       const inc = priceIncrease(occ, today, 75, 2, 0.5);
-      if (inc) out.push({ key: `price:${x.id}:${inc.date}`, icon: 'refresh', tone: 'warn', text: `${escHtml(x.model.comment || 'A recurring payment')} went up from ${fmtMoney(inc.from)} to ${fmtMoney(inc.to)} (${fmtMoney((inc.to - inc.from) * 12)} more a year).`, go: "goPage('budget');setBudgetTab('recurring')" });
+      if (inc) out.push({ key: `price:${x.id}:${inc.date}`, icon: 'refresh', tone: 'warn', text: `${escHtml(x.model.comment || 'A recurring payment')} went up from ${fmtMoney(inc.from)} to ${fmtMoney(inc.to)} (${fmtMoney((inc.to - inc.from) * x.rhythm.perYear)} more a year).`, go: "goPage('budget');setBudgetTab('recurring')" });
     });
     // 3. Idle cash at a broker or exchange.
     const since = dateToYmd(new Date(Date.now() - 60 * 86400000));

@@ -214,7 +214,7 @@ function setAssetSplit(id, field, text) {
 function recurringScanCardHtml() {
   const series = activeRecurringSeries().filter(x => x.model.type === 'expense');
   const detected = typeof detectRecurring === 'function' ? detectRecurring() : [];
-  const perMonth = series.reduce((s, x) => s + toEUR(x.model.amount, x.model.currency), 0);
+  const perMonth = series.reduce((s, x) => s + toEUR(x.perMonth, x.model.currency), 0);
   return `
     <div class="card scan-card">
       ${scanHead('refresh', 'Recurring payments', series.length ? fmtMoney(perMonth) + ' / month' : 'No data', series.length ? 'negative' : 'dim-val')}

@@ -62,7 +62,7 @@ if (typeof module !== 'undefined' && module.exports) {
   /* Payday: as set, or the day of the biggest recurring income. */
   function paydayDay() {
     if (+data.settings.payday >= 1) return { day: +data.settings.payday, guessed: false };
-    const inc = (typeof activeRecurringSeries === 'function' ? activeRecurringSeries() : []).filter(x => x.model.type === 'income')
+    const inc = (typeof activeRecurringSeries === 'function' ? activeRecurringSeries() : []).filter(x => x.model.type === 'income' && !x.st.every)
       .sort((a, b) => toEUR(+b.model.amount || 0, b.model.currency) - toEUR(+a.model.amount || 0, a.model.currency))[0];
     return inc ? { day: +inc.st.day || 31, guessed: true, name: inc.model.comment } : { day: 31, guessed: true, name: null };
   }
@@ -72,7 +72,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const t = x.model;
       if (t.type === 'expense') return true;
       return t.type === 'transfer' && isMain(t.from) && !isMain(t.to);
-    }).map(x => ({ date: x.next, amount: toEUR(+x.model.amount || 0, x.model.currency), name: x.model.comment || (x.model.type === 'transfer' ? 'Transfer' : 'Bill') }));
+    }).flatMap(x => (x.st.every ? recurDates(x.st, x.next, recurAddDays(todayYmd(), 62)) : [x.next]).map(date => ({ date, amount: toEUR(+x.model.amount || 0, x.model.currency), name: x.model.comment || (x.model.type === 'transfer' ? 'Transfer' : 'Bill') })));
   }
   window.safeSpendNow = function () {
     const pd = paydayDay(), today = todayYmd(), payday = nextPayday(today, pd.day);

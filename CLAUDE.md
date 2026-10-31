@@ -22,7 +22,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 ## Architecture
 
 - `index.html` loads classic scripts **in order**. They share globals: `data`, `ui`, `save()`, `render()`, `fmtMoney()`, `toEUR()`, `ic()` and so on.
-  - `app.js` comes first. It holds the data model, persistence and sync, prices and the core pages.
+  - `recurrence.js` comes first: date maths only, no data. Then `app.js`, which holds the data model, persistence and sync, prices and the core pages.
   - Each later file adds one area.
   - `safety.js` is last and calls `render()` once more.
 - **Rendering.**
@@ -48,6 +48,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `invest.js` / `staking.js` / `loan.js` | broker/exchange pages (Buy/Sell/Convert, plans, apply to holdings, edit/rename); staking; the invested loan |
 | `yearreview.js` | Year in review: swipeable cards (Budget → Totals → Year, and an insight in Dec/Jan) |
 | `ai-export.js` | Settings → Backup & Restore → "Export for AI": one readable workbook (Read me, Summary, Monthly, Transactions, holdings…) |
+| `recurrence.js` | How often a recurring item comes, loaded before app.js: `RECUR_RHYTHMS` (every day, weekdays, week, twice a week with two chosen days, 2 weeks, month, 3 months, year), `recurDates`, `recurNext`, `recurLabel`, `recurPattern` (the shape drawn in the form), `recurPerMonth`, `recurSet`. A series with no `every` is monthly and is stored as before. Anything that sums series uses `x.perMonth`, never `x.model.amount`; anything that lists dates uses `recurDates`. Shorter than a month: one entry per date, `confirmed` from the start (nobody confirms each one) |
 | `spend.js` | Overview → Safe to spend (main balances − recurring bills/transfers before payday − buffer, per day until payday; payday guessed from the biggest recurring income or `settings.payday`); "Can I afford it?" (from main balances or savings: per day left, emergency months, goal delays, days of spending, working days) |
 | `ious.js` | Money → IOUs (`data.ious`): lent / borrowed / split per person, settle, copy a reminder (never sends), "Split with someone" on a saved expense; not in net worth |
 | `contracts.js` | Money → Contracts (`data.contracts`): cost, term end, renewal, notice → "cancel by"; Action required 30 days before (terms ≥ 3 months), notification 14 days before; "From recurring" |
@@ -77,7 +78,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `ticker.js`, `report.js`, `motion.js` (calls `fxAfterRender`), `backup-excel.js`, `safety.js`, `sw.js` | live price bar, PDF/share, animations, Excel backup, undo/restore points/offline, service worker |
 | `nav.js` | Navigation. Computer: a short side bar, only the group you're in is open (not a long flat list: the user refused it on 31 Oct 2026) (Home · Money: budget, receipts, trips, IOUs, contracts, freelance · Wealth: net worth, cash, investments, watchlist, debts · Plan: goals, yearly bills, future, emergency, patterns, insights · Settings). Tablet and phone: the short bar, section tabs at the top, and More shows every page (phone). Settings → Display → "Classic navigation" brings back the old side bar. The Trading page (leveraged positions) was removed at the user's request (31 Oct 2026): don't bring it back; `data.trades` stays in the data and backups. Buy/Sell/Convert on broker pages is a different thing and stays |
 
-Pure maths in `returns.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js`, `receipts.js`, `interest.js`, `portfolio-chart.js`, `overview-hero.js`, `goals-visual.js`, `spend.js`, `ious.js`, `contracts.js`, `setaside.js`, `trips.js`, `patterns.js`, `monthclose.js`, `snap.js` and `inbox.js` is exported with `module.exports` and unit-tested in Node.
+Pure maths in `returns.js`, `recurrence.js`, `forecast.js`, `xray.js`, `rules.js`, `box3.js`, `quickadd.js`, `insights.js`, `planner.js`, `yearreview.js`, `freelance.js`, `future.js`, `nwmoves.js`, `watchlist.js`, `receipts.js`, `interest.js`, `portfolio-chart.js`, `overview-hero.js`, `goals-visual.js`, `spend.js`, `ious.js`, `contracts.js`, `setaside.js`, `trips.js`, `patterns.js`, `monthclose.js`, `snap.js` and `inbox.js` is exported with `module.exports` and unit-tested in Node.
 
 ## How to test
 

@@ -91,6 +91,7 @@ if (typeof window !== 'undefined') {
         amt = toEUR(+t.amount || 0, t.currency) * (t.type === 'income' ? 1 : -1);
       }
       // From the first month not logged yet (the series' lastMonth is already in your list).
+      if (x.st.every) { recurDates(x.st, recurAddDays(recurLast(x.st), 1), to).forEach(d => events.push({ date: d < today ? fcAddDays(today, 1) : d, amount: amt, label: t.comment || 'Recurring', kind: 'recurring' })); return; }
       const [y, m] = x.st.lastMonth.split('-').map(Number);
       const firstYm = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
       fcMonthlyDates(x.st.day, fcAddDays(today, -1), to, firstYm).forEach(d => events.push({ date: d < today ? fcAddDays(today, 1) : d, amount: amt, label: t.comment || 'Recurring', kind: 'recurring' }));

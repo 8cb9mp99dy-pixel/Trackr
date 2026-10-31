@@ -88,7 +88,7 @@
       add(`Average monthly net, last ${n} full months`, avg(n, 'net'));
     });
     const series = safe(() => activeRecurringSeries(), []);
-    const fixed = type => r2(series.filter(x => x.model.type === type).reduce((s, x) => s + toEUR(+x.model.amount || 0, x.model.currency), 0));
+    const fixed = type => r2(series.filter(x => x.model.type === type).reduce((s, x) => s + toEUR(+x.perMonth || 0, x.model.currency), 0));
     add('Fixed income per month (recurring)', fixed('income'));
     add('Fixed spending per month (recurring)', fixed('expense'));
     add('Moved per month by recurring transfers', fixed('transfer'));
@@ -114,11 +114,11 @@
   }
   function recurringSheet() {
     const ym = todayYmd().slice(0, 7);
-    return ['Recurring', ['Name', 'Type', 'Category', 'Amount', 'Currency', 'Amount EUR', 'Day of month', 'Account / from → to', 'Next date', 'This month'],
+    return ['Recurring', ['Name', 'Type', 'Category', 'Amount', 'Currency', 'Amount EUR', 'Repeats', 'EUR per month', 'Day of month', 'Account / from → to', 'Next date', 'This month'],
       safe(() => activeRecurringSeries(), []).map(x => {
         const t = x.model, [c] = catLabel(t);
         const st = typeof recurringMonthState === 'function' ? safe(() => recurringMonthState(x, ym), null) : null;
-        return [str(t.comment), t.type, c, r2(t.amount), str(t.currency), r2(toEUR(+t.amount || 0, t.currency)), x.st.day,
+        return [str(t.comment), t.type, c, r2(t.amount), str(t.currency), r2(toEUR(+t.amount || 0, t.currency)), recurLabel(x.st), r2(toEUR(+x.perMonth || 0, t.currency)), x.st.day,
           t.type === 'transfer' ? `${placeLabel(t.from)} → ${placeLabel(t.to)}` : t.accountId ? (accountById(t.accountId) || {}).name || '' : '', str(x.next),
           st && typeof RECURRING_STATE_LABEL !== 'undefined' ? RECURRING_STATE_LABEL[st.state] : ''];
       })];
@@ -156,7 +156,7 @@
     'Everything I own': 'Every place money sits today, with value, cost and gain (bank accounts, holdings, coins, cash at brokers).',
     'Accounts': 'Bank accounts and the cash wallet, with their pockets total.',
     'Pockets': 'Savings pockets inside bank accounts, with targets.',
-    'Recurring': 'Monthly recurring income, bills and transfers, and whether this month\'s was paid.',
+    'Recurring': 'Recurring income, bills and transfers, how often each comes, and how this month went.',
     'Goals': 'Savings goals and progress.',
     'Net worth history': 'One row per day the app was opened: net worth and value by asset type.',
     'Rules': 'The user\'s automatic categorisation rules.',
@@ -175,7 +175,7 @@
       ['Transfers', 'Money moved between the user\'s own accounts, pockets, brokers and exchanges. Not income, not spending. Transfers to brokers/exchanges = money invested.'],
       ['Dates', 'Text in YYYY-MM-DD form.'],
       ['The loan', 'A bank loan whose money is invested apart is NOT the user\'s money: it is left out of net worth on purpose. It appears only in Summary, Loans and Loan portfolio.'],
-      ['Added by the app', 'Recurring items are added automatically each month on their day; "Added by the app = yes" means not confirmed from a bank statement.'], [],
+      ['Added by the app', 'Recurring items are added automatically on their day; "Added by the app = yes" means not confirmed from a bank statement.'], [],
       ['Sheets'],
       ...sheets.map(([name]) => [name, SHEET_GUIDE[name] || 'Detail sheet from the app (raw values as typed).']), [],
       ['Questions to ask'],

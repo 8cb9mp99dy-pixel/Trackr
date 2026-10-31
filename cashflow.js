@@ -183,7 +183,7 @@ function exportCashflowCsv() {
 function budgetTotalsTabsHtml() {
   const t = ui.totalsTab || 'expense';
   const inc = budgetTotalsData('income').total, exp = budgetTotalsData('expense').total;
-  const rec = activeRecurringSeries().filter(x => x.model.type === 'expense').reduce((s, x) => s + toEUR(x.model.amount, x.model.currency), 0);
+  const rec = activeRecurringSeries().filter(x => x.model.type === 'expense').reduce((s, x) => s + toEUR(x.perMonth, x.model.currency), 0);
   const tab = (k, label, v, cls) => `<button class="tot-tab ${t === k ? 'on' : ''}" onclick="ui.totalsTab='${k}';render()"><span>${label}</span><b class="${cls}">${v}</b></button>`;
   return `
     <div class="tot-tabs">
@@ -203,7 +203,7 @@ function recurringTotalsHtml() {
     <div class="card" style="margin-bottom:20px;">
       <div class="eyebrow" style="margin-bottom:12px;">Recurring expenses</div>
       ${series.length ? `<div class="stack-gap-12">${series.map(({ model, st, next }) => `<div class="row-flex" style="gap:10px;">
-        <div style="display:flex;gap:10px;align-items:center;min-width:0;">${txAvatarHtml(model)}<div class="nm"><div class="nm-1">${escHtml(model.comment || (categoryById('expense', model.categoryId) || {}).name || 'Recurring')}</div><div class="nm-2">Every month on the ${ordinalDay(st.day)} · next ${shortDay(next)}</div></div></div>
+        <div style="display:flex;gap:10px;align-items:center;min-width:0;">${txAvatarHtml(model)}<div class="nm"><div class="nm-1">${escHtml(model.comment || (categoryById('expense', model.categoryId) || {}).name || 'Recurring')}</div><div class="nm-2">${escHtml(recurLabel(st))} · next ${shortDay(next)}</div></div></div>
         <b class="negative">−${fmtMoney(model.amount, model.currency)}</b></div>`).join('')}</div>` : '<div class="dim">No recurring expenses yet — see Budget → Recurring.</div>'}
       <button class="link-btn" style="margin-top:12px;" onclick="setBudgetTab('recurring')">Calendar and detected payments ${ic('chevronRight', 14)}</button>
     </div>`;
@@ -222,7 +222,14 @@ function recurringForMonth(monthDate) {
   const y = monthDate.getFullYear(), m = monthDate.getMonth(), last = new Date(y, m + 1, 0).getDate();
   const out = [];
   const ym = `${y}-${String(m + 1).padStart(2, '0')}`;
-  activeRecurringSeries().forEach(x => { const st = typeof recurringMonthState === 'function' ? recurringMonthState(x, ym) : null; out.push({ day: Math.min(x.st.day, last), model: x.model, kind: 'series', state: st ? st.state : '' }); });
+  const today = todayYmd();
+  activeRecurringSeries().forEach(x => {
+    const st = recurIsShort(x.st) ? null : recurringMonthState(x, ym);
+    // More than once a month: each date on its own.
+    const occ = recurIsShort(x.st) ? recurringOccurrences(x.id) : [];
+    recurDates(x.st, `${ym}-01`, recurMonthEnd(ym)).forEach(date => out.push({ day: +date.slice(8, 10), model: x.model, kind: 'series',
+      state: st ? st.state : !recurIsShort(x.st) ? '' : date > today ? 'upcoming' : occ.some(t => t.date === date) ? 'paid' : 'missed' }));
+  });
   detectRecurring().forEach(d => out.push({ day: Math.min(d.day, last), model: d.model, kind: 'detected', name: d.name, avg: d.avg }));
   return out;
 }

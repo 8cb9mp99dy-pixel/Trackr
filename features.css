@@ -316,3 +316,30 @@
   .gp-next { padding: 18px 0 0; border-left: 0; border-top: 1px solid var(--fx-line); }
   .gp-grid { grid-template-columns: 1fr; }
 }
+
+/* Recurring rhythm in the expense form: chips, then the shape of what you picked. */
+.rc { display: flex; flex-direction: column; gap: 12px; }
+.rc-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.rc-day { height: 38px; padding: 0; border: 1px solid var(--fx-line-strong); border-radius: 10px; background: none; color: var(--fx-ink); font-size: 13px; font-weight: 600; cursor: pointer; }
+.rc-day.on { background: var(--fx-ink); border-color: var(--fx-ink); color: var(--fx-paper); }
+.rc-preview { display: flex; align-items: center; gap: 16px; padding: 14px; border: 1px solid var(--fx-line); border-radius: var(--radius-md); scroll-margin-bottom: 96px; }
+.rc-shape { flex: none; display: grid; gap: 3px; }
+.rc-shape.weeks { grid-template-columns: repeat(7, 14px); }
+.rc-shape.months { grid-template-columns: repeat(6, 18px); }
+.rc-head { font-size: 9px; font-weight: 600; line-height: 12px; text-align: center; color: var(--fx-dim); }
+.rc-cell { display: flex; align-items: center; justify-content: center; height: 14px; border-radius: 4px; background: var(--fx-fill); color: var(--fx-dim); font-size: 9px; font-weight: 600; line-height: 1; }
+.rc-shape.months .rc-cell { height: 18px; }
+.rc-cell.on { background: var(--fx-ink); color: var(--fx-paper); }
+.rc-cell.past { opacity: .35; }
+.rc-text { min-width: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45; }
+.rc-next span { display: block; font-size: 11.5px; color: var(--fx-dim); }
+.rc-next i { font-style: normal; white-space: nowrap; }
+.rc-cost { color: var(--fx-dim); }
+.rc-cost b { color: var(--fx-ink); font-weight: 700; }
+@media (max-width: 420px) {
+  .rc-preview { gap: 12px; padding: 12px; }
+  .rc-shape.weeks { grid-template-columns: repeat(7, 12px); }
+  .rc-shape.months { grid-template-columns: repeat(6, 15px); }
+  .rc-cell { height: 12px; }
+  .rc-shape.months .rc-cell { height: 15px; }
+}

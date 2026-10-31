@@ -138,12 +138,12 @@ if (typeof module !== 'undefined' && module.exports) {
     return `
       <div class="modal-head"><div class="modal-title">From your recurring bills</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
       ${series.length ? `<p class="dim" style="margin:0 0 12px;font-size:13px;">Pick one: its name and cost are filled in, you add the term end and the notice.</p>
-        <div class="stack-gap-8">${series.map(x => `<button class="more-row" onclick="contractFromRecurring('${x.id}')"><span>${escHtml(x.model.comment || 'Bill')}</span><span class="more-chev">${fmtMoney(+x.model.amount || 0, x.model.currency)}/mo ${ic('chevronRight', 14)}</span></button>`).join('')}</div>`
+        <div class="stack-gap-8">${series.map(x => `<button class="more-row" onclick="contractFromRecurring('${x.id}')"><span>${escHtml(x.model.comment || 'Bill')}</span><span class="more-chev">${fmtMoney(+x.perMonth || 0, x.model.currency)}/mo ${ic('chevronRight', 14)}</span></button>`).join('')}</div>`
         : '<div class="empty-state"><div class="sub">No recurring bills left to add.</div></div>'}`;
   };
   window.contractFromRecurring = function (rid) {
     const x = activeRecurringSeries().find(s => s.id === rid); if (!x) return;
-    openContract(null, { name: x.model.comment || 'Subscription', cost: String(x.model.amount || ''), currency: x.model.currency || 'EUR', period: 'month', renewMonths: 1, noticeN: 1, noticeUnit: 'months', recurringId: rid });
+    openContract(null, { name: x.model.comment || 'Subscription', cost: x.perMonth ? String(Math.round(x.perMonth * 100) / 100) : '', currency: x.model.currency || 'EUR', period: 'month', renewMonths: 1, noticeN: 1, noticeUnit: 'months', recurringId: rid });
   };
 
   /* ---- Reminders ---- */

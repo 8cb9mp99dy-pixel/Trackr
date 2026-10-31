@@ -190,8 +190,8 @@ function remindersIcs() {
   lines.push(...ev('trackr-check-balances', 'Trackr: check your balances', `DTSTART:${ymd(nextFirst)}T170000Z`, 'FREQ=MONTHLY;BYMONTHDAY=1', 'Open Trackr and look at Action required: balances and prices kept by hand.', 'PT0M'));
   lines.push(...ev('trackr-1-january', 'Trackr: 1 January snapshot', `DTSTART;VALUE=DATE:${ymd(nextJan)}`, 'FREQ=YEARLY', 'Reference date of the Dutch box 3 (wealth on 1 January). Open Trackr so the day is saved.', 'PT10H'));
   (typeof activeRecurringSeries === 'function' ? activeRecurringSeries() : []).filter(x => x.model.type === 'expense').forEach(x => {
-    const next = ymdToDate(x.next);
-    lines.push(...ev('trackr-due-' + x.id.replace(/[^a-z0-9_-]/gi, ''), `Due: ${x.model.comment || 'recurring payment'}`, `DTSTART;VALUE=DATE:${ymd(next)}`, (x.st.day <= 28 ? `FREQ=MONTHLY;BYMONTHDAY=${x.st.day}` : `FREQ=MONTHLY;BYMONTHDAY=${Array.from({ length: x.st.day - 27 }, (_, i) => 28 + i).join(',')};BYSETPOS=-1`), 'A recurring payment from Trackr (amount not included).', '-P1D'));
+    const next = ymdToDate(x.next), rule = recurIcsRule(x.st);
+    if (rule) lines.push(...ev('trackr-due-' + x.id.replace(/[^a-z0-9_-]/gi, ''), `Due: ${x.model.comment || 'recurring payment'}`, `DTSTART;VALUE=DATE:${ymd(next)}`, rule, 'A recurring payment from Trackr (amount not included).', '-P1D'));
   });
   lines.push('END:VCALENDAR');
   return lines.join('\r\n') + '\r\n';
@@ -234,8 +234,8 @@ function weekSummaryData(start) {
   const thisStart = weekStartOf(appToday()), thisEnd = new Date(thisStart); thisEnd.setDate(thisEnd.getDate() + 6);
   const a = dateToYmd(thisStart), b = dateToYmd(thisEnd);
   const upcoming = typeof activeRecurringSeries === 'function'
-    ? activeRecurringSeries().flatMap(x => [a.slice(0, 7), b.slice(0, 7)].filter((v, i, arr) => arr.indexOf(v) === i).map(ym => ({ x, date: recurringDueDate(ym, x.st.day) })))
-      .filter(u => u.date >= a && u.date <= b && u.date >= today).sort((p, q) => (p.date < q.date ? -1 : 1))
+    ? activeRecurringSeries().flatMap(x => recurDates(x.st, a, b).map(date => ({ x, date })))
+      .filter(u => u.date >= today).sort((p, q) => (p.date < q.date ? -1 : 1))
     : [];
   const key = from;
   return { key, start, end, income: sum(txs, 'income'), expenses: sum(txs, 'expense'), prevExpenses: prev.length ? sum(prev, 'expense') : null, top, biggest, nwChange, upcoming, count: txs.length };
