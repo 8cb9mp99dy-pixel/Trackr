@@ -42,7 +42,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `app.js` | data model, sync, prices (TradingView, CoinGecko, Twelve Data), Overview, Accounts, Budget, Investments, Settings, backups |
 | `topbar.js` | top bar, Action required (+ Notifications tab, data quality), Add menu, More sheet |
 | `overview.js` / `wealth.js` | Overview cards, the shared `allocationCardHtml`, the Wealth page |
-| `goals.js` / `photos.js` | goals page and goal window, emergency savings; goal photos and receipt files (IndexedDB + Supabase; included in backups) |
+| `goals.js` / `photos.js` | goals page and goal window, emergency savings; goal photos and receipt files (IndexedDB + Supabase table `trackr_images`, sent again every 5 minutes; included in backups). `data.photoThumbs`: a very small copy of each goal's cover in the data, so another device is never blank even without the table. Settings → Supabase Sync → Photos says where they are |
 | `cashflow.js` / `forecast.js` | Totals, Sankey, recurring calendar and scanner; Budget → Forecast with what-ifs |
 | `analysis.js` / `returns.js` / `xray.js` / `box3.js` | Analysis: fees, passive income, diversification; returns (TWR/XIRR/FIFO); X-ray rules; Dutch box 3 estimate |
 | `invest.js` / `staking.js` / `loan.js` | broker/exchange pages (Buy/Sell/Convert, plans, apply to holdings, edit/rename); staking; the invested loan |

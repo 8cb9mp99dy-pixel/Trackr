@@ -460,6 +460,7 @@ function defaultData() {
     ious: [], // money lent / borrowed / split with people (ious.js)
     contracts: [], // subscriptions and contracts with their notice period (contracts.js)
     yearlyBills: [], // irregular bills set aside for every month (setaside.js)
+    photoThumbs: {}, // photo id → a very small copy of a goal's cover, for your other devices (photos.js)
     inboxRejected: [], // what you rejected on From Claude, kept 30 days to put back (inbox.js)
     trips: [], // trips with dates and a budget (trips.js)
     monthClose: {}, // 'YYYY-MM' → { at, note }: the month-end check (monthclose.js)
@@ -7310,6 +7311,7 @@ function settingsSupabaseSyncHtml() {
         <button type="button" class="btn small" onclick="toggleSupabaseSetupSql()">${ui.supabaseSetupSqlOpen ? 'Hide' : 'Show'} setup SQL</button>
         ${ui.supabaseSetupSqlOpen ? `<pre style="font-size:10.5px;background:var(--dark-card-2);padding:10px;border-radius:var(--radius-sm);overflow:auto;margin-top:8px;white-space:pre-wrap;user-select:all;">${escHtml(SUPABASE_SETUP_SQL)}</pre>` : ''}
       </div>` : ''}
+      ${typeof photoSettingsHtml === 'function' ? photoSettingsHtml() : ''}
       <div class="card-nested" style="margin-bottom:16px;">
         <div style="font-size:12px;opacity:.6;">Connected to ${escHtml(cfg.url)}</div>
         <div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-top:10px;justify-content:flex-start;">

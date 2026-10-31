@@ -8,11 +8,16 @@
  *     browser's database (IndexedDB);
  *   - with sync connected and the photo table installed in Supabase (Settings → Supabase Sync →
  *     setup SQL, run once), it's also sent there, and your other devices fetch it the first time
- *     they need it. Until then, photos stay on the device where you added them.
- * A goal only keeps the photo ids (goal.photos = [{ id, caption }]).
+ *     they need it. Until then, the full photo stays on the device where you added them;
+ *   - a very small copy of each goal's cover does travel in your data (data.photoThumbs, 240 px,
+ *     300 KB in all), so a goal is never blank on your other devices, table or no table.
+ * A goal only keeps the photo ids (goal.photos = [{ id, caption }]). Settings → Supabase Sync
+ * says where your photos are and what to do.
  */
 const PHOTO_DB = 'trackr-photos', PHOTO_MAX = 1600;
+const PHOTO_THUMB_MAX = 240, PHOTO_THUMBS_SIZE = 300000, PHOTO_RETRY_MS = 60000;
 const photoUrls = new Map();   // id → object URL, once loaded
+const photoMissed = new Map(); // id → when it was last looked for in vain
 const photoLoading = new Set();
 let photoCloud = null;         // null: not checked yet · true: photo table installed · false: not installed
 
@@ -83,10 +88,11 @@ async function photoSyncPending() {
 
 /* ---- Use ---- */
 /* The photo's URL if it's loaded; otherwise starts loading it (this device, then the cloud) and
-   redraws once it's there. Returns null meanwhile. */
+   redraws once it's there. Meanwhile: its small copy if there is one, or null. One that can't be
+   found is looked for again a minute later: it may just not have been sent yet. */
 function photoUrl(id) {
-  if (photoUrls.has(id)) return photoUrls.get(id);
-  if (!photoLoading.has(id)) {
+  if (photoUrls.get(id)) return photoUrls.get(id);
+  if (!photoLoading.has(id) && Date.now() - (photoMissed.get(id) || 0) >= PHOTO_RETRY_MS) {
     photoLoading.add(id);
     (async () => {
       let rec = await photoGet(id).catch(() => null);
@@ -102,10 +108,10 @@ function photoUrl(id) {
         else if (ui.modal && ui.modal.type === 'goal' && typeof goalFormRedraw === 'function') goalFormRedraw();
         else renderWhenIdle();
       }
-      else photoUrls.set(id, '');   // not on this device and not in the cloud
+      else photoMissed.set(id, Date.now());   // not on this device and not in the cloud
     })().finally(() => photoLoading.delete(id));
   }
-  return null;
+  return (data.photoThumbs && data.photoThumbs[id]) || null;
 }
 /* Adds picked files: returns [{ id, caption }] for the ones that worked. */
 async function addPhotoFiles(files) {
@@ -127,6 +133,7 @@ async function removePhoto(id) {
   await photoDel(id).catch(() => {});
   const u = photoUrls.get(id); if (u) URL.revokeObjectURL(u);
   photoUrls.delete(id);
+  photoMissed.delete(id);
   if (await photoCloudReady()) supabaseRpc('delete_trackr_image', { secret: loadSupabaseSyncConfig().secret, p_id: id }).catch(() => {});
 }
 /* Photos on this device that no goal uses any more (e.g. added, then the form was cancelled). */
@@ -138,7 +145,73 @@ async function photoCleanup() {
   [...(pl.photos || []), ...(pl.receipts || [])].forEach(p => used.add(p.id));
   for (const id of await photoAllKeys().catch(() => [])) if (!used.has(id)) await removePhoto(id);
 }
-setTimeout(() => { photoSyncPending().catch(() => {}); }, 4000);
+/* Each goal's cover, very small, in the data itself. Only the device that holds a photo can make
+   its copy; a copy no cover uses any more goes. */
+async function photoKeepThumbs() {
+  const covers = (data.goals || []).map(g => g.photos && g.photos[0] && g.photos[0].id).filter(Boolean);
+  if (!data.photoThumbs) data.photoThumbs = {};
+  let changed = false;
+  Object.keys(data.photoThumbs).forEach(id => { if (!covers.includes(id)) { delete data.photoThumbs[id]; changed = true; } });
+  const size = () => Object.values(data.photoThumbs).reduce((s, t) => s + t.length, 0);
+  for (const id of covers) {
+    if (data.photoThumbs[id]) continue;
+    const rec = await photoGet(id).catch(() => null);
+    if (!rec || !/^data:image\//.test(rec.data || '')) continue;
+    const small = await shrinkDataUrl(rec.data, PHOTO_THUMB_MAX, 0.6);
+    if (small && size() + small.data.length <= PHOTO_THUMBS_SIZE) { data.photoThumbs[id] = small.data; changed = true; }
+  }
+  if (changed) save();
+}
+/* Every so often, not only when the app starts: an iPhone can stay open for days. */
+async function photoBackground() {
+  if (photoCloud !== true) photoCloud = null;
+  await photoSyncPending();
+  await photoKeepThumbs();
+  if (photoCloud === false && ui.page === 'goals') renderWhenIdle();
+}
+setTimeout(() => { photoBackground().catch(() => {}); }, 4000);
+setInterval(() => { if (!document.hidden) photoBackground().catch(() => {}); }, 5 * 60 * 1000);
+
+/* ---- Where your photos are ---- */
+const photoUsedIds = () => Array.from(new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id)).concat(typeof receiptIds === 'function' ? receiptIds() : [])));
+async function photoRefreshStatus(again) {
+  ui.photoStatusAt = Date.now();
+  if (again) { photoCloud = null; await photoSyncPending().catch(() => {}); }
+  await photoCloudReady();
+  const out = { used: 0, here: 0, waiting: 0, cloud: photoCloud };
+  for (const id of photoUsedIds()) {
+    const rec = await photoGet(id).catch(() => null);
+    out.used++;
+    if (rec) { out.here++; if (!rec.synced) out.waiting++; }
+  }
+  ui.photoStatus = out;
+  renderWhenIdle();
+}
+function photoSettingsHtml() {
+  if (Date.now() - (ui.photoStatusAt || 0) > 30000) photoRefreshStatus().catch(() => {});
+  const s = ui.photoStatus;
+  if (!s || !s.used) return '';
+  const n = (x, w) => `${x} ${w}${x === 1 ? '' : 's'}`;
+  const again = '<button type="button" class="btn small" onclick="photoRefreshStatus(true)">Check again</button>';
+  const body = s.cloud === false
+    ? `<div class="ib-warn" style="margin:0 0 10px;">Your full photos stay on the device that added them: your Supabase has no photo table yet. Your other devices only get a small copy of each goal's cover, and no receipts.</div>
+       <div style="font-size:12.5px;opacity:.75;line-height:1.5;margin-bottom:10px;">To fix it once for all: copy the setup SQL, paste it in Supabase → SQL Editor, press Run (it's safe to run again), then come back here.</div>
+       <div class="row-flex" style="gap:8px;justify-content:flex-start;flex-wrap:wrap;"><button type="button" class="btn small primary" onclick="photoCopySql(this)">Copy the setup SQL</button>${again}</div>`
+    : s.cloud !== true ? `<div style="font-size:12.5px;opacity:.75;margin-bottom:10px;">Your Supabase can't be reached right now, so this can't be checked.</div>${again}`
+      : s.waiting ? `<div style="font-size:12.5px;opacity:.75;margin-bottom:10px;">${n(s.waiting, 'photo')} still to send to your Supabase.</div><button type="button" class="btn small primary" onclick="photoRefreshStatus(true)">Send now</button>`
+        : `<div style="font-size:12.5px;opacity:.75;">${n(s.used, 'photo')} saved in your Supabase: your other devices load them by themselves.${s.here < s.used ? ` ${s.here} already on this device.` : ''}</div>`;
+  return `<div class="card-nested" id="photo-status" style="margin-bottom:16px;"><div style="font-weight:700;margin-bottom:6px;">Photos</div>${body}</div>`;
+}
+async function photoCopySql(btn) {
+  await navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
+  if (btn) btn.textContent = 'Copied';
+}
+/* On the Goals page: said where it shows, not only in Settings. */
+function photoGoalsNoteHtml() {
+  if (photoCloud !== false || !(data.goals || []).some(g => (g.photos || []).length)) return '';
+  return `<div class="ib-warn">Your goal photos are only saved on one device, so your phone shows a small copy. <button class="link-btn" onclick="photoOpenSettings()">Fix it</button></div>`;
+}
+function photoOpenSettings() { goPage('settings'); ui.settingsOpenSections = { supabasesync: true }; render(); }
 
 /* ---- Photos in backups ----
    Backups (JSON and Excel) carry the goal photos too, so a restore on a new device brings them

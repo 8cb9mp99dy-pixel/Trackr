@@ -149,7 +149,7 @@ function renderGoals() {
   return `
   <div class="page surface-light">
     <div class="page-head"><div><h1 class="page-title">Goals</h1><div class="page-subtitle">Where your money is heading</div></div>${tab === 'goals' ? `<button class="btn primary" onclick="openGoalForm()">${ic('plus', 15)} New goal</button>` : ''}</div>
-    ${tab === 'goals' ? goalsOverviewHtml() : ''}
+    ${tab === 'goals' ? photoGoalsNoteHtml() + goalsOverviewHtml() : ''}
     ${typeof newNavOn === 'function' && newNavOn() ? '' : `<div class="tab-row" style="margin:20px 0;width:auto;">
       <button class="tab-btn ${tab === 'goals' ? 'active' : ''}" onclick="ui.goalsTab='goals';render()">Goals${(data.goals || []).length ? ` (${data.goals.length})` : ''}</button>
       <button class="tab-btn ${tab === 'emergency' ? 'active' : ''}" onclick="ui.goalsTab='emergency';render()">Emergency savings ${ef.enabled ? '' : '<span class="dim">· not set</span>'}</button>
@@ -299,7 +299,7 @@ window.__modalRenderers.goal = function (p) {
         <button class="gf-ph-btn del" title="Remove" onclick="goalFormRedraw(p=>p.photos.splice(${i},1))">✕</button></div>`; }).join('')}
       <label class="gf-ph gf-ph-add">${ic('plus', 20)}<span>Add photos</span><input type="file" accept="image/*" multiple onchange="goalAddPhotos(this.files);this.value=''"></label>
     </div>
-    ${photoCloud === false ? '<div class="dim" style="margin:-6px 0 10px;">Photos stay on this device until you run the updated setup SQL in Supabase (Settings → Supabase Sync → setup SQL).</div>' : ''}
+    ${photoCloud === false ? '<div class="dim" style="margin:-6px 0 10px;">The full photos stay on this device: see Settings → Supabase Sync → Photos.</div>' : ''}
     <div class="form-grid">
       <label class="field" style="max-width:90px;"><span class="label-text">Icon</span><input id="gf-icon" value="${escHtml(v.icon || '🎯')}" maxlength="4"></label>
       <label class="field"><span class="label-text">Name</span><input id="gf-name" value="${escHtml(v.name)}" placeholder="e.g. Trip to Japan"></label>
@@ -376,7 +376,7 @@ function saveGoal() {
   save();
   ui.modal = { type: 'goalView', payload: { id: saved.id, slide: 0 } };
   render(); startGoalGallery();
-  setTimeout(() => photoCleanup().catch(() => {}), 500);
+  setTimeout(() => photoCleanup().then(photoKeepThumbs).catch(() => {}), 500);
 }
 function deleteGoal(id) {
   const g = (data.goals || []).find(x => x.id === id); if (!g) return;
