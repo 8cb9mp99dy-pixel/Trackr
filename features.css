@@ -270,3 +270,41 @@
 .ib-howto { margin: 4px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.6; display: flex; flex-direction: column; gap: 6px; }
 .ib-howto .btn { margin-left: 4px; }
 .ib-howto code { font-size: 12px; padding: 1px 5px; border-radius: 4px; background: var(--fx-fill); }
+
+/* ---------- Goals: the overview and the list (goals-visual.js) ---------- */
+.gp-hero { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; margin-bottom: 14px; padding: 26px; }
+.gp-hero-main { min-width: 0; }
+.gp-total { margin-top: 6px; }
+.gp-of { margin-top: 2px; font-size: 13.5px; color: var(--fx-dim); }
+.gp-bar { height: 6px; border-radius: 3px; margin-top: 16px; }
+.gp-bar span { background: var(--fx-ink); border-radius: 3px; }
+.gp-stats { display: flex; gap: 28px; margin-top: 18px; }
+.gp-stat { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; color: var(--fx-dim); }
+.gp-stat b { font-size: 16px; color: var(--fx-ink); }
+.gp-next { all: unset; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; gap: 10px; min-width: 0; padding-left: 28px; border-left: 1px solid var(--fx-line); cursor: pointer; }
+.gp-next .eyebrow { margin: 0; }
+.gp-next-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.gp-next-name b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gp-next-sub { font-size: 12.5px; color: var(--fx-dim); }
+.gp-next:focus-visible, .gp-card:focus-visible, .gp-add:focus-visible { outline: 2px solid var(--fx-ink); outline-offset: 2px; }
+.gp-tile { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: var(--radius-sm); background: var(--fx-fill); font-size: 19px; overflow: hidden; }
+.gp-tile img { width: 100%; height: 100%; object-fit: cover; }
+.gp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.gp-card { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 20px; border: 1px solid var(--fx-line); border-radius: var(--radius-lg); background: var(--fx-paper); cursor: pointer; }
+.gp-card:hover, .gp-add:hover { border-color: var(--fx-dim); }
+.gp-card-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gp-card-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gp-card-name b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gp-card-name span { font-size: 12.5px; color: var(--fx-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gp-amts { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; color: var(--fx-dim); min-width: 0; }
+.gp-amts b { font-size: 19px; color: var(--fx-ink); font-variant-numeric: tabular-nums; }
+.gp-amts em { margin-left: auto; font-style: normal; font-weight: 700; color: var(--fx-ink); }
+.gp-card .gp-bar { display: block; margin-top: 0; }
+.gp-add { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 12px; min-height: 96px; padding: 20px; border: 1px dashed var(--fx-line); border-radius: var(--radius-lg); color: var(--fx-dim); cursor: pointer; }
+.gp-add b { display: block; color: var(--fx-ink); font-size: 14.5px; }
+.gp-add span span { font-size: 12.5px; }
+@media (max-width: 760px) {
+  .gp-hero { grid-template-columns: 1fr; gap: 18px; padding: 20px; }
+  .gp-next { padding: 18px 0 0; border-left: 0; border-top: 1px solid var(--fx-line); }
+  .gp-grid { grid-template-columns: 1fr; }
+}

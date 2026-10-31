@@ -148,37 +148,15 @@ function renderGoals() {
   const ef = data.emergencyFund || {};
   return `
   <div class="page surface-light">
-    <div class="page-head"><div><h1 class="page-title">Goals</h1><div class="page-subtitle">Where your money is heading</div></div></div>
-    ${typeof goalsCalendarHtml === 'function' ? goalsCalendarHtml() : goalsTimelineHtml()}
-    ${typeof newNavOn === 'function' && newNavOn() ? '<div style="height:20px;"></div>' : `<div class="tab-row" style="margin:20px 0;width:auto;">
+    <div class="page-head"><div><h1 class="page-title">Goals</h1><div class="page-subtitle">Where your money is heading</div></div>${tab === 'goals' ? `<button class="btn primary" onclick="openGoalForm()">${ic('plus', 15)} New goal</button>` : ''}</div>
+    ${tab === 'goals' ? goalsOverviewHtml() : ''}
+    ${typeof newNavOn === 'function' && newNavOn() ? '' : `<div class="tab-row" style="margin:20px 0;width:auto;">
       <button class="tab-btn ${tab === 'goals' ? 'active' : ''}" onclick="ui.goalsTab='goals';render()">Goals${(data.goals || []).length ? ` (${data.goals.length})` : ''}</button>
       <button class="tab-btn ${tab === 'emergency' ? 'active' : ''}" onclick="ui.goalsTab='emergency';render()">Emergency savings ${ef.enabled ? '' : '<span class="dim">· not set</span>'}</button>
       ${typeof futureTabHtml === 'function' ? `<button class="tab-btn ${tab === 'future' ? 'active' : ''}" onclick="ui.goalsTab='future';render()">Future</button>` : ''}
     </div>`}
     ${tab === 'emergency' ? emergencyTabHtml() : tab === 'future' && typeof futureTabHtml === 'function' ? futureTabHtml() : goalsTabHtml()}
   </div>`;
-}
-function goalsTimelineHtml() {
-  const now = new Date(), y0 = now.getFullYear();
-  const marks = (data.goals || []).map(g => ({ g, s: goalState(g) })).filter(x => x.s.eta || x.g.targetDate).map(x => ({ name: x.g.name, icon: x.g.icon || '🎯', date: x.s.status === 'done' ? now : (x.s.eta || ymdToDate(x.g.targetDate)), status: x.s.status }));
-  const ef = data.emergencyFund || {};
-  if (ef.enabled) { const s = emergencyState(); if (s.eta) marks.push({ name: 'Emergency savings', icon: '🛟', date: s.eta, status: s.status }); }
-  const lastYear = Math.max(y0 + 10, ...marks.map(m => m.date.getFullYear() + 1));
-  const span = new Date(lastYear, 0, 1) - now;
-  const at = d => Math.max(0, Math.min(100, (d - now) / span * 100));
-  const step = Math.max(1, Math.ceil((lastYear - y0) / 6));
-  const years = []; for (let y = y0 + step; y < lastYear; y += step) years.push(y);
-  return `
-    <div class="card goal-timeline">
-      <div class="gt-axis">
-        <span class="gt-tick" style="left:0;">Today</span>
-        ${years.map(y => `<span class="gt-tick" style="left:${at(new Date(y, 0, 1)).toFixed(2)}%;">${y}</span>`).join('')}
-        <span class="gt-tick end" style="left:100%;">${lastYear}</span>
-        <div class="gt-line"></div>
-        ${marks.map(m => `<span class="gt-mark ${m.status}" style="left:${at(m.date).toFixed(2)}%;" title="${escHtml(m.name)} · ${m.date.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}">${escHtml(m.icon)}</span>`).join('')}
-      </div>
-      ${marks.length ? '' : '<div style="font-size:12.5px;opacity:.65;margin-top:6px;">Your goals appear here on the year they should be reached.</div>'}
-    </div>`;
 }
 /* ---- Goals and pockets ----
    A goal usually lives in a pocket (Accounts → an account → its pockets): the goal's progress is
@@ -204,39 +182,7 @@ function pocketMoves(ref) {
 }
 function goalColor(g) { return g.color || hashColor(g.name || 'goal'); }
 
-/* ---- The showroom ---- */
-function goalsTabHtml() {
-  const goals = data.goals || [];
-  return `
-    ${typeof goalsBubblesHtml === 'function' ? goalsBubblesHtml() : ''}
-    <div class="gs-grid" style="margin-top:20px;">
-      ${goals.map(goalShowCardHtml).join('')}
-      <button class="gs-add" onclick="openGoalForm()"><span class="gs-add-ic">${ic('plus', 22)}</span><span><b>New goal</b><span>A trip, a car, a flat deposit…</span></span></button>
-    </div>`;
-}
-function goalShowCardHtml(g) {
-  const s = goalState(g);
-  const [label, tone] = GOAL_STATUS[s.status];
-  const photos = g.photos || [];
-  const cover = photos.length ? photoUrl(photos[0].id) : null;
-  const pk = pocketByRef(g.pocket);
-  const where = pk ? `${ic('wallet', 13)} ${escHtml(pk.p.name)} · ${escHtml(pk.a.name)}` : g.pocket ? `${ic('alert', 13)} Pocket removed` : escHtml((g.links || []).map(id => sourceLabel(id) || 'Removed').join(' · '));
-  return `
-    <article class="gs-card" style="--gs-c:${goalColor(g)};" onclick="openGoalView('${g.id}')" tabindex="0" onkeydown="if(event.key==='Enter')openGoalView('${g.id}')">
-      <div class="gs-media">
-        ${cover ? `<img src="${cover}" alt="" loading="lazy">` : `<div class="gs-emoji">${escHtml(g.icon || '🎯')}</div>`}
-        <div class="gs-shade"></div>
-        <span class="status-pill ${tone} gs-status">${label}</span>
-        ${photos.length > 1 ? `<span class="gs-count">${ic('photo', 13)} ${photos.length}</span>` : ''}
-        <div class="gs-title"><div class="gs-name">${escHtml(g.icon || '')} ${escHtml(g.name)}</div><div class="gs-eta">${s.status === 'done' ? 'Target reached' : s.eta ? `${durationText(s.months)} · ${s.eta.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : g.targetDate ? `Aim: ${ymdToDate(g.targetDate).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}` : 'No date yet'}</div></div>
-      </div>
-      <div class="gs-body">
-        <div class="gs-amts"><b class="count-up">${fmtMoney(s.current)}</b><span>of ${fmtMoney(s.target)}</span><span class="gs-pct">${s.pct.toFixed(0)}%</span></div>
-        <div class="goal-bar gs-bar"><span style="width:${s.pct.toFixed(1)}%;"></span></div>
-        <div class="gs-meta">${where}</div>
-      </div>
-    </article>`;
-}
+function goalsTabHtml() { return goalsListHtml(); }
 
 /* ---- One goal, full view: gallery, story, money ---- */
 let goalGalleryTimer = null;

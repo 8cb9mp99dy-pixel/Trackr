@@ -42,7 +42,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `app.js` | data model, sync, prices (TradingView, CoinGecko, Twelve Data), Overview, Accounts, Budget, Investments, Trading, Settings, backups |
 | `topbar.js` | top bar, Action required (+ Notifications tab, data quality), Add menu, More sheet |
 | `overview.js` / `wealth.js` | Overview cards, the shared `allocationCardHtml`, the Wealth page |
-| `goals.js` / `photos.js` | goals showroom, emergency savings; goal photos and receipt files (IndexedDB + Supabase; included in backups) |
+| `goals.js` / `photos.js` | goals page and goal window, emergency savings; goal photos and receipt files (IndexedDB + Supabase; included in backups) |
 | `cashflow.js` / `forecast.js` | Totals, Sankey, recurring calendar and scanner; Budget → Forecast with what-ifs |
 | `analysis.js` / `returns.js` / `xray.js` / `box3.js` | Analysis: fees, passive income, diversification; returns (TWR/XIRR/FIFO); X-ray rules; Dutch box 3 estimate |
 | `invest.js` / `staking.js` / `loan.js` | broker/exchange pages (Buy/Sell/Convert, plans, apply to holdings, edit/rename); staking; the invested loan |
@@ -66,7 +66,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
 | `appearance.js` | Light / Dark / Auto (this device only, set before the first frame in index.html); dark is the same black-and-white design inverted; switching wipes the screen in a circle from the button |
 | `features.css` | Styles of the feature pages above (same tokens as futuristic.css) |
 | `futuristic.css` / `fx.js` | The look, loaded after `styles.css`: design tokens (ink/paper greys, spacing, corners, durations, easings, gradients), equal-width digits (numbers keep Plus Jakarta Sans; the user didn't like a monospace font), hairlines, dot grid; fx.js: boot scan, sliding nav/tab indicators, digit roll on changed amounts, sync dot pulse/shake, "Saved" check, View Transitions on page changes. Only transform/opacity move; all still with reduced motion. Green/red stay for gains/losses, user colours for categories |
-| `goals-visual.js` | Goals: floating bubbles filled with liquid up to each goal's progress; the goal calendar (months as a road, pins, pace ghosts, "Next up" countdown) |
+| `goals-visual.js` | Goals: the overview (saved against the aim, on track / behind / reached, what's next with its countdown) and one calm card per goal, soonest first, reached last. The bubbles and the goal calendar were removed at the user's request (31 Oct 2026): don't bring them back |
 | `overview-hero.js` | Overview top: net worth with its change and a self-drawing chart (1M/3M/1Y/All, point to read a day), what it's made of (main balances · pockets · invested), this month (in/out bars, % kept ring, 6-month columns) |
 | `portfolio-chart.js` | Investments: ring of positions (logos + shares around it) or of investment types, list beside it, hover/tap to light a slice, sort, sweep-in animation |
 | `watchlist.js` | Investments → Watchlist: prices you follow without owning them (ISIN via TradingView, coins via CoinGecko), alerts below/above your levels (bar, notification centre, Action required); never buys |
