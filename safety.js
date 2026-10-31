@@ -26,8 +26,8 @@ function safetyToast(html, opts) {
   if (!(opts && opts.sticky)) el._t = setTimeout(() => { el.className = 'safety-toast'; }, (opts && opts.ms) || UNDO_SECONDS * 1000);
 }
 function safetyToastHide() { const el = document.getElementById('safety-toast'); if (el) el.className = 'safety-toast'; }
-function offerUndo(label, before) {
-  undoSnapshot = { label, json: before };
+function offerUndo(label, before, onUndo) {
+  undoSnapshot = { label, json: before, onUndo };
   clearTimeout(undoTimer);
   undoTimer = setTimeout(() => { undoSnapshot = null; }, UNDO_SECONDS * 1000);
   safetyToast(`<span>${escHtml(label)}</span><button onclick="undoLastChange()">Undo</button>`);
@@ -40,6 +40,7 @@ function undoLastChange() {
   try { migrateCryptoModel(); } catch (e) {}
   save();
   applyTheme();
+  if (snap.onUndo) snap.onUndo();
   render();
   safetyToast(`<span>Undone: ${escHtml(snap.label.toLowerCase())}</span>`, { ms: 3000 });
 }

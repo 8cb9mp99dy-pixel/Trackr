@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxParsePasted, inboxInstructions } = require('../../inbox.js');
+const { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxSameName, inboxMatch, inboxRepeats, inboxParsePasted, inboxInstructions } = require('../../inbox.js');
 
 const ctx = {
   today: '2026-10-18', currency: 'EUR', defaultAccountId: 'acc_main',
@@ -156,4 +156,58 @@ test('connector: errors come back to Claude, nothing is sent without a key or it
 test('the SQL and the function in the app are their files', () => {
   assert.equal(INBOX_SQL_TEXT, fs.readFileSync(path.join(__dirname, '../../supabase/migrations/003_trackr_inbox.sql'), 'utf8'));
   assert.equal(INBOX_FUNCTION_TEXT, fs.readFileSync(path.join(__dirname, '../../supabase/functions/trackr-inbox/index.ts'), 'utf8'));
+});
+
+test('names: spelling, a longer bank label, the first word; not a short word inside another', () => {
+  assert.equal(inboxSameName('TradeRepublic', 'Trade Republic'), true);
+  assert.equal(inboxSameName('Temper (Finqle)', 'Temper'), true);
+  assert.equal(inboxSameName('ALBERT HEIJN 1234 AMSTERDAM', 'Albert Heijn'), true);
+  assert.equal(inboxSameName('Café Noir', 'CAFE NOIR'), true);
+  assert.equal(inboxSameName('Demo Shop', 'Demo Market'), true);
+  assert.equal(inboxSameName('AH', 'Spar Ahoy'), false);
+  assert.equal(inboxSameName('Bakery', 'Butcher'), false);
+  assert.equal(inboxSameName('', 'Butcher'), false);
+});
+
+test('matching: each saved transaction answers for one item only', () => {
+  const it = (id, o) => Object.assign({ id, type: 'transfer', date: '2026-10-14', amount: 45, currency: 'EUR', name: 'TradeRepublic' }, o);
+  const saved = [it('t1', {})];
+  const m = inboxMatch([it('a', {}), it('b', {})], saved);
+  assert.equal(Object.keys(m).length, 1);
+  assert.deepEqual(Object.values(m), [{ id: 't1', level: 'same' }]);
+  // Two saved, two sent, two different amounts on the day: each finds its own.
+  const both = inboxMatch([it('a', { amount: 43 }), it('b', {})], [it('t2', {}), it('t1', { amount: 43 })]);
+  assert.deepEqual([both.a.id, both.b.id], ['t1', 't2']);
+  // The closest pair wins, whatever the order they come in.
+  const close = inboxMatch([it('far', { date: '2026-10-16' }), it('near', {})], saved);
+  assert.deepEqual(Object.keys(close), ['near']);
+});
+
+test('matching: what counts as the same, what only maybe, what not', () => {
+  const it = (id, o) => Object.assign({ id, type: 'expense', date: '2026-10-14', amount: 12.5, currency: 'EUR', name: 'Demo Gym' }, o);
+  const one = (a, b, days) => (inboxMatch([it('a', a)], [it('t', b)], days).a || {}).level;
+  assert.equal(one({}, {}), 'same');
+  assert.equal(one({ date: '2026-10-15' }, {}), 'same'); // a day later at the bank
+  assert.equal(one({ name: 'Other Place' }, {}), 'maybe'); // same day, other name
+  assert.equal(one({ date: '2026-10-17' }, {}), 'maybe'); // three days, same name
+  assert.equal(one({ date: '2026-10-18' }, {}), undefined);
+  assert.equal(one({ date: '2026-10-16', name: 'Other Place' }, {}), undefined);
+  assert.equal(one({ amount: 12.51 }, {}), undefined);
+  assert.equal(one({ currency: 'USD' }, {}), undefined);
+  assert.equal(one({ type: 'income' }, {}), undefined);
+  assert.equal(one({ amount: 0 }, { amount: 0 }), undefined);
+  assert.equal(one({ tol: 1, amount: 13 }, {}), 'same');
+  assert.equal(one({ date: '2026-10-16' }, {}, 1), undefined);
+  // A transfer: both ends alike is enough, whatever it's called.
+  const ends = { type: 'transfer', from: 'acc:a', to: 'brk:b' };
+  assert.equal(one({ ...ends, name: 'To broker' }, { ...ends, name: '' }), 'same');
+  assert.equal(one({ ...ends, name: 'To broker' }, { ...ends, to: 'brk:c', name: '' }), 'maybe');
+});
+
+test('sent twice: a later batch repeats, the same batch does not', () => {
+  const it = (id, batch, o) => Object.assign({ id, batch, type: 'expense', date: '2026-10-14', amount: 3, currency: 'EUR', name: 'Coffee' }, o);
+  assert.deepEqual(inboxRepeats([it('a', '1'), it('b', '1')]), {}); // two coffees on one statement
+  assert.deepEqual(inboxRepeats([it('b', '2'), it('a', '1')]), { b: 'a' });
+  assert.deepEqual(Object.keys(inboxRepeats([it('a', '1'), it('b', '1'), it('c', '2'), it('d', '2'), it('e', '2')])), ['c', 'd']);
+  assert.deepEqual(inboxRepeats([it('a', '1'), it('b', '2', { amount: 4 })]), {});
 });

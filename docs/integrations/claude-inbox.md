@@ -2,8 +2,9 @@
 
 Send receipts, bank or card screenshots and broker screenshots to two projects in Claude
 ("Trackr Budget" and "Trackr Investments"). Claude reads them and, through the Trackr connector,
-drops every transaction into an inbox in your own Supabase. Trackr shows them in
-**Action required → From Claude**. Nothing reaches your accounts until you add it there.
+drops every transaction into an inbox in your own Supabase. Trackr shows them on the page
+**Money → From Claude** (also from Action required). Nothing reaches your accounts until you add
+it there.
 
 ```
 Claude project ──▶ connector  …/functions/v1/trackr-inbox/<inbox key>   (MCP server, Edge Function)
@@ -12,7 +13,7 @@ Claude project ──▶ connector  …/functions/v1/trackr-inbox/<inbox key>   
                Supabase: inbox_context / inbox_add ──▶ trackr_inbox (status 'new')
                                                            │
 Trackr (sync secret) ◀── inbox_list ───────────────────────┘
-   review: Add / Edit / Reject ──▶ inbox_resolve ('added' | 'rejected')
+   review: Add / Edit / Reject, one or many ──▶ inbox_resolve ('added' | 'rejected')
 ```
 
 ## Set up (about 10 minutes)
@@ -45,8 +46,21 @@ queue: make a new key in Trackr and paste the new URL in Claude (the old one sto
 
 ## Review in Trackr
 
-- Budget items: **Add** (ready ones), **Edit** (the transaction form, filled in) or **Reject**.
-  Missing category, no amount, an unknown account or a possible duplicate are shown first.
+The page reads like Budget: logos, one card per day, the amounts for the day. Three tabs:
+
+- **New**: nothing like it in Trackr. All ticked: press **Add** for the whole list, or untick what
+  you don't want first.
+- **To check**: a missing category, a problem, a possible duplicate, or something Claude sent twice.
+  Pick the category in the row: it goes to the other items of that name too.
+- **Already in Trackr**: it matches a saved transaction (same type and amount, same or next day,
+  similar name). Each saved transaction answers for one item only, so two 45 euro payments with one
+  saved give one match and one new. **Skip** them at once, or add the one that really is new.
+
+Your rules and the names you've used before fill in the category, account and logo. The comparison
+happens in the app: Claude still sees names only, no amounts. Every action on many items has
+**Undo** for 10 seconds; undone items come back as items on this device.
+
+- Tap a row for the transaction form, filled in.
 - Investments: a buy or sell opens the broker's trade panel filled in. Recording it there settles
   the item. An asset that isn't in Trackr yet must be added first. A dividend, deposit or
   withdrawal opens the transaction form.

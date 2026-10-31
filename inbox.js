@@ -7,7 +7,7 @@
  *   Claude → connector URL …/functions/v1/trackr-inbox/<inbox key> (the MCP server in
  *   supabase/functions/trackr-inbox/index.ts, an Edge Function) → inbox_add (the SQL in
  *   supabase/migrations/003_trackr_inbox.sql) → Trackr fetches it with your sync secret.
- * Every item waits in Action required → "From Claude": nothing touches your data until you
+ * Every item waits on the page Money → "From Claude": nothing touches your data until you
  * approve it here.
  *   - Budget items: "Add" (ready ones), "Edit" (the expense form, filled in) or "Reject".
  *   - Investment items: buy / sell open the broker's trade panel filled in (you press Buy / Sell
@@ -20,7 +20,7 @@
  * data.settings.inboxChannels says the inbox is on, so every device fetches it.
  * Fetched items and answers not sent yet: localStorage 'trackr-inbox'.
  *
- * inboxNormalize(), inboxParsePasted() and inboxInstructions() are pure (Node-tested), and the
+ * inboxNormalize(), inboxMatch(), inboxRepeats(), inboxParsePasted() and inboxInstructions() are pure (Node-tested), and the
  * SQL and function texts are kept equal to their files by a test.
  */
 // The SQL and the Edge Function, word for word (a test keeps them equal to the files).
@@ -440,6 +440,63 @@ function inboxNormalize(raw, channel, ctx) {
   return result(kind, 'tx', Object.assign(draft, { categoryId: cat ? cat.id : '', subCategoryId: sub ? sub.id : '', accountId: (acc || fallback || {}).id || '', paymentMethodId: pm ? pm.id : '' }));
 }
 
+/* A name in a form two sources can agree on: no case, accents, spaces or punctuation. */
+const inboxNameKey = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+/* "Temper" = "Temper (Finqle)", "TradeRepublic" = "Trade Republic", "ALBERT HEIJN 1234" = "Albert Heijn". */
+function inboxSameName(a, b) {
+  const ka = inboxNameKey(a), kb = inboxNameKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  const [short, long] = ka.length <= kb.length ? [ka, kb] : [kb, ka];
+  if (short.length >= 4 && long.includes(short)) return true;
+  const first = s => inboxNameKey(String(s).trim().split(/\s+/)[0]);
+  const fa = first(a);
+  return fa.length >= 4 && fa === first(b);
+}
+/* Which items are already in Trackr. Each existing transaction answers for one item only, so two
+ * €45 transfers and one saved are one match and one new: the closest pairs are taken first.
+ * items: [{ id, type, date, amount, currency, name, from?, to?, tol? }]; existing: same, without tol.
+ * → { [item id]: { id: existing id, level: 'same' | 'maybe' } } */
+function inboxMatch(items, existing, days) {
+  const near = days == null ? 3 : days;
+  const dayNo = d => Math.round(Date.parse(d + 'T00:00:00Z') / 86400000);
+  const pairs = [];
+  items.forEach(it => {
+    if (!(it.amount > 0)) return;
+    const tol = it.tol || 0.005;
+    existing.forEach(e => {
+      if (e.type !== it.type || (e.currency || 'EUR') !== (it.currency || 'EUR') || Math.abs(e.amount - it.amount) >= tol) return;
+      const gap = Math.abs(dayNo(e.date) - dayNo(it.date));
+      if (!(gap <= near)) return;
+      const similar = inboxSameName(it.name, e.name) || (it.type === 'transfer' && !!it.from && it.from === e.from && !!it.to && it.to === e.to);
+      const score = similar ? (gap === 0 ? 3 : gap === 1 ? 2 : 0) : gap === 0 ? 1 : -1;
+      if (score >= 0) pairs.push({ item: it.id, other: e.id, score, gap });
+    });
+  });
+  pairs.sort((a, b) => b.score - a.score || a.gap - b.gap);
+  const out = {}, taken = new Set();
+  pairs.forEach(p => {
+    if (out[p.item] || taken.has(p.other)) return;
+    taken.add(p.other);
+    out[p.item] = { id: p.other, level: p.score >= 2 ? 'same' : 'maybe' };
+  });
+  return out;
+}
+/* The same thing sent again in a later batch (batch = when it arrived): two coffees on one
+ * statement are two coffees, the same statement sent twice is not.
+ * → { [repeated item id]: id of the item it repeats } */
+function inboxRepeats(items) {
+  const seen = {}, out = {};
+  items.slice().sort((a, b) => (a.batch < b.batch ? -1 : a.batch > b.batch ? 1 : 0)).forEach(it => {
+    const k = [it.type, it.date, it.amount, it.currency, inboxNameKey(it.name)].join('|');
+    const s = seen[k];
+    if (!s) seen[k] = { batch: it.batch, left: 1, first: it.id };
+    else if (s.batch === it.batch) s.left++;
+    else if (s.left > 0) { s.left--; out[it.id] = s.first; }
+  });
+  return out;
+}
+
 /* Text pasted from Claude → [{ channel, item }]. Takes the JSON block it gave ({"trackr":
  * "budget" | "invest", "items": [...]}, or just an array), even with words around it. */
 function inboxParsePasted(text) {
@@ -493,13 +550,13 @@ function inboxInstructions(channel) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxParsePasted, inboxInstructions };
+  module.exports = { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxSameName, inboxMatch, inboxRepeats, inboxParsePasted, inboxInstructions };
 } else {
   const STATE_KEY = 'trackr-inbox', KEYS_KEY = 'trackr-inbox-keys';
   const readLs = (k, d) => { try { return Object.assign(d, JSON.parse(localStorage.getItem(k) || '{}')); } catch (e) { return d; } };
   const writeLs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage blocked: kept in memory only */ } };
-  // { items: [{ id, channel, item, source, created_at, local? }], done: { id: 'added' | 'rejected' }, ctxSig, missing }
-  const state = readLs(STATE_KEY, { items: [], done: {}, ctxSig: '', missing: false });
+  // { items: [{ id, channel, item, source, created_at, local? }], done: { id: 'added' | 'rejected' }, edits: { id: fields you changed here }, ctxSig, missing }
+  const state = readLs(STATE_KEY, { items: [], done: {}, edits: {}, ctxSig: '', missing: false });
   const keys = readLs(KEYS_KEY, {});
   const saveState = () => writeLs(STATE_KEY, state);
   const channelsOn = () => Object.keys((data.settings && data.settings.inboxChannels) || {}).filter(c => data.settings.inboxChannels[c]);
@@ -543,7 +600,9 @@ if (typeof module !== 'undefined' && module.exports) {
     const c = cfg();
     if (busy || !c || !c.secret || (!channelsOn().length && !force)) return;
     busy = true;
-    const before = openItems().length;
+    const openIds = () => openItems().map(x => x.id).join();
+    const before = openIds();
+    let again = false;
     try {
       const pending = Object.keys(state.done).filter(id => !id.startsWith('local_'));
       for (const status of ['added', 'rejected']) {
@@ -553,7 +612,10 @@ if (typeof module !== 'undefined' && module.exports) {
       const list = await supabaseRpc('inbox_list', { secret: c.secret }) || [];
       const locals = state.items.filter(x => x.local);
       state.items = list.map(x => ({ id: x.id, channel: x.channel, item: x.item, source: x.source, created_at: x.created_at })).concat(locals);
-      Object.keys(state.done).forEach(id => { if (!id.startsWith('local_')) delete state.done[id]; });
+      // Only what was sent: an answer given while this ran goes out on the next round.
+      pending.forEach(id => { delete state.done[id]; });
+      Object.keys(state.edits).forEach(id => { if (!state.items.some(x => x.id === id)) delete state.edits[id]; });
+      again = Object.keys(state.done).some(id => !id.startsWith('local_'));
       state.missing = false; lastError = '';
       const ctx = JSON.stringify(publicContext());
       if (ctx !== state.ctxSig) { await supabaseRpc('inbox_set_context', { secret: c.secret, context: JSON.parse(ctx) }); state.ctxSig = ctx; }
@@ -564,92 +626,259 @@ if (typeof module !== 'undefined' && module.exports) {
       busy = false;
       saveState();
     }
-    if (openItems().length !== before || ui.modal && ui.modal.type === 'inbox') (typeof renderWhenIdle === 'function' ? renderWhenIdle : render)();
+    if (openIds() !== before || (force && ui.page === 'inbox')) (typeof renderWhenIdle === 'function' ? renderWhenIdle : render)();
+    if (again) inboxRefresh();
   }
   window.inboxRefresh = inboxRefresh;
-  function resolveItem(id, status) {
+  function resolveItem(id, status, later) {
     if (String(id).startsWith('local_')) state.items = state.items.filter(x => x.id !== id);
     else state.done[id] = status;
     saveState();
-    inboxRefresh();
+    if (!later && !window.__quietBatch) inboxRefresh();
   }
 
-  /* ---- Review ---- */
-  window.openInbox = function () { ui.modal = { type: 'inbox', payload: {} }; render(); inboxRefresh(); };
-  const fmtWhen = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); };
-  function looksDuplicate(n) {
-    if (n.form !== 'tx' || !n.draft.amount) return false;
-    const amt = +n.draft.amount;
-    return (data.budgetTransactions || []).some(t => t.date === n.draft.date && t.type === n.draft.type && Math.abs((+t.amount || 0) - amt) < 0.005 && t.currency === n.draft.currency);
-  }
-  function normalized(x) {
-    const n = inboxNormalize(x.item, x.channel, ctxForNormalize());
-    if (looksDuplicate(n)) { n.problems.push({ text: 'Maybe already in Trackr: same day, type and amount.', block: false }); n.ready = false; }
+  /* ---- Review: a page like Budget, day by day ---- */
+  window.openInbox = function () { goPage('inbox'); inboxRefresh(); };
+  window.inboxCount = () => openItems().length;
+  window.inboxTabOn = () => openItems().length > 0 || channelsOn().length > 0 || ui.page === 'inbox';
+  const failed = {}; // id → why it couldn't be added in a batch (a transfer bigger than the pocket…)
+  /* What you taught Trackr comes first: your rules, then the name you've used before. Claude's
+   * category stays for a name only partly known; its account is kept if it named one. */
+  function normalized(x, ctx) {
+    const item = Object.assign({}, x.item, state.edits[x.id]);
+    let n = inboxNormalize(item, x.channel, ctx);
+    if (n.form !== 'tx') return n;
+    const d = n.draft;
+    if (d.type === 'transfer') {
+      d.logo = endpointLogo(d.to) || endpointLogo(d.from) || builtinLogoFor(d.comment);
+      return n;
+    }
+    let past = null, ch = null;
+    if (!(state.edits[x.id] && state.edits[x.id].category_id)) {
+      const rule = typeof ruleForTx === 'function' ? ruleForTx({ name: d.comment, amount: +d.amount || 0, type: d.type, accountId: d.accountId }) : null;
+      ch = rule ? ruleChanges(rule, d.type) : null;
+      past = learnedTxFor(d.comment, d.type);
+      const known = past && (!d.categoryId || txNameKey(past.comment) === txNameKey(d.comment));
+      const use = ch && ch.categoryId ? ch : known ? past : null;
+      if (use) { item.category_id = use.categoryId; item.subcategory_id = use.subCategoryId || ''; }
+      if (past && !item.account_id && !item.account && past.accountId) item.account_id = past.accountId;
+      if (past && !item.payment_method_id && past.paymentMethodId) item.payment_method_id = past.paymentMethodId;
+      n = inboxNormalize(item, x.channel, ctx);
+      if (ch && ch.comment) n.draft.comment = ch.comment;
+      if (ch && ch.nature) n.draft.nature = ch.nature;
+    }
+    n.draft.logo = txLogoForName(n.draft.comment) || (past && past.logo) || builtinLogoFor(n.draft.comment);
     return n;
   }
-  function itemLine(x, n) {
-    const d = n.draft;
-    const cat = n.form === 'tx' && d.categoryId ? categoryById(d.type, d.categoryId) : null;
-    const sub = cat && d.subCategoryId ? (cat.subcategories || []).find(s => s.id === d.subCategoryId) : null;
-    const acc = n.form === 'tx' && d.accountId ? accountById(d.accountId) : null;
-    if (n.form === 'trade') {
-      return { title: `${n.kind === 'buy' ? 'Buy' : 'Sell'} ${d.assetLabel || '?'}`, amount: d.amount ? fmtMoney(+d.amount) : d.qty && d.price ? fmtMoney(+d.qty * +d.price) : '', sign: n.kind === 'buy' ? '−' : '+',
-        meta: [shortDay(d.date), d.qty ? `${d.qty} × ${d.price ? fmtMoney(+d.price) : '?'}` : '', d.broker, d.fee ? `fee ${fmtMoney(+d.fee)}` : ''].filter(Boolean).join(' · ') };
-    }
-    const where = d.type === 'transfer' ? [d.from && transferEndpoint(d.from) ? transferEndpoint(d.from).label : '?', d.to && transferEndpoint(d.to) ? transferEndpoint(d.to).label : '?'].join(' → ') : acc ? acc.name : '';
-    return { title: d.comment || (d.type === 'income' ? 'Income' : d.type === 'transfer' ? 'Transfer' : 'Expense'), amount: d.amount ? fmtMoney(+d.amount, d.currency) : '—', sign: d.type === 'income' ? '+' : d.type === 'expense' ? '−' : '',
-      meta: [shortDay(d.date), cat ? `${cat.name}${sub ? ' › ' + sub.name : ''}` : '', where].filter(Boolean).join(' · '), income: d.type === 'income' };
+  function endpointLogo(ref) {
+    const ep = parseTransferRef(ref);
+    if (!ep) return '';
+    if (ep.kind === 'brk') { const b = brokerById(ep.brokerId); return (b && b.logo) || (b ? builtinLogoFor(b.name) : ''); }
+    if (ep.kind === 'cx') return cryptoBrokerLogo(ep.exchange);
+    return '';
   }
-  window.__modalRenderers.inbox = function () {
-    const list = openItems().slice().sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-    const rows = list.map(x => ({ x, n: normalized(x) }));
-    const ready = rows.filter(r => r.n.form === 'tx' && r.n.ready);
-    const on = channelsOn();
+  /* Everything waiting, with what it is compared with what Trackr already holds:
+   * 'same' (already in), 'check' (needs a look), 'new'. */
+  function reviewRows() {
+    const ctx = ctxForNormalize();
+    const rows = openItems().map(x => ({ x, n: normalized(x, ctx) }));
+    const keyOf = ({ x, n }) => {
+      const d = n.draft, batch = x.created_at;
+      if (n.form === 'trade') { const total = +d.amount || (+d.qty * +d.price) || 0; return { id: x.id, batch, type: n.kind + ':' + d.from, date: d.date, amount: total, currency: 'EUR', name: d.from, tol: Math.max(0.01, total * 0.002) }; }
+      return { id: x.id, batch, type: d.type, date: d.date, amount: +d.amount || 0, currency: d.currency, name: d.comment, from: d.from, to: d.to };
+    };
+    const txs = (data.budgetTransactions || []).map(t => ({ id: t.id, type: t.type, date: t.date, amount: Math.abs(+t.amount || 0), currency: t.currency || 'EUR', name: t.comment, from: t.from, to: t.to }));
+    const trades = (data.investmentTransactions || []).filter(t => t.action === 'Buy' || t.action === 'Sell').map(t => ({ id: t.id, trade: true, type: t.action.toLowerCase() + ':' + t.assetKey, date: t.date, amount: +t.amount || 0, currency: 'EUR', name: t.assetKey }));
+    const keys = rows.map(keyOf), existing = txs.concat(trades);
+    const found = inboxMatch(keys, existing), twice = inboxRepeats(keys);
+    rows.forEach(r => {
+      const id = r.x.id, m = found[id], first = twice[id];
+      r.other = m ? existing.find(e => e.id === m.id) : null;
+      r.twice = !!first && !m;
+      const same = (m && m.level === 'same') || (first && found[first] && found[first].level === 'same');
+      r.fail = failed[id] || '';
+      r.status = same ? 'same' : !r.n.ok || r.n.problems.length || m || first || r.fail ? 'check' : 'new';
+    });
+    return rows;
+  }
+  const signedEUR = n => { const d = n.draft, v = toEUR(+d.amount || 0, d.currency || 'EUR'); return n.form !== 'tx' ? 0 : d.type === 'income' ? v : d.type === 'expense' ? -v : 0; };
+  const sourceName = s => String(s || '').replace(/\s*[—–-]\s*part\s*\d+\s*\/\s*\d+\s*$/i, '').trim() || 'No source';
+  const isAddable = r => r.n.form === 'tx' && r.n.ok;
+  const isPicked = r => ((ui.ibPick || {})[r.x.id] !== undefined ? ui.ibPick[r.x.id] : r.status !== 'check');
+  function tabOf(rows) {
+    const has = t => rows.some(r => r.status === t);
+    return has(ui.ibTab) ? ui.ibTab : ['new', 'check', 'same'].find(has) || 'new';
+  }
+  function shownRows(rows) {
+    const tab = tabOf(rows), inTab = rows.filter(r => r.status === tab);
+    return ui.ibSource && inTab.some(r => sourceName(r.x.source) === ui.ibSource) ? inTab.filter(r => sourceName(r.x.source) === ui.ibSource) : inTab;
+  }
+  function itemLine(n) {
+    const d = n.draft;
+    if (n.form === 'trade') {
+      return { title: `${n.kind === 'buy' ? 'Buy' : 'Sell'} ${d.assetLabel || '?'}`, amount: d.amount ? fmtMoney(+d.amount) : d.qty && d.price ? fmtMoney(+d.qty * +d.price) : '—', cls: '',
+        meta: [d.qty ? `${d.qty} × ${d.price ? fmtMoney(+d.price) : '?'}` : '', d.broker, d.fee ? `fee ${fmtMoney(+d.fee)}` : ''].filter(Boolean).join(' · ') };
+    }
+    const cat = d.categoryId ? categoryById(d.type, d.categoryId) : null;
+    const sub = cat && d.subCategoryId ? (cat.subcategories || []).find(s => s.id === d.subCategoryId) : null;
+    const acc = d.accountId ? accountById(d.accountId) : null;
+    const place = ref => (ref && transferEndpoint(ref) ? transferEndpoint(ref).label : '?');
+    return { title: d.comment || (d.type === 'income' ? 'Income' : d.type === 'transfer' ? 'Transfer' : 'Expense'),
+      amount: `${d.type === 'income' ? '+' : d.type === 'expense' ? '-' : ''}${d.amount ? fmtMoney(+d.amount, d.currency) : '—'}`, cls: d.type === 'income' ? 'positive' : d.type === 'expense' ? 'negative' : 'ib-move',
+      meta: (d.type === 'transfer' ? [`${place(d.from)} → ${place(d.to)}`] : [cat ? `${cat.name}${sub ? ' · ' + sub.name : ''}` : '', acc ? acc.name : '']).filter(Boolean).join(' · ') };
+  }
+  function avatarOf(n) {
+    if (n.form === 'tx') return txAvatarHtml(n.draft);
+    const acc = n.draft.accountKey ? investAccountByKey(n.draft.accountKey) : null;
+    const a = acc ? tradeableAssets(acc).find(x => x.key === n.draft.from) : null;
+    return assetLogoHtml(a ? a.logo : '', a ? a.type : 'Stock', 38);
+  }
+  const categoryPicker = (r, id) => {
+    const type = r.n.draft.type, cats = data.categories[type === 'income' ? 'income' : 'expense'] || [];
+    return `<select class="ib-fix" aria-label="Category" onchange="inboxSetCategory('${id}',this.value)"><option value="">Pick a category…</option>${cats.map(c => `<option value="${escHtml(c.id)}">${escHtml(c.name)}</option>${(c.subcategories || []).map(s => `<option value="${escHtml(c.id)}|${escHtml(s.id)}">${escHtml(c.name)} · ${escHtml(s.name)}</option>`).join('')}`).join('')}</select>`;
+  };
+  function rowHtml(r) {
+    const { x, n } = r, id = escHtml(x.id), l = itemLine(n), d = n.draft;
+    const needsCat = n.form === 'tx' && d.type !== 'transfer' && !d.categoryId;
+    const hints = n.problems.filter(p => !(needsCat && /category/i.test(p.text))).map(p => `<li class="${p.block ? 'block' : ''}">${escHtml(p.text)}</li>`);
+    if (r.other) {
+      const what = `${escHtml(r.other.name || 'a transaction')}, ${escHtml(shortDay(r.other.date))}`;
+      hints.unshift(`<li>${r.status === 'same' ? 'Already in Trackr' : 'Maybe in Trackr'}: ${r.other.trade ? what : `<button class="link-btn" onclick="openTxForm('${escHtml(r.other.id)}')">${what}</button>`}</li>`);
+    }
+    if (r.twice) hints.unshift('<li>Claude sent this twice.</li>');
+    if (r.fail) hints.unshift(`<li class="block">${escHtml(r.fail)}</li>`);
+    const addLabel = r.status === 'new' ? 'Add' : 'Add anyway';
+    return `<div class="ib-item ${n.ok ? '' : 'blocked'}" title="${escHtml(x.local ? 'Pasted' : x.source || '')}">
+      <input class="ib-tick" type="checkbox" aria-label="Select ${escHtml(l.title)}" ${isPicked(r) ? 'checked' : ''} onchange="inboxPick('${id}',this.checked)">
+      <div class="ib-mid">
+        <button class="ib-open" onclick="inboxOpen('${id}')" ${n.form === 'trade' && !d.accountKey ? 'disabled' : ''}>${avatarOf(n)}<span class="ib-txt"><b>${escHtml(l.title)}</b><span>${escHtml(l.meta || '—')}</span></span></button>
+        ${needsCat ? categoryPicker(r, id) : ''}
+        ${hints.length ? `<ul class="ib-probs">${hints.join('')}</ul>` : ''}
+      </div>
+      <div class="ib-end">
+        <b class="num ${l.cls}">${l.amount}</b>
+        <span class="ib-btns">
+          ${isAddable(r) ? `<button class="ib-act on" aria-label="${addLabel}" title="${addLabel}" onclick="inboxAdd('${id}')">${ic('check', 15)}</button>` : ''}
+          ${n.form === 'trade' && d.accountKey ? `<button class="btn small" onclick="inboxOpen('${id}')">${n.ok ? 'Review the trade' : 'Open the broker'}</button>` : ''}
+          <button class="ib-act" aria-label="Reject" title="Reject" onclick="inboxReject('${id}')">${ic('x', 15)}</button>
+        </span>
+      </div>
+    </div>`;
+  }
+  function daysHtml(rows) {
+    const days = {};
+    rows.forEach(r => { (days[r.n.draft.date] = days[r.n.draft.date] || []).push(r); });
+    return Object.keys(days).sort().reverse().map(date => {
+      const net = days[date].reduce((s, r) => s + signedEUR(r.n), 0);
+      return `<div class="row-flex ib-day"><div>${dayLabel(date)}</div>${net ? `<div class="${net > 0 ? 'positive' : 'negative'}">${net > 0 ? '+' : ''}${fmtMoney(net)}</div>` : ''}</div>
+        <div class="card ib-card">${days[date].map(rowHtml).join('')}</div>`;
+    }).join('');
+  }
+  window.__pageRenderers.inbox = function () {
+    const rows = reviewRows(), tab = tabOf(rows), shown = shownRows(rows), on = channelsOn();
+    const count = t => rows.filter(r => r.status === t).length;
+    const waiting = rows.filter(r => r.status !== 'same');
+    const sum = sign => waiting.reduce((s, r) => { const v = signedEUR(r.n); return s + (v * sign > 0 ? Math.abs(v) : 0); }, 0);
+    const sources = {};
+    rows.filter(r => r.status === tab).forEach(r => { const k = sourceName(r.x.source); sources[k] = (sources[k] || 0) + 1; });
+    const names = Object.keys(sources);
+    const picked = shown.filter(isPicked), adds = picked.filter(isAddable), net = sign => adds.reduce((s, r) => { const v = signedEUR(r.n); return s + (v * sign > 0 ? Math.abs(v) : 0); }, 0);
+    const js = v => escHtml(String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
+    const labels = { new: 'New', check: 'To check', same: 'Already in Trackr' };
     return `
-      <div class="modal-head"><div class="modal-title">From Claude</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
-      <p class="dim" style="font-size:13px;margin:0 0 12px;">What Claude read from your screenshots and receipts. Nothing is in Trackr until you add it here.</p>
+    <div class="page surface-light">
+      <div class="page-head">
+        <div><h1 class="page-title">From Claude</h1><div class="page-subtitle">${rows.length ? `${rows.length} waiting · nothing is in Trackr until you add it` : 'What Claude reads from your screenshots and statements'}</div></div>
+        <div class="row-flex" style="gap:8px;">
+          <button class="btn" onclick="openInboxPaste()">${ic('copy', 15)} Paste</button>
+          ${on.length ? '<button class="btn" onclick="inboxRefresh(true)">↻ Check now</button>' : '<button class="btn" onclick="goPage(\'settings\');ui.settingsOpenSections={claude:true};render()">Set up</button>'}
+        </div>
+      </div>
       ${state.missing ? '<div class="ib-warn">The inbox isn\'t in your Supabase yet: Settings → Claude inbox → step 1.</div>' : lastError ? `<div class="ib-warn">${escHtml(lastError)}</div>` : ''}
-      ${rows.length ? `<div class="ib-list">${rows.map(({ x, n }) => {
-        const l = itemLine(x, n);
-        return `<div class="ib-item ${n.ok ? '' : 'blocked'}">
-          <div class="ib-top"><span class="ib-ch">${x.channel === 'invest' ? 'Investments' : 'Budget'}</span><span class="dim">${escHtml([x.source, x.local ? 'pasted' : fmtWhen(x.created_at)].filter(Boolean).join(' · '))}</span></div>
-          <div class="ib-main"><div class="ib-txt"><b>${escHtml(l.title)}</b><span class="dim">${escHtml(l.meta)}</span></div><b class="num ${l.income ? 'positive' : ''}">${l.sign}${l.amount}</b></div>
-          ${n.problems.length ? `<ul class="ib-probs">${n.problems.map(p => `<li class="${p.block ? 'block' : ''}">${escHtml(p.text)}</li>`).join('')}</ul>` : ''}
-          <div class="ib-acts">
-            <button class="btn small ghost" onclick="inboxReject('${escHtml(x.id)}')">Reject</button>
-            ${n.form === 'trade' ? `<button class="btn small primary" ${n.draft.accountKey ? '' : 'disabled'} onclick="inboxOpen('${escHtml(x.id)}')">${n.ok ? 'Review the trade' : 'Open the broker'}</button>`
-              : `<button class="btn small" onclick="inboxOpen('${escHtml(x.id)}')">Edit</button>${n.ok ? `<button class="btn small primary" onclick="inboxAdd('${escHtml(x.id)}')">Add</button>` : ''}`}
-          </div></div>`;
-      }).join('')}</div>` : `<div class="empty-state" style="padding:22px 10px;"><div class="title">Nothing to review</div><div class="sub">${on.length ? 'Send a screenshot or a receipt to your Trackr project in Claude: it shows up here.' : 'Connect Claude in Settings → Claude inbox, or paste what Claude gave you.'}</div></div>`}
-      <div class="modal-actions">
-        <button class="btn" onclick="openInboxPaste()">Paste from Claude</button>
-        ${ready.length > 1 ? `<button class="btn primary" onclick="inboxAddAllReady()">Add the ${ready.length} ready</button>` : on.length ? '<button class="btn" onclick="inboxRefresh(true)">Check now</button>' : '<button class="btn" onclick="closeModal();goPage(\'settings\');ui.settingsOpenSections={claude:true};render()">Set up</button>'}
-      </div>`;
+      ${rows.length ? `
+      <div class="card bt-summary">
+        <div><div class="eyebrow">To add</div><b>${waiting.length}</b></div>
+        <div><div class="eyebrow">In</div><b class="positive">${fmtMoney(sum(1))}</b></div>
+        <div><div class="eyebrow">Out</div><b class="negative">${fmtMoney(sum(-1))}</b></div>
+        <div><div class="eyebrow">Already in Trackr</div><b>${count('same')}</b></div>
+      </div>
+      <div class="tab-row ib-tabs">${['new', 'check', 'same'].map(t => `<button class="tab-btn ${tab === t ? 'active' : ''}" onclick="inboxTab('${t}')">${labels[t]} <span class="ib-n">${count(t)}</span></button>`).join('')}</div>
+      ${names.length > 1 ? `<div class="ib-sources"><button class="ib-src ${ui.ibSource && names.includes(ui.ibSource) ? '' : 'on'}" onclick="inboxSource('')">All</button>${names.map(s => `<button class="ib-src ${ui.ibSource === s ? 'on' : ''}" onclick="inboxSource('${js(s)}')">${escHtml(s)} <span class="ib-n">${sources[s]}</span></button>`).join('')}</div>` : names.length ? `<div class="ib-from">${escHtml(names[0])}</div>` : ''}
+      ${tab === 'same' ? '<div class="ib-note">These match transactions you already have, each one only once. Skip them, or add the one that really is new.</div>' : ''}
+      ${daysHtml(shown)}
+      <div class="ib-bar">
+        <label class="ib-all"><input class="ib-tick" type="checkbox" aria-label="Select all" ${picked.length === shown.length ? 'checked' : ''} onchange="inboxPickAll(this.checked)"><span>${picked.length} selected</span></label>
+        <span class="ib-sum">${adds.length ? [net(1) ? `<span class="positive">+${fmtMoney(net(1))}</span>` : '', net(-1) ? `<span class="negative">-${fmtMoney(net(-1))}</span>` : ''].filter(Boolean).join(' ') : ''}</span>
+        <span class="ib-bar-acts">${tab === 'same'
+          ? `${adds.length ? `<button class="btn small" onclick="inboxAddPicked()">Add anyway</button>` : ''}<button class="btn small primary" ${picked.length ? '' : 'disabled'} onclick="inboxRejectPicked()">Skip ${picked.length}</button>`
+          : `<button class="btn small" ${picked.length ? '' : 'disabled'} onclick="inboxRejectPicked()">Reject ${picked.length}</button><button class="btn small primary" ${adds.length ? '' : 'disabled'} onclick="inboxAddPicked()">Add ${adds.length}</button>`}</span>
+      </div>` : `<div class="card"><div class="empty-state"><div class="title">Nothing to review</div><div class="sub">${on.length ? 'Send a screenshot or a statement to your Trackr project in Claude: it shows up here.' : 'Connect Claude in Settings → Claude inbox, or paste what Claude gave you.'}</div></div></div>`}
+    </div>`;
+  };
+  window.inboxTab = function (t) { ui.ibTab = t; render(); };
+  window.inboxSource = function (s) { ui.ibSource = s; render(); };
+  window.inboxPick = function (id, on) { ui.ibPick = ui.ibPick || {}; ui.ibPick[id] = on; render(); };
+  window.inboxPickAll = function (on) { ui.ibPick = ui.ibPick || {}; shownRows(reviewRows()).forEach(r => { ui.ibPick[r.x.id] = on; }); render(); };
+  /* The category you pick goes to everything else waiting under that name without one. */
+  window.inboxSetCategory = function (id, value) {
+    if (!value) return;
+    const [category_id, subcategory_id] = value.split('|');
+    const rows = reviewRows(), r0 = rows.find(r => r.x.id === id); if (!r0) return;
+    const key = txNameKey(r0.n.draft.comment);
+    rows.filter(r => r === r0 || (key && r.n.form === 'tx' && r.n.draft.type === r0.n.draft.type && !r.n.draft.categoryId && txNameKey(r.n.draft.comment) === key))
+      .forEach(r => { state.edits[r.x.id] = Object.assign({}, state.edits[r.x.id], { category_id, subcategory_id: subcategory_id || '' }); });
+    saveState(); render();
   };
   const findItem = id => state.items.find(x => x.id === id);
-  window.inboxReject = function (id) { resolveItem(id, 'rejected'); render(); };
-  let bulk = false;
-  /* Add as it is: the expense form's own save (same checks, logo, balance, recurring…). */
+  const isDone = id => !!state.done[id] || !findItem(id);
+  /* Undo puts them back to review, as copies on this device: the server may already have them closed. */
+  const putBack = list => {
+    const copies = list.map(x => ({ channel: x.channel, item: Object.assign({}, x.item, state.edits[x.id]), source: x.source }));
+    return () => {
+      const t = new Date().toISOString();
+      copies.forEach(c => state.items.push(Object.assign(c, { id: uid('local'), created_at: t, local: true })));
+      saveState();
+    };
+  };
+  /* Add as they are: the expense form's own save (same checks, logo, balance, recurring…), with
+   * one save and one redraw for all of them, and no popup. What it refuses stays here, with why. */
+  function addRows(rows) {
+    const before = JSON.stringify(data), done = [], realAlert = window.alert;
+    let said = '';
+    window.alert = m => { said = m; };
+    try {
+      quietBatch(() => rows.forEach(r => {
+        const id = r.x.id;
+        said = ''; delete failed[id];
+        ui.modal = { type: 'tx', payload: Object.assign(blankTxDraft(), r.n.draft, { _inboxId: id, step: 1 }) };
+        saveTxForm();
+        ui.modal = null;
+        if (isDone(id)) done.push(r.x); else failed[id] = said || 'Trackr could not add this one: open it to see why.';
+      }));
+    } finally { window.alert = realAlert; }
+    inboxRefresh();
+    if (done.length) offerUndo(`${done.length} added`, before, putBack(done));
+    render();
+  }
+  function rejectRows(rows) {
+    const before = JSON.stringify(data), list = rows.map(r => r.x), back = putBack(list);
+    list.forEach(x => resolveItem(x.id, 'rejected', true));
+    inboxRefresh();
+    if (list.length) offerUndo(`${list.length} removed`, before, back);
+    render();
+  }
   window.inboxAdd = function (id) {
-    const x = findItem(id); if (!x) return;
-    const n = normalized(x);
-    if (n.form !== 'tx' || !n.ok) return inboxOpen(id);
-    openTxForm(null, Object.assign({}, n.draft, { _inboxId: id }));
-    saveTxForm();
-    if (ui.modal && ui.modal.type === 'tx') return; // the form said what's missing
+    const r = reviewRows().find(q => q.x.id === id); if (!r) return;
+    if (!isAddable(r)) return inboxOpen(id);
+    addRows([r]);
   };
-  window.inboxAddAllReady = function () {
-    const ids = openItems().filter(x => { const n = normalized(x); return n.form === 'tx' && n.ready; }).map(x => x.id);
-    bulk = true;
-    let n = 0;
-    try { ids.forEach(id => { inboxAdd(id); if (state.done[id] || !findItem(id)) n++; }); } finally { bulk = false; }
-    if (!ui.modal) openInbox();
-    if (typeof fxSuccess === 'function' && n) fxSuccess(`${n} added`);
-  };
+  window.inboxReject = function (id) { const r = reviewRows().find(q => q.x.id === id); if (r) rejectRows([r]); };
+  window.inboxAddPicked = function () { addRows(shownRows(reviewRows()).filter(r => isPicked(r) && isAddable(r))); };
+  window.inboxRejectPicked = function () { rejectRows(shownRows(reviewRows()).filter(isPicked)); };
   /* Open it where you'd normally enter it, filled in. */
   window.inboxOpen = function (id) {
     const x = findItem(id); if (!x) return;
-    const n = normalized(x);
+    const n = normalized(x, ctxForNormalize());
     if (n.form === 'trade') {
       if (!n.draft.accountKey) return;
       openInvestAccount(n.draft.accountKey);
@@ -668,10 +897,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const p = ui.modal && ui.modal.type === 'tx' ? ui.modal.payload : null;
     const id = p && p._inboxId, n0 = (data.budgetTransactions || []).length;
     const r = origSaveTx.apply(this, arguments);
-    if (id && (data.budgetTransactions || []).length > n0 && !(ui.modal && ui.modal.payload === p)) {
-      resolveItem(id, 'added');
-      if (!bulk && !ui.modal && openItems().length) openInbox();
-    }
+    if (id && (data.budgetTransactions || []).length > n0 && !(ui.modal && ui.modal.payload === p)) resolveItem(id, 'added');
     return r;
   };
   const origConfirmTrade = window.confirmTrade;
@@ -713,7 +939,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const on = channelsOn().length > 0, has = !!keys.claude;
     const copyBtn = (label, what, ch) => `<button class="btn small" onclick="inboxCopy('${what}','${ch || ''}')">${ic('copy', 14)} ${label}</button>`;
     return `
-      <div class="ib-note">Send receipts and screenshots to two projects in Claude, <b>Trackr Budget</b> and <b>Trackr Investments</b>. Through a connector, each item waits in <b>Action required → From Claude</b> until you add it. Claude only gets an inbox key: it can drop items there and read your category, account and asset names, never an amount.</div>
+      <div class="ib-note">Send receipts and screenshots to two projects in Claude, <b>Trackr Budget</b> and <b>Trackr Investments</b>. Through a connector, each item waits in <b>Money → From Claude</b> until you add it. Claude only gets an inbox key: it can drop items there and read your category, account and asset names, never an amount.</div>
       <div class="ib-step"><b>1. Add the inbox to Supabase</b> <span class="dim">(once)</span>
         <div class="ib-row">${copyBtn('Copy the SQL', 'sql')}${dash('sql/new')}<button class="btn small" onclick="inboxCheck()">Check</button></div>
         <div class="dim" style="font-size:12px;">SQL editor → New query → paste → Run, then Check.${state.missing ? ' <b>Not there yet.</b>' : ''}</div>

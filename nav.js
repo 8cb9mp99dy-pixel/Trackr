@@ -4,7 +4,7 @@
  * goPage('…') id stays the same — only how they're grouped changes:
  *
  *   Home      Overview
- *   Money     Budget (Transactions · Recurring · Forecast · Totals · Categories · Import) · Receipts · Trips · IOUs · Contracts · Freelance
+ *   Money     Budget (Transactions · Recurring · Forecast · Totals · Categories · Import) · Receipts · Trips · IOUs · Contracts · Freelance · From Claude (once connected)
  *   Wealth    Overview · Cash (the old Accounts page) · Investments (+ each account) · Watchlist · Debts
  *   Plan      Goals · Yearly bills · Future · Emergency · Patterns · Insights (the old Analysis page)
  *   Trading, Settings — on the phone under "More" (5 tabs: Home · Money · Wealth · Plan · More)
@@ -14,7 +14,7 @@
  */
 const NEW_NAV = [
   { id: 'dashboard', label: 'Home', icon: 'home', phone: true, pages: ['dashboard'] },
-  { id: 'budget', label: 'Money', icon: 'receipt', phone: true, pages: ['budget', 'receipts', 'trips', 'ious', 'contracts', 'freelance'] },
+  { id: 'budget', label: 'Money', icon: 'receipt', phone: true, pages: ['budget', 'receipts', 'trips', 'ious', 'contracts', 'freelance', 'inbox'] },
   { id: 'wealth', label: 'Wealth', icon: 'pie', phone: true, pages: ['wealth', 'accounts', 'investments', 'investAccount', 'manual-prices', 'positions-import', 'watchlist'] },
   { id: 'goals', label: 'Plan', icon: 'target', phone: true, pages: ['goals', 'yearly', 'patterns', 'analysis'] },
   { id: 'trading', label: 'Trading', icon: 'bolt', pages: ['trading'] },
@@ -24,7 +24,7 @@ function newNavOn() { return !(typeof data !== 'undefined' && data && data.setti
 function currentNavItems() { return newNavOn() ? NEW_NAV : NAV_ITEMS; }
 function navItemActive(item) {
   if (newNavOn()) return (item.pages || [item.id]).includes(ui.page);
-  return ui.page === item.id || (item.id === 'investments' && ['investAccount', 'watchlist'].includes(ui.page)) || (item.id === 'budget' && ['receipts', 'trips', 'ious', 'contracts'].includes(ui.page)) || (item.id === 'goals' && ['yearly', 'patterns'].includes(ui.page));
+  return ui.page === item.id || (item.id === 'investments' && ['investAccount', 'watchlist'].includes(ui.page)) || (item.id === 'budget' && ['receipts', 'trips', 'ious', 'contracts', 'inbox'].includes(ui.page)) || (item.id === 'goals' && ['yearly', 'patterns'].includes(ui.page));
 }
 function goWealthSection(tab) { ui.wealthTab = tab === 'liabilities' ? 'liabilities' : 'assets'; goPage('wealth'); }
 function goPlanSection(tab) { ui.goalsTab = ['emergency', 'future'].includes(tab) ? tab : 'goals'; goPage('goals'); }
@@ -36,6 +36,7 @@ const SECTION_TABS = {
     ['IOUs', "goPage('ious')", () => ui.page === 'ious'],
     ['Contracts', "goPage('contracts')", () => ui.page === 'contracts'],
     ['Freelance', "goPage('freelance')", () => ui.page === 'freelance'],
+    ['From Claude', "goPage('inbox')", () => ui.page === 'inbox', () => typeof inboxTabOn === 'function' && inboxTabOn()],
   ],
   wealth: [
     ['Overview', "goWealthSection('assets')", () => ui.page === 'wealth' && ui.wealthTab !== 'liabilities'],
@@ -58,5 +59,5 @@ function sectionTabsHtml() {
   const item = NEW_NAV.find(navItemActive);
   const tabs = item && SECTION_TABS[item.id];
   if (!tabs) return '';
-  return `<nav class="section-tabs" aria-label="${escHtml(item.label)}">${tabs.map(([label, go, on]) => `<button class="${on() ? 'on' : ''}" onclick="${go}">${label}</button>`).join('')}</nav>`;
+  return `<nav class="section-tabs" aria-label="${escHtml(item.label)}">${tabs.filter(t => !t[3] || t[3]()).map(([label, go, on]) => `<button class="${on() ? 'on' : ''}" onclick="${go}">${label}</button>`).join('')}</nav>`;
 }

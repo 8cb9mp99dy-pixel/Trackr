@@ -1227,11 +1227,17 @@ function snapshotsToLots(symbol, snapshots) {
   }));
 }
 
+/* Many changes in one go (the Claude inbox): one save and one redraw at the end, not one per change. */
+function quietBatch(fn) {
+  window.__quietBatch = true;
+  try { return fn(); } finally { window.__quietBatch = false; save(); render(); }
+}
 /* Saves to this device, then syncs. {auto: true} is for things the app refreshes by itself (live
    prices, the EUR/USD rate): those are kept on this device only and don't count as an edit —
    every device fetches its own, and sending them made two open devices look like they were both
    editing at once. They still travel along with your next real change. */
 async function save(opts) {
+  if (window.__quietBatch) return;
   const auto = !!(opts && opts.auto);
   if (!auto) data.updatedAt = new Date().toISOString();
   mirrorLinkedBrokerCash();
@@ -2268,6 +2274,7 @@ function syncVisualViewport() {
 }
 if (window.visualViewport) { visualViewport.addEventListener('resize', syncVisualViewport); visualViewport.addEventListener('scroll', syncVisualViewport); syncVisualViewport(); }
 function render() {
+  if (window.__quietBatch) return;
   ui.renderDeferred = false;
   const app = document.getElementById('app');
   // The live price bar keeps scrolling through redraws: the same bar (same holdings) is put back.
@@ -4861,6 +4868,7 @@ function saveTxForm() {
   attachToRecurringSeries(record, { setDay: !!prior && prior.nature === 'Fixed' });
   runRecurring();
   save(); closeModal();
+  if (window.__quietBatch) return;
   if (typeof fxSuccess === 'function') fxSuccess(p.type === 'transfer' ? 'Transfer saved' : 'Transaction saved');
   // A new salary / freelance income: offer to split it (Budget → Income plan).
   if (!prior && typeof incomePlanOffer === 'function') incomePlanOffer(record);
