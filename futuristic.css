@@ -253,12 +253,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline: non
 .fx-ind.still { transition: none; }
 
 .nav-item { border-radius: var(--radius-sm); }
-/* Computer: every page in the side bar. Tablet and phone: the short bar and the section tabs. */
+/* Computer: the groups in the side bar, the one you're in open. Tablet and phone: the short bar and the section tabs. */
 .nav-tree { gap: 1px; min-height: 0; overflow-y: auto; scrollbar-width: none; margin: 0 -4px; padding: 0 4px; }
 .nav-tree::-webkit-scrollbar { display: none; }
-.nav-tree .nav-item { padding: 7px 12px; }
-.nav-tree .nav-item.nav-sub { padding: 5px 12px; font-size: 13.5px; }
-.nav-head { padding: 14px 12px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--fx-dim); }
+.nav-tree { gap: 2px; }
+.nav-group.open { color: var(--fx-ink); font-weight: 600; }
+.nav-chev { display: inline-flex; margin-left: auto; opacity: .45; }
+.nav-group.open .nav-chev { transform: rotate(90deg); }
+.nav-subs { list-style: none; margin: 2px 0 6px; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.nav-tree .nav-item.nav-sub { padding: 6px 12px 6px 43px; font-size: 13.5px; }
 .nav-end { flex: 1; min-height: 8px; }
 .nav-tree > li:last-child { position: sticky; bottom: 0; background: var(--sidebar-bg); padding-top: 4px; }
 .nav-bar { display: none; }

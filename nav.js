@@ -9,8 +9,9 @@
  *   Plan      Goals · Yearly bills · Future · Emergency · Patterns · Insights (the old Analysis page)
  *   Settings
  *
- * On a computer the side bar lists every page under its group, so any page is one click away and
- * there are no section tabs. On a tablet and a phone: the four tabs (+ Settings or More), the
+ * On a computer the side bar stays short: Home, the three groups with their icons, Settings. The
+ * group you're in opens under its name to show its pages, the others stay closed (the user asked
+ * for this on 31 Oct 2026: not a long flat list), and there are no section tabs. On a tablet and a phone: the four tabs (+ Settings or More), the
  * section tabs at the top, and More shows every page. The Trading page was removed at the user's
  * request (31 Oct 2026): don't bring it back. data.trades stays in the data and backups.
  *
@@ -65,12 +66,18 @@ function sectionTabsHtml() {
   if (!item || !SECTION_TABS[item.id]) return '';
   return `<nav class="section-tabs" aria-label="${escHtml(item.label)}">${sectionTabs(item.id).map(([label, go, on]) => `<button class="${on() ? 'on' : ''}" onclick="${go}">${label}</button>`).join('')}</nav>`;
 }
-/* The side bar on a computer: every page, under its group. */
+/* The side bar on a computer: the groups, with the pages of the one you're in under it. A group's
+   name opens its first page. */
 function navTreeHtml() {
   const top = (item, go, badge) => `<li><button class="nav-item ${navItemActive(item) ? 'active' : ''}" onclick="${go}"><span class="nav-icon">${ic(item.icon, 19)}${badge || ''}</span><span class="label">${item.label}</span></button></li>`;
+  const group = item => {
+    const open = navItemActive(item), tabs = sectionTabs(item.id);
+    return `<li><button class="nav-item nav-group ${open ? 'open' : ''}" aria-expanded="${open}" onclick="${tabs[0][1]}"><span class="nav-icon">${ic(item.icon, 19)}</span><span class="label">${item.label}</span><span class="nav-chev">${ic('chevronRight', 14)}</span></button>
+      ${open ? `<ul class="nav-subs">${tabs.map(([label, go, on]) => `<li><button class="nav-item nav-sub ${on() ? 'active' : ''}" onclick="${go}"><span class="label">${label}</span></button></li>`).join('')}</ul>` : ''}</li>`;
+  };
   return `<ul class="nav-list nav-tree">
     ${top(NEW_NAV[0], "goPage('dashboard')")}
-    ${NEW_NAV.filter(i => SECTION_TABS[i.id]).map(i => `<li class="nav-head">${i.label}</li>${sectionTabs(i.id).map(([label, go, on]) => `<li><button class="nav-item nav-sub ${on() ? 'active' : ''}" onclick="${go}"><span class="label">${label}</span></button></li>`).join('')}`).join('')}
+    ${NEW_NAV.filter(i => SECTION_TABS[i.id]).map(group).join('')}
     <li class="nav-end"></li>
     ${top(NEW_NAV[NEW_NAV.length - 1], settingsNavItemOnClick(), navSyncBadgeHtml())}
   </ul>`;

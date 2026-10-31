@@ -1,4 +1,4 @@
-/* Navigation: on a computer the side bar lists every page under its group; on a phone 5 tabs at
+/* Navigation: on a computer a short side bar, the group you're in open; on a phone 5 tabs at
    most, section tabs (the one you're on stays in view) and More with every page. Every old page
    id still works; the Trading page is gone; "Classic navigation" brings back the old side bar. */
 const { test, expect } = require('@playwright/test');
@@ -8,18 +8,22 @@ const MAP = [['Budget', 'budget', 'Money'], ['Receipts', 'receipts', 'Money'], [
   ['Net worth', 'wealth', 'Wealth'], ['Cash', 'accounts', 'Wealth'], ['Investments', 'investments', 'Wealth'], ['Watchlist', 'watchlist', 'Wealth'], ['Debts', 'wealth', 'Wealth'],
   ['Goals', 'goals', 'Plan'], ['Yearly bills', 'yearly', 'Plan'], ['Future', 'goals', 'Plan'], ['Emergency', 'goals', 'Plan'], ['Patterns', 'patterns', 'Plan'], ['Insights', 'analysis', 'Plan']];
 
-test('computer: every page one click away in the side bar', async ({ page }, info) => {
+test('computer: a short side bar, only the group you are in is open', async ({ page }, info) => {
   test.skip(info.project.name === 'phone');
   const errors = await openApp(page);
   expect(await page.evaluate(() => newNavOn())).toBe(true);
   const side = page.locator('.nav-tree');
-  await expect(side.locator('.nav-head')).toHaveText(['Money', 'Wealth', 'Plan']);
+  await expect(side.locator('.nav-group .label')).toHaveText(['Money', 'Wealth', 'Plan']);
+  await expect(side.locator('.nav-sub')).toHaveCount(0); // on Home, nothing is open
   await expect(side.getByRole('button', { name: 'Trading' })).toHaveCount(0);
   await expect(page.locator('.section-tabs')).toBeHidden();
-  for (const [label, id] of MAP) {
-    await side.getByRole('button', { name: label, exact: true }).click();
+  for (const [label, id, group] of MAP) {
+    await side.locator('.nav-group', { hasText: group }).click();
+    await expect(side.locator('.nav-group.open .label')).toHaveText(group);
+    await side.locator('.nav-sub').getByText(label, { exact: true }).click();
     expect(await page.evaluate(() => ui.page)).toBe(id);
     await expect(side.locator('.nav-item.active .label')).toHaveText(label);
+    await expect(side.locator('.nav-subs')).toHaveCount(1);
   }
   await side.getByRole('button', { name: 'Home', exact: true }).click();
   expect(await page.evaluate(() => ui.page)).toBe('dashboard');
