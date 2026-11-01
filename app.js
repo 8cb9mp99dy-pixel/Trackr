@@ -2396,7 +2396,7 @@ function downloadRawDataBackup() {
   URL.revokeObjectURL(url);
 }
 
-function goPage(page) { ui.page = page; ui.modal = null; if (page === 'budget') ui.investedAnimate = true; if (typeof fxViewTransition === 'function') fxViewTransition(render); else render(); }
+function goPage(page) { ui.page = page; ui.modal = null; ui.txSelect = null; if (page === 'budget') ui.investedAnimate = true; if (typeof fxViewTransition === 'function') fxViewTransition(render); else render(); }
 /* Hiding the amounts is a choice for the screen in front of you (e.g. on the phone in public), so
    it's kept on this device only — it used to be part of the synced data, which hid the amounts
    on every device at once and sent a sync each time. */
@@ -3083,6 +3083,7 @@ function toggleHideTransfers() { data.settings.hideTransfers = !data.settings.hi
 function togglePocketMoves() { data.settings.showPocketMoves = !data.settings.showPocketMoves; save(); render(); }
 function setBudgetTab(t) {
   ui.budgetTab = t === 'budgets' && !budgetLimitsOn() ? 'transactions' : t;
+  ui.txSelect = null;
   ui.budgetLastTab = ui.budgetLastTab || {};
   ui.budgetLastTab[budgetGroupOf(ui.budgetTab).id] = ui.budgetTab;
   render();
@@ -3101,6 +3102,7 @@ function budgetTransactionsTab() {
   const txs = hideTransfers ? allTxs.filter(t => t.type !== 'transfer') : showPocketMoves ? allTxs : allTxs.filter(t => !isPocketMove(t));
   const income = monthIncome(m), expenses = monthExpenses(m), balance = income - expenses;
   const dayGroups = groupTransactionsByDay(txs);
+  const picking = typeof bulkSelecting === 'function' && bulkSelecting(); // bulk.js: tick many, change them at once
   const trend = monthSpendTrend(m);
   // Read before investedCardHtml() consumes it: the category donuts animate on the same
   // occasions as the Invested card (arriving on the page, changing month).
@@ -3155,14 +3157,16 @@ function budgetTransactionsTab() {
     <div class="tx-list-tools">
       <div class="eyebrow" style="margin:0;">${txs.length} transaction${txs.length === 1 ? '' : 's'}${hideTransfers && transferCount ? ` · ${transferCount} transfer${transferCount === 1 ? '' : 's'} hidden` : !hideTransfers && !showPocketMoves && pocketMoveCount ? ` · ${pocketMoveCount} pocket move${pocketMoveCount === 1 ? '' : 's'} hidden` : ''}</div>
       <div class="row-flex" style="gap:14px;">
+        <button class="btn small" onclick="bulkToggleMode()">${picking ? 'Done' : 'Select'}</button>
         ${pocketMoveCount && !hideTransfers ? `<label class="switch-row"><span>Show pocket moves</span><button class="toggle ${showPocketMoves ? 'on' : ''}" onclick="togglePocketMoves()" aria-label="Show pocket moves"></button></label>` : ''}
         <label class="switch-row"><span>Show transfers</span><button class="toggle ${hideTransfers ? '' : 'on'}" onclick="toggleHideTransfers()" aria-label="Show transfers"></button></label>
       </div>
     </div>
-    ${dayGroups.length ? dayGroups.map(dayGroupHtml).join('') : hideTransfers && transferCount ? `
+    ${dayGroups.length ? dayGroups.map(g => dayGroupHtml(g, picking)).join('') : hideTransfers && transferCount ? `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Only transfers this month</div><div class="sub">${transferCount} transfer${transferCount === 1 ? ' is' : 's are'} hidden. <button class="link-btn" onclick="toggleHideTransfers()">Show them</button></div></div></div>` : pocketMoveCount ? `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Only pocket moves this month</div><div class="sub">${pocketMoveCount} move${pocketMoveCount === 1 ? ' is' : 's are'} hidden. <button class="link-btn" onclick="togglePocketMoves()">Show them</button></div></div></div>` : `
-      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}`;
+      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}
+    ${picking ? bulkBarHtml(txs) : ''}`;
 }
 /* The month's charts sit in one fold under the summary; it remembers whether you left it open. */
 const BUDGET_CHARTS_KEY = 'trackr-budget-charts';
@@ -3810,7 +3814,7 @@ function dayLabel(dateStr) {
   if (d.getTime() === yesterday.getTime()) return 'Yesterday';
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 }
-function dayGroupHtml(group) {
+function dayGroupHtml(group, picking) {
   const netEUR = group.txs.reduce((s, t) => s + txNetEUR(t), 0);
   return `
     <div class="row-flex" style="margin:18px 0 8px;">
@@ -3818,7 +3822,7 @@ function dayGroupHtml(group) {
       <div class="${netEUR >= 0 ? 'positive' : 'negative'}" style="font-weight:600;font-size:13px;">${netEUR >= 0 ? '+' : ''}${fmtMoney(netEUR)}</div>
     </div>
     <div class="card stack-gap-16">
-      ${group.txs.map(txRowDisplayHtml).join('')}
+      ${group.txs.map(t => txRowDisplayHtml(t, picking)).join('')}
     </div>`;
 }
 /* Deterministic color from the app's existing full palette (see FULL_COLOR_PALETTE) — same
@@ -3874,16 +3878,20 @@ function recurringTxTitle(t) {
   const st = data.recurring && data.recurring[t.recurringId];
   return st ? recurLabel(st) : 'Repeats';
 }
-function txRowDisplayHtml(t) {
+function txRowDisplayHtml(t, picking) {
+  // Selecting (bulk.js): a tap ticks the row, and there's no delete on each one.
+  const tap = picking ? `bulkToggle('${t.id}')` : `openTxForm('${t.id}')`;
+  const tick = picking ? bulkTickHtml(t) : '';
+  const del = picking ? '' : `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" aria-label="Delete this transaction" title="Delete" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>`;
   if (t.type === 'transfer') {
     // Live labels, so a renamed pocket/broker shows its new name; falls back to the saved
     // snapshot if the place has since been deleted.
     const fromLabel = (transferEndpoint(t.from) || {}).label || t.fromLabel || '—';
     const toLabel = (transferEndpoint(t.to) || {}).label || t.toLabel || '—';
     return `
-    <div class="row-flex" style="cursor:pointer;" onclick="openTxForm('${t.id}')">
+    <div class="row-flex" style="cursor:pointer;" onclick="${tap}">
       <div style="display:flex;align-items:center;gap:12px;">
-        ${txAvatarHtml(t)}
+        ${tick}${txAvatarHtml(t)}
         <div>
           <div style="font-weight:600;font-size:14px;">${escHtml(t.comment || 'Transfer')}${t.nature === 'Fixed' ? ` <span class="tx-rec" title="${escHtml(recurringTxTitle(t))}">↻</span>` : ''}</div>
           <div style="font-size:12px;opacity:.65;">${escHtml(fromLabel)} → ${escHtml(toLabel)}</div>
@@ -3891,7 +3899,7 @@ function txRowDisplayHtml(t) {
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
         <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);">${fmtMoney(Math.abs(t.amount), t.currency)}</div>
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" aria-label="Delete this transaction" title="Delete" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>
+        ${del}
       </div>
     </div>`;
   }
@@ -3904,9 +3912,9 @@ function txRowDisplayHtml(t) {
   const catLabel = subcat ? `${cat.name} · ${subcat.name}` : (cat ? cat.name : '');
   const subtitle = t.comment ? catLabel : (pm ? pm.name : '');
   return `
-    <div class="row-flex" style="cursor:pointer;" onclick="openTxForm('${t.id}')">
+    <div class="row-flex" style="cursor:pointer;" onclick="${tap}">
       <div style="display:flex;align-items:center;gap:12px;">
-        ${txAvatarHtml(t)}
+        ${tick}${txAvatarHtml(t)}
         <div>
           <div style="font-weight:600;font-size:14px;">${escHtml(label)}${t.nature === 'Fixed' ? ` <span class="tx-rec" title="${escHtml(recurringTxTitle(t))}">↻</span>` : ''}${(t.receipts || []).length ? ` <span class="tx-rec" title="Receipt attached" aria-label="Receipt attached">${ic('file', 12)}</span>` : ''}</div>
           <div style="font-size:12px;opacity:.65;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}${acc ? ' · ' + escHtml(acc.name) : ''}${pk ? ' · ' + escHtml(pk.name) : ''}</div>
@@ -3914,7 +3922,7 @@ function txRowDisplayHtml(t) {
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
         <div class="${t.type === 'income' ? 'positive' : 'negative'}" style="font-weight:700;font-size:14.5px;">${t.type === 'income' ? '+' : '-'}${fmtMoney(Math.abs(t.amount), t.currency)}</div>
-        <button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" aria-label="Delete this transaction" title="Delete" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>
+        ${del}
       </div>
     </div>`;
 }
