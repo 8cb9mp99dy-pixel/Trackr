@@ -1,8 +1,9 @@
 -- Trackr inbox — Claude (your "Trackr Budget" and "Trackr Investments" projects, through the
 -- trackr-inbox connector) drops expenses and trades here; Trackr shows them for review and only
 -- adds what you approve.
--- An inbox key can only ADD items to this queue and read the names Trackr published (categories,
--- accounts, brokers, assets: no amounts, no balances). It can't read or change your data.
+-- An inbox key can ADD items to this queue, read back, correct or withdraw the ones still waiting,
+-- and read the names Trackr published (categories, accounts and pockets, brokers, assets: no
+-- balances). It can't read or change your data, or anything already reviewed.
 -- Your sync secret never leaves Trackr. Safe to run on a project that has Trackr's setup SQL, and
 -- safe to re-run. (Settings → Claude inbox → "Copy the SQL" gives this same text.)
 
@@ -104,6 +105,17 @@ begin
 end $$;
 
 -- ---- Called by the trackr-inbox connector (with an inbox key) ----
+-- The key's row, or the error Claude should see.
+create or replace function trackr_inbox_key(inbox_key text)
+returns trackr_inbox_keys language plpgsql security definer set search_path = public, extensions as $$
+declare k trackr_inbox_keys;
+begin
+  select * into k from trackr_inbox_keys where key_hash = encode(digest(coalesce(inbox_key, ''), 'sha256'), 'hex');
+  if not found then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
+  return k;
+end $$;
+revoke all on function trackr_inbox_key(text) from public, anon;
+
 create or replace function inbox_context(inbox_key text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare k trackr_inbox_keys;
@@ -136,8 +148,56 @@ begin
     'message', 'Saved in the Trackr inbox. Nothing is added to the accounts until it is approved in Trackr (Action required).');
 end $$;
 
+-- What the connector sent. Waiting: all of it. Already reviewed: only id, status, date and name,
+-- read-only, so Claude can tell what became of an item without reading amounts back.
+create or replace function inbox_find(inbox_key text, status text default 'new', date_from text default null, date_to text default null, source text default null, max_items integer default 100)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare k trackr_inbox_keys := trackr_inbox_key(inbox_key); st text := coalesce(nullif(inbox_find.status, ''), 'new');
+begin
+  if st not in ('new', 'added', 'rejected', 'all') then raise exception 'status must be new, added, rejected or all'; end if;
+  return coalesce((select jsonb_agg(case when x.status = 'new'
+      then jsonb_build_object('id', x.id, 'status', x.status, 'channel', x.channel, 'source', x.source, 'created_at', x.created_at, 'item', x.item)
+      else jsonb_build_object('id', x.id, 'status', x.status, 'channel', x.channel, 'date', x.item->'date', 'name', coalesce(x.item->'name', x.item->'asset', x.item->'ticker')) end order by x.created_at)
+    from (select * from trackr_inbox i
+           where i.data_id = k.data_id and (k.channel = 'claude' or i.channel = k.channel)
+             and (st = 'all' or i.status = st)
+             and (inbox_find.date_from is null or i.item->>'date' >= inbox_find.date_from)
+             and (inbox_find.date_to is null or i.item->>'date' <= inbox_find.date_to)
+             and (inbox_find.source is null or i.source ilike '%' || inbox_find.source || '%')
+           order by i.created_at desc limit least(greatest(coalesce(max_items, 100), 1), 300)) x), '[]'::jsonb);
+end $$;
+
+-- Corrects an item still waiting: the fields given replace the same fields, the others stay.
+create or replace function inbox_update(inbox_key text, item_id uuid, changes jsonb)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare k trackr_inbox_keys := trackr_inbox_key(inbox_key); out_item jsonb;
+begin
+  if jsonb_typeof(changes) <> 'object' or changes = '{}'::jsonb then raise exception 'changes must be an object with at least one field'; end if;
+  update trackr_inbox i set item = i.item || changes
+   where i.id = item_id and i.data_id = k.data_id and (k.channel = 'claude' or i.channel = k.channel)
+     and i.status = 'new' and octet_length((i.item || changes)::text) <= 8000
+  returning i.item into out_item;
+  if not found then raise exception 'No item with this id is waiting for review. What was already reviewed in Trackr cannot be changed.'; end if;
+  return jsonb_build_object('updated', 1, 'id', item_id, 'item', out_item);
+end $$;
+
+-- Takes items still waiting out of the queue. They stay 30 days like anything rejected, then go.
+create or replace function inbox_withdraw(inbox_key text, ids uuid[])
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare k trackr_inbox_keys := trackr_inbox_key(inbox_key); n integer;
+begin
+  if coalesce(cardinality(ids), 0) not between 1 and 50 then raise exception 'ids must list 1 to 50 items'; end if;
+  update trackr_inbox i set status = 'rejected', resolved_at = now()
+   where i.id = any(ids) and i.data_id = k.data_id and (k.channel = 'claude' or i.channel = k.channel) and i.status = 'new';
+  get diagnostics n = row_count;
+  return jsonb_build_object('deleted', n, 'skipped', cardinality(ids) - n,
+    'message', 'Only items still waiting for review can be deleted. What was already reviewed in Trackr is untouched.');
+end $$;
+
 revoke all on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
-  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text) from public;
+  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text),
+  inbox_find(text, text, text, text, text, integer), inbox_update(text, uuid, jsonb), inbox_withdraw(text, uuid[]) from public;
 grant execute on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
-  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text) to anon;
+  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text),
+  inbox_find(text, text, text, text, text, integer), inbox_update(text, uuid, jsonb), inbox_withdraw(text, uuid[]) to anon;
 notify pgrst, 'reload schema';

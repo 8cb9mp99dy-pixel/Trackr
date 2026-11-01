@@ -3,12 +3,13 @@
 // Claude (a custom connector) calls it; it drops what Claude read from your receipts and
 // screenshots into the Trackr inbox, where Trackr asks you to review each item.
 // Its URL is your project URL + /functions/v1/trackr-inbox/ + your inbox key (Trackr makes it).
-// The key can only add to the review queue and read names (no amounts); it is checked by the
-// database (003_trackr_inbox.sql), never stored here. No other secret is needed.
+// The key can add to the review queue, read back, correct or withdraw what still waits, and read
+// names (no balances). It can't touch anything already reviewed. It is checked by the database
+// (003_trackr_inbox.sql), never stored here. No other secret is needed.
 // Deploy: Supabase → Edge Functions → Deploy a new function → Via editor → name "trackr-inbox",
 // paste this file, Deploy. Then in its settings turn OFF "Verify JWT" (Claude has no Supabase login).
 
-const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.0.0' };
+const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.1.0' };
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, authorization' };
 
@@ -17,7 +18,7 @@ const num = d => ({ type: 'number', description: d });
 const BUDGET_ITEM = {
   type: 'object',
   properties: {
-    type: { type: 'string', enum: ['expense', 'income', 'transfer'], description: 'expense, income, or transfer between two of my own accounts' },
+    type: { type: 'string', enum: ['expense', 'income', 'transfer'], description: 'expense, income, or transfer between two of my own accounts or pockets' },
     date: str('YYYY-MM-DD'),
     amount: num('Positive amount'),
     currency: str('ISO code, e.g. EUR'),
@@ -25,9 +26,12 @@ const BUDGET_ITEM = {
     category_id: str('Category id from get_trackr_context (categories.expense / categories.income)'),
     subcategory_id: str('Sub-category id of that category'),
     account_id: str('Account id it was paid from / into (accounts[].id); leave out if unsure'),
+    pocket_id: str('Expense or income: the pocket it was paid from / into, id or name (accounts[].pockets). Leave out for the main balance. An unknown name is kept and I am asked about it.'),
     payment_method_id: str('Payment method id (paymentMethods[].id), e.g. card or cash'),
     from_account: str('Transfer only: account or broker name the money leaves'),
-    to_account: str('Transfer only: account or broker name it goes to'),
+    from_pocket: str('Transfer only: the pocket inside from_account, id or name. Leave out for the main balance.'),
+    to_account: str('Transfer only: account or broker name it goes to (the same account as from_account for a move between its pockets)'),
+    to_pocket: str('Transfer only: the pocket inside to_account, id or name. Leave out for the main balance.'),
     note: str('Short note, e.g. what was bought'),
   },
   required: ['type', 'date', 'amount', 'name'],
@@ -58,10 +62,11 @@ const itemsInput = item => ({
   properties: { items: { type: 'array', minItems: 1, maxItems: 50, items: item }, source: str('What I sent, e.g. "Revolut screenshot"') },
   required: ['items'],
 });
+const ITEM_FIELDS = Object.assign({}, INVEST_ITEM.properties, BUDGET_ITEM.properties);
 const TOOLS = [
   {
     name: 'get_trackr_context', title: 'Trackr names',
-    description: 'My Trackr categories and sub-categories, accounts, payment methods, brokers and the assets at each (ids, names, tickers, ISINs), and today\'s date. Names only: no amounts. Call it once per conversation before adding items, and use its ids.',
+    description: 'My Trackr categories and sub-categories, accounts with their pockets (the one marked default is the main balance), payment methods, brokers and the assets at each (ids, names, tickers, ISINs), and today\'s date. Names only: no amounts. Call it once per conversation before adding items, and use its ids.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
@@ -77,6 +82,41 @@ const TOOLS = [
     inputSchema: itemsInput(INVEST_ITEM),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
+  {
+    name: 'list_inbox_items', title: 'List what waits in Trackr',
+    description: 'What was sent to my Trackr inbox, newest first, with the ids that update_inbox_item and delete_inbox_items need. Items waiting for review come in full; items already reviewed only say their status, date and name.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['new', 'added', 'rejected', 'all'], description: 'new (waiting for review, the default), added, rejected, or all' },
+        date_from: str('Earliest item date, YYYY-MM-DD'),
+        date_to: str('Latest item date, YYYY-MM-DD'),
+        source: str('Part of the source text, e.g. "Revolut"'),
+        limit: num('At most this many, 300 at most (default 100)'),
+      },
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: 'update_inbox_item', title: 'Correct something waiting in Trackr',
+    description: 'Correct one item still waiting for my review: the fields given replace the same fields, the others stay. Items already reviewed cannot be changed: ask me to fix those in Trackr.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: str('The item id from list_inbox_items'), changes: { type: 'object', description: 'Only the fields to change, named as in add_budget_items / add_investment_items', properties: ITEM_FIELDS } },
+      required: ['id', 'changes'],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'delete_inbox_items', title: 'Withdraw items waiting in Trackr',
+    description: 'Take items still waiting for my review out of the inbox (up to 50 at once). Items already reviewed are left alone.',
+    inputSchema: {
+      type: 'object',
+      properties: { ids: { type: 'array', minItems: 1, maxItems: 50, items: str('An item id from list_inbox_items') } },
+      required: ['ids'],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
 ];
 
 async function rpc(env, fetchFn, fn, body) {
@@ -89,6 +129,7 @@ async function rpc(env, fetchFn, fn, body) {
   if (!res.ok) {
     let msg = text;
     try { msg = JSON.parse(text).message || text; } catch (e) { /* not JSON */ }
+    if (/could not find the function|schema cache/i.test(msg)) msg = 'this needs the latest Trackr SQL: Settings → Claude inbox → step 1, run it again.';
     throw new Error(msg || 'HTTP ' + res.status);
   }
   return text ? JSON.parse(text) : null;
@@ -102,6 +143,22 @@ async function callTool(name, args, key, env, fetchFn) {
     if (items.length > 50) throw new Error('at most 50 items at once');
     const source = args && typeof args.source === 'string' ? args.source.slice(0, 200) : null;
     return rpc(env, fetchFn, 'inbox_add', { inbox_key: key, items, source, channel: name === 'add_budget_items' ? 'budget' : 'invest' });
+  }
+  if (name === 'list_inbox_items') {
+    const a = args || {}, text = v => (typeof v === 'string' && v ? v.slice(0, 200) : null);
+    return { items: await rpc(env, fetchFn, 'inbox_find', { inbox_key: key, status: text(a.status) || 'new', date_from: text(a.date_from), date_to: text(a.date_to), source: text(a.source), max_items: typeof a.limit === 'number' ? a.limit : 100 }) };
+  }
+  if (name === 'update_inbox_item') {
+    const c = args && args.changes;
+    if (!args || typeof args.id !== 'string' || !args.id) throw new Error('id is needed');
+    if (!c || typeof c !== 'object' || Array.isArray(c) || !Object.keys(c).length) throw new Error('changes must be an object with at least one field');
+    return rpc(env, fetchFn, 'inbox_update', { inbox_key: key, item_id: args.id, changes: c });
+  }
+  if (name === 'delete_inbox_items') {
+    const ids = args && Array.isArray(args.ids) ? args.ids.filter(x => typeof x === 'string' && x) : [];
+    if (!ids.length) throw new Error('ids must be a non-empty list');
+    if (ids.length > 50) throw new Error('at most 50 ids at once');
+    return rpc(env, fetchFn, 'inbox_withdraw', { inbox_key: key, ids });
   }
   const e = new Error('Unknown tool: ' + name);
   e.code = -32602;
@@ -119,7 +176,7 @@ async function handleMessage(msg, key, env, fetchFn) {
       protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER,
-      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids, then send what you read with add_budget_items or add_investment_items. Items wait for my review in Trackr.',
+      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids, then send what you read with add_budget_items or add_investment_items. Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
     });
   }
   if (msg.method === 'ping') return reply({});

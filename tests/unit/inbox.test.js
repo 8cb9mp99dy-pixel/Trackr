@@ -6,7 +6,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxSameName, inboxMatch, inboxRepeats, inboxKeptRejected, inboxParsePasted, inboxInstructions } = require('../../inbox.js');
+const { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxClean, inboxSameName, inboxMatch, inboxRepeats, inboxRoundTrips, inboxKeptRejected, inboxParsePasted, inboxInstructions } = require('../../inbox.js');
 
 const ctx = {
   today: '2026-10-18', currency: 'EUR', defaultAccountId: 'acc_main',
@@ -124,7 +124,7 @@ test('connector: initialize, tools, and calls that go to the inbox with the key'
   const note = await call(fn, { jsonrpc: '2.0', method: 'notifications/initialized' }, {});
   assert.equal(note.status, 202);
   const list = await call(fn, { jsonrpc: '2.0', id: 2, method: 'tools/list' }, {});
-  assert.deepEqual(list.body.result.tools.map(t => t.name), ['get_trackr_context', 'add_budget_items', 'add_investment_items']);
+  assert.deepEqual(list.body.result.tools.map(t => t.name), ['get_trackr_context', 'add_budget_items', 'add_investment_items', 'list_inbox_items', 'update_inbox_item', 'delete_inbox_items']);
 
   const ctx = await call(fn, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_trackr_context', arguments: {} } }, { inbox_context: { channel: 'claude', today: '2026-10-18', context: { categories: {} } } });
   assert.deepEqual(ctx.calls.map(c => [c.name, c.args.inbox_key, c.headers.apikey]), [['inbox_context', KEY, 'test-anon-not-real']]);
@@ -216,4 +216,120 @@ test('rejected: kept 30 days, older ones go, an old document has none', () => {
   const kept = inboxKeptRejected([{ id: 'a', rejectedOn: '2026-10-18' }, { id: 'b', rejectedOn: '2026-09-18' }, { id: 'c', rejectedOn: '2026-09-17' }], '2026-10-18');
   assert.deepEqual(kept.map(x => x.id), ['a', 'b']);
   assert.deepEqual(inboxKeptRejected(undefined, '2026-10-18'), []);
+});
+
+/* Pockets. Invented names and amounts. */
+const pk = Object.assign({}, ctx, {
+  accounts: [
+    { id: 'acc_main', name: 'Demo Bank', mainName: 'Everyday', pockets: [{ id: 'pk_tax', name: 'Tax Jar' }, { id: 'pk_side', name: 'Side Project' }] },
+    { id: 'acc_card', name: 'Travel Card', pockets: [] },
+    { id: 'acc_other', name: 'Other Bank', mainName: '', pockets: [{ id: 'pk_rain', name: 'Rainy Day' }, { id: 'pk_side2', name: 'Side Project' }] },
+  ],
+});
+const budget = o => inboxNormalize(o, 'budget', pk);
+
+test('pockets: an expense goes to one by id or name, in any case; the main balance is no pocket', () => {
+  const base = { type: 'expense', date: '2026-10-10', amount: 8, name: 'Demo Shop', category_id: 'exp_food', account_id: 'acc_main' };
+  assert.equal(budget(Object.assign({}, base, { pocket_id: 'pk_side' })).draft.pocketId, 'pk_side');
+  assert.equal(budget(Object.assign({}, base, { pocket_id: 'side project' })).draft.pocketId, 'pk_side');
+  assert.equal(budget(Object.assign({}, base, { pocket_id: 'EVERYDAY' })).draft.pocketId, '');
+  assert.equal(budget(Object.assign({}, base, { pocket_id: 'main' })).draft.pocketId, '');
+  assert.equal(budget(base).draft.pocketId, '');
+  assert.ok(budget(Object.assign({}, base, { pocket_id: 'pk_side' })).ready);
+});
+test('pockets: with no account named, the pocket says which, if only one account has it', () => {
+  const base = { type: 'expense', date: '2026-10-10', amount: 8, name: 'Demo Shop', category_id: 'exp_food' };
+  const rain = budget(Object.assign({}, base, { pocket_id: 'Rainy Day' }));
+  assert.deepEqual([rain.draft.accountId, rain.draft.pocketId, rain.ok], ['acc_other', 'pk_rain', true]);
+  const both = budget(Object.assign({}, base, { pocket_id: 'Tax Jar' }));
+  assert.deepEqual([both.draft.accountId, both.draft.pocketId], ['acc_main', 'pk_tax']);
+});
+test('pockets: an unknown name is kept, flagged and blocks the Add, it is never refused', () => {
+  const n = budget({ type: 'expense', date: '2026-10-10', amount: 8, name: 'Demo Shop', category_id: 'exp_food', account_id: 'acc_main', pocket_id: 'New Jar' });
+  assert.equal(n.ok, false);
+  assert.ok(n.problems.some(p => p.block && p.text === 'Unknown pocket: New Jar'));
+  assert.deepEqual(n.unknownPockets, [{ accountId: 'acc_main', account: 'Demo Bank', name: 'New Jar', side: 'pocket', mainNamed: true }]);
+  assert.equal(n.draft.pocketId, '');
+  const t = budget({ type: 'transfer', date: '2026-10-10', amount: 5, name: 'Move', from_account: 'Travel Card', from_pocket: 'Spare', to_account: 'Demo Bank', to_pocket: 'Tax Jar' });
+  assert.deepEqual(t.unknownPockets.map(u => [u.side, u.name, u.mainNamed]), [['from', 'Spare', false]]);
+  assert.equal(t.draft.to, 'pk:acc_main:pk_tax');
+});
+test('pockets: transfers inside an account and out of it; both sides the same place is asked', () => {
+  const move = o => budget(Object.assign({ type: 'transfer', date: '2026-10-10', amount: 5, name: 'Move' }, o));
+  const inside = move({ from_account: 'Demo Bank', from_pocket: 'Tax Jar', to_account: 'Demo Bank', to_pocket: 'Everyday' });
+  assert.deepEqual([inside.draft.from, inside.draft.to, inside.ready], ['pk:acc_main:pk_tax', 'acc:acc_main', true]);
+  const out = move({ from_account: 'Demo Bank', from_pocket: 'pk_side', to_account: 'Sample Broker' });
+  assert.deepEqual([out.draft.from, out.draft.to], ['pk:acc_main:pk_side', 'brk:brk_1']);
+  assert.ok(move({ from_account: 'Demo Bank', to_account: 'Sample Broker', to_pocket: 'X' }).problems.some(p => /no pockets/.test(p.text)));
+  const same = move({ from_account: 'Demo Bank', to_account: 'Demo Bank' });
+  assert.ok(same.problems.some(p => p.block && /same place/.test(p.text)));
+  // An old connector can only name accounts: a pocket's name there still lands.
+  assert.deepEqual([move({ from_account: 'Rainy Day', to_account: 'Demo Bank' }).draft.from], ['pk:acc_other:pk_rain']);
+});
+test('pockets: what has no pocket field gives what it always gave', () => {
+  const plain = { type: 'expense', date: '2026-10-10', amount: 8, name: 'Demo Shop', category_id: 'exp_food', account_id: 'acc_main', note: 'n' };
+  const a = inboxNormalize(plain, 'budget', ctx), b = inboxNormalize(plain, 'budget', pk);
+  assert.deepEqual(b.draft, a.draft);
+  assert.equal(a.draft.pocketId, '');
+  assert.deepEqual(a.unknownPockets, []);
+  const move = { type: 'transfer', date: '2026-10-10', amount: 5, name: 'Move', from_account: 'Demo Bank', to_account: 'Travel Card' };
+  assert.deepEqual(inboxNormalize(move, 'budget', pk).draft, inboxNormalize(move, 'budget', ctx).draft);
+  assert.equal(inboxNormalize(move, 'budget', ctx).draft.from, 'acc:acc_main');
+});
+test('pockets: the fields work pasted too; a key of Trackr\'s own never comes in', () => {
+  const got = inboxParsePasted('{"trackr": "budget", "items": [{"type": "transfer", "from_pocket": "Tax Jar", "_draft": {"id": "tx_1"}}]}');
+  assert.equal(got[0].item.from_pocket, 'Tax Jar');
+  assert.equal(got[0].item._draft, undefined);
+  assert.deepEqual(inboxClean({ a: 1, _draft: { id: 'x' }, _seen: 'y' }), { a: 1 });
+  assert.deepEqual(inboxClean(null), {});
+});
+test('there and back: same day, same amount, swapped; each item pairs once', () => {
+  const m = (id, from, to, o) => Object.assign({ id, type: 'transfer', date: '2026-10-10', amount: 7, currency: 'EUR', from, to }, o);
+  assert.deepEqual(inboxRoundTrips([m('1', 'a', 'b'), m('2', 'b', 'a')]), [['1', '2']]);
+  assert.deepEqual(inboxRoundTrips([m('1', 'a', 'b'), m('2', 'b', 'a'), m('3', 'c', 'b')]), [['1', '2']]);
+  assert.deepEqual(inboxRoundTrips([m('1', 'a', 'b'), m('2', 'b', 'a'), m('3', 'a', 'b')]), [['1', '2']]);
+  assert.deepEqual(inboxRoundTrips([m('1', 'a', 'b'), m('2', 'b', 'a', { date: '2026-10-11' })]), []);
+  assert.deepEqual(inboxRoundTrips([m('1', 'a', 'b'), m('2', 'b', 'a', { amount: 8 })]), []);
+  assert.deepEqual(inboxRoundTrips([m('1', 'a', 'b'), m('2', 'a', 'b')]), []);
+});
+test('transfers: back the other way is not "already in Trackr", and a repeat needs the same places', () => {
+  const it = { id: 'i', type: 'transfer', date: '2026-10-10', amount: 7, currency: 'EUR', name: 'Move', from: 'b', to: 'a' };
+  const saved = { id: 'e', type: 'transfer', date: '2026-10-10', amount: 7, currency: 'EUR', name: 'Move', from: 'a', to: 'b' };
+  assert.deepEqual(inboxMatch([it], [saved]), {});
+  assert.equal(inboxMatch([Object.assign({}, it, { from: 'a', to: 'b' })], [saved]).i.level, 'same');
+  assert.deepEqual(inboxRepeats([Object.assign({}, saved, { batch: 1 }), Object.assign({}, it, { batch: 2 })]), {});
+});
+
+test('connector: the three correction tools go to the database with the key, and check what they get', async () => {
+  const fn = loadFunction();
+  const tool = (name, args) => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+  const listed = await call(fn, { jsonrpc: '2.0', id: 1, method: 'tools/list' }, {});
+  assert.ok(['list_inbox_items', 'update_inbox_item', 'delete_inbox_items'].every(n => listed.body.result.tools.some(t => t.name === n)));
+  assert.ok(listed.body.result.tools.find(t => t.name === 'add_budget_items').inputSchema.properties.items.items.properties.from_pocket);
+  assert.equal(listed.body.result.tools.find(t => t.name === 'list_inbox_items').annotations.readOnlyHint, true);
+
+  const list = await call(fn, tool('list_inbox_items', { date_from: '2026-10-01', source: 'Demo', limit: 5 }), { inbox_find: [{ id: 'x', status: 'new' }] });
+  assert.deepEqual(list.calls[0].args, { inbox_key: KEY, status: 'new', date_from: '2026-10-01', date_to: null, source: 'Demo', max_items: 5 });
+  assert.deepEqual(list.body.result.structuredContent, { items: [{ id: 'x', status: 'new' }] });
+
+  const up = await call(fn, tool('update_inbox_item', { id: 'x', changes: { category_id: 'exp_food', note: 'n' } }), { inbox_update: { updated: 1 } });
+  assert.deepEqual(up.calls[0].args, { inbox_key: KEY, item_id: 'x', changes: { category_id: 'exp_food', note: 'n' } });
+
+  const del = await call(fn, tool('delete_inbox_items', { ids: ['x', 'y'] }), { inbox_withdraw: { deleted: 2 } });
+  assert.deepEqual(del.calls[0].args, { inbox_key: KEY, ids: ['x', 'y'] });
+
+  for (const bad of [tool('update_inbox_item', { id: 'x', changes: {} }), tool('update_inbox_item', { changes: { a: 1 } }), tool('delete_inbox_items', { ids: [] }), tool('delete_inbox_items', { ids: Array(51).fill('x') })]) {
+    const r = await call(fn, bad, {});
+    assert.equal(r.body.result.isError, true);
+    assert.equal(r.calls.length, 0);
+  }
+});
+test('connector: new tools on old SQL say what to do; what was reviewed comes back as Claude should read it', async () => {
+  const fn = loadFunction();
+  const tool = (name, args) => ({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+  const old = await call(fn, tool('list_inbox_items', {}), { inbox_find: new Error('Could not find the function public.inbox_find in the schema cache') });
+  assert.match(old.body.result.content[0].text, /Settings → Claude inbox → step 1/);
+  const late = await call(fn, tool('update_inbox_item', { id: 'x', changes: { note: 'n' } }), { inbox_update: new Error('No item with this id is waiting for review.') });
+  assert.equal(late.body.result.isError, true);
+  assert.match(late.body.result.content[0].text, /waiting for review/);
 });

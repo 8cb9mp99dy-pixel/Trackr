@@ -14,21 +14,23 @@
  *     there, as usual); dividend, deposit and withdrawal open the transaction form filled in.
  *   - No connector, or it failed: Claude gives a JSON block you paste in Add → Paste from Claude.
  *
- * The key: one per connector, made here; Supabase only keeps its hash. It can only add items to
- * the queue and read the names Trackr publishes for it (categories, accounts, brokers, assets: no
- * amounts). It lives on this device (localStorage 'trackr-inbox-keys', never synced);
+ * The key: one per connector, made here; Supabase only keeps its hash. It can add items to the
+ * queue, read back, correct or withdraw the ones still waiting, and read the names Trackr publishes
+ * for it (categories, accounts and pockets, brokers, assets: no balances). What you already reviewed
+ * is out of its reach, and your own edit of an item stays yours. It lives on this device (localStorage 'trackr-inbox-keys', never synced);
  * data.settings.inboxChannels says the inbox is on, so every device fetches it.
  * Fetched items and answers not sent yet: localStorage 'trackr-inbox'.
  *
- * inboxNormalize(), inboxMatch(), inboxRepeats(), inboxParsePasted() and inboxInstructions() are pure (Node-tested), and the
+ * inboxNormalize(), inboxClean(), inboxMatch(), inboxRepeats(), inboxRoundTrips(), inboxParsePasted() and inboxInstructions() are pure (Node-tested), and the
  * SQL and function texts are kept equal to their files by a test.
  */
 // The SQL and the Edge Function, word for word (a test keeps them equal to the files).
 const INBOX_SQL_TEXT = String.raw`-- Trackr inbox — Claude (your "Trackr Budget" and "Trackr Investments" projects, through the
 -- trackr-inbox connector) drops expenses and trades here; Trackr shows them for review and only
 -- adds what you approve.
--- An inbox key can only ADD items to this queue and read the names Trackr published (categories,
--- accounts, brokers, assets: no amounts, no balances). It can't read or change your data.
+-- An inbox key can ADD items to this queue, read back, correct or withdraw the ones still waiting,
+-- and read the names Trackr published (categories, accounts and pockets, brokers, assets: no
+-- balances). It can't read or change your data, or anything already reviewed.
 -- Your sync secret never leaves Trackr. Safe to run on a project that has Trackr's setup SQL, and
 -- safe to re-run. (Settings → Claude inbox → "Copy the SQL" gives this same text.)
 
@@ -130,6 +132,17 @@ begin
 end $$;
 
 -- ---- Called by the trackr-inbox connector (with an inbox key) ----
+-- The key's row, or the error Claude should see.
+create or replace function trackr_inbox_key(inbox_key text)
+returns trackr_inbox_keys language plpgsql security definer set search_path = public, extensions as $$
+declare k trackr_inbox_keys;
+begin
+  select * into k from trackr_inbox_keys where key_hash = encode(digest(coalesce(inbox_key, ''), 'sha256'), 'hex');
+  if not found then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
+  return k;
+end $$;
+revoke all on function trackr_inbox_key(text) from public, anon;
+
 create or replace function inbox_context(inbox_key text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
 declare k trackr_inbox_keys;
@@ -162,10 +175,58 @@ begin
     'message', 'Saved in the Trackr inbox. Nothing is added to the accounts until it is approved in Trackr (Action required).');
 end $$;
 
+-- What the connector sent. Waiting: all of it. Already reviewed: only id, status, date and name,
+-- read-only, so Claude can tell what became of an item without reading amounts back.
+create or replace function inbox_find(inbox_key text, status text default 'new', date_from text default null, date_to text default null, source text default null, max_items integer default 100)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare k trackr_inbox_keys := trackr_inbox_key(inbox_key); st text := coalesce(nullif(inbox_find.status, ''), 'new');
+begin
+  if st not in ('new', 'added', 'rejected', 'all') then raise exception 'status must be new, added, rejected or all'; end if;
+  return coalesce((select jsonb_agg(case when x.status = 'new'
+      then jsonb_build_object('id', x.id, 'status', x.status, 'channel', x.channel, 'source', x.source, 'created_at', x.created_at, 'item', x.item)
+      else jsonb_build_object('id', x.id, 'status', x.status, 'channel', x.channel, 'date', x.item->'date', 'name', coalesce(x.item->'name', x.item->'asset', x.item->'ticker')) end order by x.created_at)
+    from (select * from trackr_inbox i
+           where i.data_id = k.data_id and (k.channel = 'claude' or i.channel = k.channel)
+             and (st = 'all' or i.status = st)
+             and (inbox_find.date_from is null or i.item->>'date' >= inbox_find.date_from)
+             and (inbox_find.date_to is null or i.item->>'date' <= inbox_find.date_to)
+             and (inbox_find.source is null or i.source ilike '%' || inbox_find.source || '%')
+           order by i.created_at desc limit least(greatest(coalesce(max_items, 100), 1), 300)) x), '[]'::jsonb);
+end $$;
+
+-- Corrects an item still waiting: the fields given replace the same fields, the others stay.
+create or replace function inbox_update(inbox_key text, item_id uuid, changes jsonb)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare k trackr_inbox_keys := trackr_inbox_key(inbox_key); out_item jsonb;
+begin
+  if jsonb_typeof(changes) <> 'object' or changes = '{}'::jsonb then raise exception 'changes must be an object with at least one field'; end if;
+  update trackr_inbox i set item = i.item || changes
+   where i.id = item_id and i.data_id = k.data_id and (k.channel = 'claude' or i.channel = k.channel)
+     and i.status = 'new' and octet_length((i.item || changes)::text) <= 8000
+  returning i.item into out_item;
+  if not found then raise exception 'No item with this id is waiting for review. What was already reviewed in Trackr cannot be changed.'; end if;
+  return jsonb_build_object('updated', 1, 'id', item_id, 'item', out_item);
+end $$;
+
+-- Takes items still waiting out of the queue. They stay 30 days like anything rejected, then go.
+create or replace function inbox_withdraw(inbox_key text, ids uuid[])
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare k trackr_inbox_keys := trackr_inbox_key(inbox_key); n integer;
+begin
+  if coalesce(cardinality(ids), 0) not between 1 and 50 then raise exception 'ids must list 1 to 50 items'; end if;
+  update trackr_inbox i set status = 'rejected', resolved_at = now()
+   where i.id = any(ids) and i.data_id = k.data_id and (k.channel = 'claude' or i.channel = k.channel) and i.status = 'new';
+  get diagnostics n = row_count;
+  return jsonb_build_object('deleted', n, 'skipped', cardinality(ids) - n,
+    'message', 'Only items still waiting for review can be deleted. What was already reviewed in Trackr is untouched.');
+end $$;
+
 revoke all on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
-  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text) from public;
+  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text),
+  inbox_find(text, text, text, text, text, integer), inbox_update(text, uuid, jsonb), inbox_withdraw(text, uuid[]) from public;
 grant execute on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
-  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text) to anon;
+  inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text),
+  inbox_find(text, text, text, text, text, integer), inbox_update(text, uuid, jsonb), inbox_withdraw(text, uuid[]) to anon;
 notify pgrst, 'reload schema';
 `;
 const INBOX_FUNCTION_TEXT = String.raw`// @ts-nocheck
@@ -173,12 +234,13 @@ const INBOX_FUNCTION_TEXT = String.raw`// @ts-nocheck
 // Claude (a custom connector) calls it; it drops what Claude read from your receipts and
 // screenshots into the Trackr inbox, where Trackr asks you to review each item.
 // Its URL is your project URL + /functions/v1/trackr-inbox/ + your inbox key (Trackr makes it).
-// The key can only add to the review queue and read names (no amounts); it is checked by the
-// database (003_trackr_inbox.sql), never stored here. No other secret is needed.
+// The key can add to the review queue, read back, correct or withdraw what still waits, and read
+// names (no balances). It can't touch anything already reviewed. It is checked by the database
+// (003_trackr_inbox.sql), never stored here. No other secret is needed.
 // Deploy: Supabase → Edge Functions → Deploy a new function → Via editor → name "trackr-inbox",
 // paste this file, Deploy. Then in its settings turn OFF "Verify JWT" (Claude has no Supabase login).
 
-const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.0.0' };
+const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.1.0' };
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, authorization' };
 
@@ -187,7 +249,7 @@ const num = d => ({ type: 'number', description: d });
 const BUDGET_ITEM = {
   type: 'object',
   properties: {
-    type: { type: 'string', enum: ['expense', 'income', 'transfer'], description: 'expense, income, or transfer between two of my own accounts' },
+    type: { type: 'string', enum: ['expense', 'income', 'transfer'], description: 'expense, income, or transfer between two of my own accounts or pockets' },
     date: str('YYYY-MM-DD'),
     amount: num('Positive amount'),
     currency: str('ISO code, e.g. EUR'),
@@ -195,9 +257,12 @@ const BUDGET_ITEM = {
     category_id: str('Category id from get_trackr_context (categories.expense / categories.income)'),
     subcategory_id: str('Sub-category id of that category'),
     account_id: str('Account id it was paid from / into (accounts[].id); leave out if unsure'),
+    pocket_id: str('Expense or income: the pocket it was paid from / into, id or name (accounts[].pockets). Leave out for the main balance. An unknown name is kept and I am asked about it.'),
     payment_method_id: str('Payment method id (paymentMethods[].id), e.g. card or cash'),
     from_account: str('Transfer only: account or broker name the money leaves'),
-    to_account: str('Transfer only: account or broker name it goes to'),
+    from_pocket: str('Transfer only: the pocket inside from_account, id or name. Leave out for the main balance.'),
+    to_account: str('Transfer only: account or broker name it goes to (the same account as from_account for a move between its pockets)'),
+    to_pocket: str('Transfer only: the pocket inside to_account, id or name. Leave out for the main balance.'),
     note: str('Short note, e.g. what was bought'),
   },
   required: ['type', 'date', 'amount', 'name'],
@@ -228,10 +293,11 @@ const itemsInput = item => ({
   properties: { items: { type: 'array', minItems: 1, maxItems: 50, items: item }, source: str('What I sent, e.g. "Revolut screenshot"') },
   required: ['items'],
 });
+const ITEM_FIELDS = Object.assign({}, INVEST_ITEM.properties, BUDGET_ITEM.properties);
 const TOOLS = [
   {
     name: 'get_trackr_context', title: 'Trackr names',
-    description: 'My Trackr categories and sub-categories, accounts, payment methods, brokers and the assets at each (ids, names, tickers, ISINs), and today\'s date. Names only: no amounts. Call it once per conversation before adding items, and use its ids.',
+    description: 'My Trackr categories and sub-categories, accounts with their pockets (the one marked default is the main balance), payment methods, brokers and the assets at each (ids, names, tickers, ISINs), and today\'s date. Names only: no amounts. Call it once per conversation before adding items, and use its ids.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
@@ -247,6 +313,41 @@ const TOOLS = [
     inputSchema: itemsInput(INVEST_ITEM),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
+  {
+    name: 'list_inbox_items', title: 'List what waits in Trackr',
+    description: 'What was sent to my Trackr inbox, newest first, with the ids that update_inbox_item and delete_inbox_items need. Items waiting for review come in full; items already reviewed only say their status, date and name.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['new', 'added', 'rejected', 'all'], description: 'new (waiting for review, the default), added, rejected, or all' },
+        date_from: str('Earliest item date, YYYY-MM-DD'),
+        date_to: str('Latest item date, YYYY-MM-DD'),
+        source: str('Part of the source text, e.g. "Revolut"'),
+        limit: num('At most this many, 300 at most (default 100)'),
+      },
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: 'update_inbox_item', title: 'Correct something waiting in Trackr',
+    description: 'Correct one item still waiting for my review: the fields given replace the same fields, the others stay. Items already reviewed cannot be changed: ask me to fix those in Trackr.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: str('The item id from list_inbox_items'), changes: { type: 'object', description: 'Only the fields to change, named as in add_budget_items / add_investment_items', properties: ITEM_FIELDS } },
+      required: ['id', 'changes'],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: 'delete_inbox_items', title: 'Withdraw items waiting in Trackr',
+    description: 'Take items still waiting for my review out of the inbox (up to 50 at once). Items already reviewed are left alone.',
+    inputSchema: {
+      type: 'object',
+      properties: { ids: { type: 'array', minItems: 1, maxItems: 50, items: str('An item id from list_inbox_items') } },
+      required: ['ids'],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
 ];
 
 async function rpc(env, fetchFn, fn, body) {
@@ -259,6 +360,7 @@ async function rpc(env, fetchFn, fn, body) {
   if (!res.ok) {
     let msg = text;
     try { msg = JSON.parse(text).message || text; } catch (e) { /* not JSON */ }
+    if (/could not find the function|schema cache/i.test(msg)) msg = 'this needs the latest Trackr SQL: Settings → Claude inbox → step 1, run it again.';
     throw new Error(msg || 'HTTP ' + res.status);
   }
   return text ? JSON.parse(text) : null;
@@ -272,6 +374,22 @@ async function callTool(name, args, key, env, fetchFn) {
     if (items.length > 50) throw new Error('at most 50 items at once');
     const source = args && typeof args.source === 'string' ? args.source.slice(0, 200) : null;
     return rpc(env, fetchFn, 'inbox_add', { inbox_key: key, items, source, channel: name === 'add_budget_items' ? 'budget' : 'invest' });
+  }
+  if (name === 'list_inbox_items') {
+    const a = args || {}, text = v => (typeof v === 'string' && v ? v.slice(0, 200) : null);
+    return { items: await rpc(env, fetchFn, 'inbox_find', { inbox_key: key, status: text(a.status) || 'new', date_from: text(a.date_from), date_to: text(a.date_to), source: text(a.source), max_items: typeof a.limit === 'number' ? a.limit : 100 }) };
+  }
+  if (name === 'update_inbox_item') {
+    const c = args && args.changes;
+    if (!args || typeof args.id !== 'string' || !args.id) throw new Error('id is needed');
+    if (!c || typeof c !== 'object' || Array.isArray(c) || !Object.keys(c).length) throw new Error('changes must be an object with at least one field');
+    return rpc(env, fetchFn, 'inbox_update', { inbox_key: key, item_id: args.id, changes: c });
+  }
+  if (name === 'delete_inbox_items') {
+    const ids = args && Array.isArray(args.ids) ? args.ids.filter(x => typeof x === 'string' && x) : [];
+    if (!ids.length) throw new Error('ids must be a non-empty list');
+    if (ids.length > 50) throw new Error('at most 50 ids at once');
+    return rpc(env, fetchFn, 'inbox_withdraw', { inbox_key: key, ids });
   }
   const e = new Error('Unknown tool: ' + name);
   e.code = -32602;
@@ -289,7 +407,7 @@ async function handleMessage(msg, key, env, fetchFn) {
       protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER,
-      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids, then send what you read with add_budget_items or add_investment_items. Items wait for my review in Trackr.',
+      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids, then send what you read with add_budget_items or add_investment_items. Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
     });
   }
   if (msg.method === 'ping') return reply({});
@@ -358,9 +476,26 @@ function inboxNormalize(raw, channel, ctx) {
   const note = str(it.note || it.description, 300);
   const kindRaw = low(it.type || it.action || it.kind);
   const accountFor = (id, nm) => byIdOrName(ctx.accounts, str(id, 80), str(nm, 80));
+  /* A pocket by id or name, inside one account: { main: true } for its main balance. */
+  const pocketIn = (a, v) => {
+    const k = inboxNameKey(v);
+    if (!k) return null;
+    if (k === 'main' || k === 'mainbalance' || k === inboxNameKey(a.mainName)) return { main: true };
+    return (a.pockets || []).find(p => p.id === str(v, 80) || inboxNameKey(p.name) === k) || null;
+  };
+  /* No account named: a pocket's name says which, if only one account has it. */
+  const pocketAnywhere = v => {
+    const hits = (ctx.accounts || []).map(a => ({ a, p: pocketIn(a, v) })).filter(h => h.p && !h.p.main);
+    return hits.length === 1 ? hits[0] : null;
+  };
+  const unknownPockets = [];
+  const unknownPocket = (a, name, side) => {
+    unknownPockets.push({ accountId: a.id, account: a.name, name, side, mainNamed: !!a.mainName });
+    warn(`Unknown pocket: ${name}`, true);
+  };
   const result = (kind, form, draft) => {
     const ok = !problems.some(p => p.block);
-    return { channel, kind, form, draft, problems, ok, ready: ok && !problems.length };
+    return { channel, kind, form, draft, problems, ok, ready: ok && !problems.length, unknownPockets };
   };
 
   if (channel === 'invest' || INBOX_INVEST_KINDS.includes(kindRaw)) {
@@ -418,26 +553,50 @@ function inboxNormalize(raw, channel, ctx) {
   if (!(amount > 0)) warn('No amount.', true);
   const draft = { type: kind, date, amount: amount > 0 ? String(Math.round(amount * 100) / 100) : '', currency, comment: name, description: note, categoryId: '', subCategoryId: '', accountId: '', paymentMethodId: '', from: '', to: '' };
   if (kind === 'transfer') {
-    const ref = (id, nm) => {
-      const a = accountFor(id, nm); if (a) return 'acc:' + a.id;
+    const ref = (id, nm, pocket, side) => {
+      const pk = str(pocket, 80), a = accountFor(id, nm);
+      if (a) {
+        if (!pk) return 'acc:' + a.id;
+        const hit = pocketIn(a, pk);
+        if (hit) return hit.main ? 'acc:' + a.id : `pk:${a.id}:${hit.id}`;
+        unknownPocket(a, pk, side);
+        return 'acc:' + a.id;
+      }
       const b = (ctx.investAccounts || []).find(x => (id && x.key === id) || (nm && low(x.name) === low(nm)));
-      return b ? b.ref : '';
+      if (b) { if (pk) warn(`${b.name} has no pockets: "${pk}" was left out.`); return b.ref; }
+      const only = pocketAnywhere(pk || nm);
+      return only ? `pk:${only.a.id}:${only.p.id}` : '';
     };
-    draft.from = ref(str(it.from_account_id, 120), it.from_account || it.from);
-    draft.to = ref(str(it.to_account_id, 120), it.to_account || it.to);
+    draft.from = ref(str(it.from_account_id, 120), it.from_account || it.from, it.from_pocket, 'from');
+    draft.to = ref(str(it.to_account_id, 120), it.to_account || it.to, it.to_pocket, 'to');
     if (!draft.from || !draft.to) warn('Where from and where to?', true);
+    else if (draft.from === draft.to && !unknownPockets.length) warn('Both sides are the same place: which pocket?', true);
     return result(kind, 'tx', draft);
   }
   const cats = ctx.categories[kind] || [];
   const cat = byIdOrName(cats, str(it.category_id, 80), it.category);
   const sub = cat ? byIdOrName(cat.subcategories, str(it.subcategory_id, 80), it.subcategory) : null;
   if (!cat) warn(it.category ? `No category "${str(it.category, 40)}": pick one.` : 'Pick a category.', true);
-  const acc = accountFor(it.account_id, it.account);
+  let acc = accountFor(it.account_id, it.account);
+  const pocketRaw = str(it.pocket_id || it.pocket, 80);
+  const pocketHome = !acc && pocketRaw && !(it.account_id || it.account) ? pocketAnywhere(pocketRaw) : null;
+  if (pocketHome) acc = pocketHome.a;
   const fallback = byIdOrName(ctx.accounts, ctx.defaultAccountId, '');
   if (!acc && (it.account_id || it.account)) warn(`No account "${str(it.account || it.account_id, 40)}": ${fallback ? fallback.name : 'pick one'} is used.`, !fallback);
   else if (!acc && !fallback) warn('Which account?', true);
   const pm = byIdOrName(ctx.paymentMethods, str(it.payment_method_id, 80), it.payment_method || it.paid_with);
-  return result(kind, 'tx', Object.assign(draft, { categoryId: cat ? cat.id : '', subCategoryId: sub ? sub.id : '', accountId: (acc || fallback || {}).id || '', paymentMethodId: pm ? pm.id : '' }));
+  const home = acc || fallback;
+  const pocket = home && pocketRaw ? pocketIn(home, pocketRaw) : null;
+  if (home && pocketRaw && !pocket) unknownPocket(home, pocketRaw, 'pocket');
+  return result(kind, 'tx', Object.assign(draft, { categoryId: cat ? cat.id : '', subCategoryId: sub ? sub.id : '', accountId: (home || {}).id || '', pocketId: pocket && !pocket.main ? pocket.id : '', paymentMethodId: pm ? pm.id : '' }));
+}
+
+/* What arrives keeps only its own fields: a key starting with _ is Trackr's own (_draft is your
+   edit, and would skip every check). */
+function inboxClean(item) {
+  const out = {};
+  Object.keys(item && typeof item === 'object' ? item : {}).forEach(k => { if (k[0] !== '_') out[k] = item[k]; });
+  return out;
 }
 
 /* What you rejected stays on its tab for 30 days, like the copy on the server. */
@@ -472,9 +631,12 @@ function inboxMatch(items, existing, days) {
     const tol = it.tol || 0.005;
     existing.forEach(e => {
       if (e.type !== it.type || (e.currency || 'EUR') !== (it.currency || 'EUR') || Math.abs(e.amount - it.amount) >= tol) return;
+      // Transfers are compared by their places, not their names: back the other way is a new one.
+      const ends = it.type === 'transfer' && !!it.from && !!it.to && !!e.from && !!e.to;
+      if (ends && it.from === e.to && it.to === e.from) return;
       const gap = Math.abs(dayNo(e.date) - dayNo(it.date));
       if (!(gap <= near)) return;
-      const similar = inboxSameName(it.name, e.name) || (it.type === 'transfer' && !!it.from && it.from === e.from && !!it.to && it.to === e.to);
+      const similar = ends ? it.from === e.from && it.to === e.to : inboxSameName(it.name, e.name);
       const score = similar ? (gap === 0 ? 3 : gap === 1 ? 2 : 0) : gap === 0 ? 1 : -1;
       if (score >= 0) pairs.push({ item: it.id, other: e.id, score, gap });
     });
@@ -494,11 +656,23 @@ function inboxMatch(items, existing, days) {
 function inboxRepeats(items) {
   const seen = {}, out = {};
   items.slice().sort((a, b) => (a.batch < b.batch ? -1 : a.batch > b.batch ? 1 : 0)).forEach(it => {
-    const k = [it.type, it.date, it.amount, it.currency, inboxNameKey(it.name)].join('|');
+    const k = [it.type, it.date, it.amount, it.currency, inboxNameKey(it.name), it.from || '', it.to || ''].join('|');
     const s = seen[k];
     if (!s) seen[k] = { batch: it.batch, left: 1, first: it.id };
     else if (s.batch === it.batch) s.left++;
     else if (s.left > 0) { s.left--; out[it.id] = s.first; }
+  });
+  return out;
+}
+
+/* A move there and back: same day, same amount, the two places swapped, so together they change
+ * nothing. Each item pairs once. → [[id, id], …] */
+function inboxRoundTrips(items) {
+  const moves = items.filter(it => it.type === 'transfer' && it.from && it.to && it.amount > 0), used = new Set(), out = [];
+  moves.forEach(a => {
+    if (used.has(a.id)) return;
+    const b = moves.find(x => x.id !== a.id && !used.has(x.id) && x.date === a.date && x.amount === a.amount && (x.currency || 'EUR') === (a.currency || 'EUR') && x.from === a.to && x.to === a.from);
+    if (b) { used.add(a.id); used.add(b.id); out.push([a.id, b.id]); }
   });
   return out;
 }
@@ -520,7 +694,7 @@ function inboxParsePasted(text) {
     const items = Array.isArray(v) ? v : v && Array.isArray(v.items) ? v.items : v && typeof v === 'object' ? [v] : [];
     const ch = v && !Array.isArray(v) && /invest/i.test(String(v.trackr || v.channel || '')) ? 'invest' : null;
     const out = items.filter(x => x && typeof x === 'object' && !Array.isArray(x)).slice(0, 100)
-      .map(x => ({ channel: ch || (INBOX_INVEST_KINDS.includes(String(x.action || x.type || '').toLowerCase()) ? 'invest' : 'budget'), item: x }));
+      .map(x => ({ channel: ch || (INBOX_INVEST_KINDS.includes(String(x.action || x.type || '').toLowerCase()) ? 'invest' : 'budget'), item: inboxClean(x) }));
     if (out.length) return out;
   }
   return [];
@@ -543,20 +717,22 @@ function inboxInstructions(channel) {
     'You are Trackr Budget. You file my spending into my Trackr app with the Trackr connector: I send receipts, screenshots of my bank or card apps, photos, or plain text ("12,40 bakery yesterday").',
     '',
     'Every time:',
-    '1. Call get_trackr_context once per conversation to get my categories and sub-categories (ids and names), accounts, payment methods and today\'s date. Use those ids.',
-    '2. Read every transaction: type (expense, income, or transfer between two of my own accounts), date (YYYY-MM-DD; turn "yesterday" etc. into a date from today), amount as a positive number, currency, name (the shop, company or person, short and normally capitalised), the best category_id and subcategory_id, account_id when it is clear which account paid (else leave it out: Trackr uses my main account), payment_method_id when visible, and a short note (e.g. what was bought).',
+    '1. Call get_trackr_context once per conversation to get my categories and sub-categories (ids and names), accounts with their pockets, payment methods and today\'s date. Use those ids.',
+    '2. Read every transaction: type (expense, income, or transfer between two of my own accounts), date (YYYY-MM-DD; turn "yesterday" etc. into a date from today), amount as a positive number, currency, name (the shop, company or person, short and normally capitalised), the best category_id and subcategory_id, account_id when it is clear which account paid (else leave it out: Trackr uses my main account), pocket_id when it was paid from or into a pocket, payment_method_id when visible, and a short note (e.g. what was bought).',
+    '   A move between two pockets of one account is a transfer with from_account and to_account both that account, and from_pocket and to_pocket (the pocket marked default is the main balance). Never file it as an expense or income. If a pocket is not in the context, send its name anyway: Trackr will ask me what to do.',
     '3. Only completed transactions count: skip pending or declined payments, balances, ads and totals. A receipt is ONE expense (its total), not one per line. Never invent an amount.',
     '4. Send everything with ONE add_budget_items call (up to 50 items), with source saying what I sent (e.g. "Revolut screenshot").',
     '5. Then reply with a short table (date, name, amount, category) and say it waits in Trackr → Action required for my review. Nothing is added to my accounts until I approve it there.',
   ]).concat([
     '',
+    'If I correct something you filed: while it still waits, find it with list_inbox_items and fix it with update_inbox_item or delete_inbox_items. Once I have reviewed it you cannot change it: tell me what to change in Trackr.',
     `If the Trackr connector is off or fails, give me the items as one JSON code block {"trackr": "${invest ? 'invest' : 'budget'}", "items": [...]} with the same fields, so I can paste it in Trackr (Add → Paste from Claude).`,
     'Reply in the language I write in. Keep answers short.',
   ]).join('\n');
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxSameName, inboxMatch, inboxRepeats, inboxKeptRejected, inboxParsePasted, inboxInstructions };
+  module.exports = { INBOX_SQL_TEXT, INBOX_FUNCTION_TEXT, inboxNormalize, inboxClean, inboxSameName, inboxMatch, inboxRepeats, inboxRoundTrips, inboxKeptRejected, inboxParsePasted, inboxInstructions };
 } else {
   const STATE_KEY = 'trackr-inbox', KEYS_KEY = 'trackr-inbox-keys';
   const readLs = (k, d) => { try { return Object.assign(d, JSON.parse(localStorage.getItem(k) || '{}')); } catch (e) { return d; } };
@@ -573,7 +749,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function ctxForNormalize() {
     return {
       today: todayYmd(), currency: data.settings.defaultCurrency || 'EUR', categories: data.categories,
-      accounts: (data.accounts || []).map(a => ({ id: a.id, name: a.name })), defaultAccountId: typeof defaultMoneyAccountId === 'function' ? defaultMoneyAccountId() : '',
+      accounts: (data.accounts || []).map(a => ({ id: a.id, name: a.name, mainName: a.mainName || '', pockets: (a.pockets || []).map(p => ({ id: p.id, name: p.name })) })), defaultAccountId: typeof defaultMoneyAccountId === 'function' ? defaultMoneyAccountId() : '',
       paymentMethods: (data.paymentMethods || []).map(p => ({ id: p.id, name: p.name })),
       investAccounts: typeof investAccounts === 'function' ? investAccounts().map(acc => ({ key: acc.kind + ':' + acc.id, name: acc.name, ref: investTransferRef(acc),
         assets: tradeableAssets(acc).map(a => { const as = a.key.startsWith('a:') && typeof assetById === 'function' ? assetById(a.key.slice(2)) : null; return { key: a.key, ticker: a.ticker, name: (as && as.name) || a.label, isin: (as && as.isin) || '' }; }) })) : [],
@@ -587,7 +763,11 @@ if (typeof module !== 'undefined' && module.exports) {
     return {
       currency: c.currency, mainAccountId: c.defaultAccountId,
       categories: { expense: cats(data.categories.expense), income: cats(data.categories.income) },
-      accounts: (data.accounts || []).map(a => ({ id: a.id, name: a.name, currency: a.currency || 'EUR' })),
+      accounts: (data.accounts || []).map(a => {
+        // A finished pocket stays while it holds money: Claude may still see it move out.
+        const pockets = (a.pockets || []).filter(p => !p.finishedAt || +p.amountSaved > 0).map(p => ({ id: p.id, name: p.name }));
+        return Object.assign({ id: a.id, name: a.name, currency: a.currency || 'EUR' }, pockets.length || a.mainName ? { pockets: [{ id: 'main', name: mainBalanceName(a), default: true }].concat(pockets) } : {});
+      }),
       paymentMethods: c.paymentMethods, investAccounts: c.investAccounts.map(a => ({ key: a.key, name: a.name, assets: a.assets })),
     };
   }
@@ -617,7 +797,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       const list = await supabaseRpc('inbox_list', { secret: c.secret }) || [];
       const locals = state.items.filter(x => x.local);
-      state.items = list.map(x => ({ id: x.id, channel: x.channel, item: x.item, source: x.source, created_at: x.created_at })).concat(locals);
+      state.items = list.map(x => ({ id: x.id, channel: x.channel, item: inboxClean(x.item), source: x.source, created_at: x.created_at })).concat(locals);
       // Only what was sent: an answer given while this ran goes out on the next round.
       pending.forEach(id => { delete state.done[id]; });
       Object.keys(state.edits).forEach(id => { if (!state.items.some(x => x.id === id)) delete state.edits[id]; });
@@ -669,7 +849,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const known = past && (!d.categoryId || txNameKey(past.comment) === txNameKey(d.comment));
       const use = ch && ch.categoryId ? ch : known ? past : null;
       if (use) { item.category_id = use.categoryId; item.subcategory_id = use.subCategoryId || ''; }
-      if (past && !item.account_id && !item.account && past.accountId) item.account_id = past.accountId;
+      if (past && !item.account_id && !item.account && !item.pocket_id && !item.pocket && past.accountId) item.account_id = past.accountId;
       if (past && !item.payment_method_id && past.paymentMethodId) item.payment_method_id = past.paymentMethodId;
       n = inboxNormalize(item, x.channel, ctx);
       if (ch && ch.comment) n.draft.comment = ch.comment;
@@ -699,13 +879,17 @@ if (typeof module !== 'undefined' && module.exports) {
     const trades = (data.investmentTransactions || []).filter(t => t.action === 'Buy' || t.action === 'Sell').map(t => ({ id: t.id, trade: true, type: t.action.toLowerCase() + ':' + t.assetKey, date: t.date, amount: +t.amount || 0, currency: 'EUR', name: t.assetKey }));
     const keys = rows.map(keyOf), existing = txs.concat(trades);
     const found = inboxMatch(keys, existing), twice = inboxRepeats(keys);
+    const backAgain = {};
+    inboxRoundTrips(keys.filter(k => !found[k.id])).forEach(([a, b]) => { backAgain[a] = b; backAgain[b] = a; });
     rows.forEach(r => {
-      const id = r.x.id, m = found[id], first = twice[id];
+      const id = r.x.id, m = found[id], first = twice[id], e = state.edits[id];
+      r.pair = backAgain[id] || '';
+      r.claudeChanged = !!(e && e._seen && e._seen !== JSON.stringify(r.x.item));
       r.other = m ? existing.find(e => e.id === m.id) : null;
       r.twice = !!first && !m;
       const same = (m && m.level === 'same') || (first && found[first] && found[first].level === 'same');
       r.fail = failed[id] || '';
-      r.status = same ? 'same' : !r.n.ok || r.n.problems.length || m || first || r.fail ? 'check' : 'new';
+      r.status = same ? 'same' : !r.n.ok || r.n.problems.length || m || first || r.fail || r.pair ? 'check' : 'new';
     });
     return rows;
   }
@@ -730,10 +914,17 @@ if (typeof module !== 'undefined' && module.exports) {
     const cat = d.categoryId ? categoryById(d.type, d.categoryId) : null;
     const sub = cat && d.subCategoryId ? (cat.subcategories || []).find(s => s.id === d.subCategoryId) : null;
     const acc = d.accountId ? accountById(d.accountId) : null;
-    const place = ref => (ref && transferEndpoint(ref) ? transferEndpoint(ref).label : '?');
+    const asked = s => (n.unknownPockets || []).find(u => u.side === s);
+    const place = (ref, s) => (asked(s) ? `${asked(s).account} · ${asked(s).name} ?` : ref && transferEndpoint(ref) ? transferEndpoint(ref).label : '?');
+    /* Inside one account: its name once, then the two pockets. */
+    const inner = (ref, s) => { const ep = parseTransferRef(ref) || {}, a = accountById(ep.accountId), pk = ep.pocketId && a && (a.pockets || []).find(p => p.id === ep.pocketId); return asked(s) ? `${asked(s).name} ?` : pk ? pk.name : mainBalanceName(a); };
+    const ends = [parseTransferRef(d.from) || {}, parseTransferRef(d.to) || {}];
+    const move = ends[0].accountId && ends[0].accountId === ends[1].accountId && accountById(ends[0].accountId)
+      ? `${accountById(ends[0].accountId).name} · ${inner(d.from, 'from')} → ${inner(d.to, 'to')}` : `${place(d.from, 'from')} → ${place(d.to, 'to')}`;
+    const pocket = asked('pocket') ? `${asked('pocket').name} ?` : (txPocket(d) || {}).name || '';
     return { title: d.comment || (d.type === 'income' ? 'Income' : d.type === 'transfer' ? 'Transfer' : 'Expense'),
       amount: `${d.type === 'income' ? '+' : d.type === 'expense' ? '-' : ''}${d.amount ? fmtMoney(+d.amount, d.currency) : '—'}`, cls: d.type === 'income' ? 'positive' : d.type === 'expense' ? 'negative' : 'ib-move',
-      meta: (d.type === 'transfer' ? [`${place(d.from)} → ${place(d.to)}`] : [cat ? `${cat.name}${sub ? ' · ' + sub.name : ''}` : '', acc ? acc.name : '']).filter(Boolean).join(' · ') };
+      meta: (d.type === 'transfer' ? [move] : [cat ? `${cat.name}${sub ? ' · ' + sub.name : ''}` : '', acc ? acc.name : '', pocket]).filter(Boolean).join(' · ') };
   }
   function avatarOf(n) {
     if (n.form === 'tx') return txAvatarHtml(n.draft);
@@ -748,12 +939,16 @@ if (typeof module !== 'undefined' && module.exports) {
   function rowHtml(r) {
     const { x, n } = r, id = escHtml(x.id), l = itemLine(n), d = n.draft;
     const needsCat = n.form === 'tx' && d.type !== 'transfer' && !d.categoryId;
+    const fixes = (n.unknownPockets || []).map((u, i) => `<button class="ib-act" onclick="inboxFixPocket('${id}',${i},'create')">${ic('plus', 14)} Create pocket ${escHtml(u.name)}</button>${u.mainNamed ? '' : `<button class="ib-act" onclick="inboxFixPocket('${id}',${i},'main')">It's the main balance</button>`}`);
+    if (r.pair) fixes.push(`<button class="ib-act" title="Together they change nothing. Both move to the Rejected tab." onclick="inboxCancelPair('${id}')">${ic('x', 14)} Reject both</button>`);
     const hints = n.problems.filter(p => !(needsCat && /category/i.test(p.text))).map(p => `<li class="${p.block ? 'block' : ''}">${escHtml(p.text)}</li>`);
     if (r.other) {
       const what = `${escHtml(r.other.name || 'a transaction')}, ${escHtml(shortDay(r.other.date))}`;
       hints.unshift(`<li>${r.status === 'same' ? 'Already in Trackr' : 'Maybe in Trackr'}: ${r.other.trade ? what : `<button class="link-btn" onclick="openTxForm('${escHtml(r.other.id)}')">${what}</button>`}</li>`);
     }
     if (r.twice) hints.unshift('<li>Claude sent this twice.</li>');
+    if (r.pair) hints.unshift('<li>A move there and back the same day: together they change nothing.</li>');
+    if (r.claudeChanged) hints.push('<li>Claude changed this after your edit. Your version is kept.</li>');
     if (r.fail) hints.unshift(`<li class="block">${escHtml(r.fail)}</li>`);
     if (n.edited) hints.push('<li>Edited by you.</li>');
     const addLabel = r.status === 'new' || !isAddable(r) ? 'Add' : 'Add anyway';
@@ -764,6 +959,7 @@ if (typeof module !== 'undefined' && module.exports) {
         <button class="ib-open" onclick="inboxOpen('${id}')" ${n.form === 'trade' && !d.accountKey ? 'disabled' : ''}>${avatarOf(n)}<span class="ib-txt"><b>${escHtml(l.title)}</b><span>${escHtml(l.meta || '—')}</span></span></button>
         ${needsCat ? categoryPicker(r, id) : ''}
         ${hints.length ? `<ul class="ib-probs">${hints.join('')}</ul>` : ''}
+        ${fixes.length ? `<div class="ib-fixes">${fixes.join('')}</div>` : ''}
       </div>
       <div class="ib-end">
         <b class="num ${l.cls}">${l.amount}</b>
@@ -849,7 +1045,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const rows = reviewRows(), r0 = rows.find(r => r.x.id === id); if (!r0) return;
     const key = txNameKey(r0.n.draft.comment);
     rows.filter(r => r === r0 || (key && r.n.form === 'tx' && r.n.draft.type === r0.n.draft.type && !r.n.draft.categoryId && txNameKey(r.n.draft.comment) === key))
-      .forEach(r => { state.edits[r.x.id] = Object.assign({}, state.edits[r.x.id], { category_id, subcategory_id: subcategory_id || '' }); });
+      .forEach(r => { state.edits[r.x.id] = Object.assign({}, state.edits[r.x.id], { category_id, subcategory_id: subcategory_id || '', _seen: JSON.stringify(r.x.item) }); });
     saveState(); render();
   };
   const findItem = id => state.items.find(x => x.id === id);
@@ -869,15 +1065,24 @@ if (typeof module !== 'undefined' && module.exports) {
     const before = JSON.stringify(data), done = [], realAlert = window.alert;
     let said = '';
     window.alert = m => { said = m; };
+    // Oldest first, then again for what was refused: a later move may fill the pocket it needed.
+    let left = rows.slice().sort((a, b) => (a.n.draft.date < b.n.draft.date ? -1 : a.n.draft.date > b.n.draft.date ? 1 : 0));
     try {
-      quietBatch(() => rows.forEach(r => {
-        const id = r.x.id;
-        said = ''; delete failed[id];
-        ui.modal = { type: 'tx', payload: Object.assign(blankTxDraft(), r.n.draft, { _inboxId: id, step: 1 }) };
-        saveTxForm();
-        ui.modal = null;
-        if (isDone(id)) done.push(r.x); else failed[id] = said || 'Trackr could not add this one: open it to see why.';
-      }));
+      quietBatch(() => {
+        for (let moved = true; moved && left.length;) {
+          moved = false;
+          left = left.filter(r => {
+            const id = r.x.id;
+            said = ''; delete failed[id];
+            ui.modal = { type: 'tx', payload: Object.assign(blankTxDraft(), r.n.draft, { _inboxId: id, step: 1 }) };
+            saveTxForm();
+            ui.modal = null;
+            if (isDone(id)) { done.push(r.x); moved = true; return false; }
+            failed[id] = said || 'Trackr could not add this one: open it to see why.';
+            return true;
+          });
+        }
+      });
     } finally { window.alert = realAlert; }
     inboxRefresh();
     if (done.length) offerUndo(`${done.length} added`, before, putBack(done));
@@ -906,6 +1111,23 @@ if (typeof module !== 'undefined' && module.exports) {
     addRows([r]);
   };
   window.inboxReject = function (id) { const r = reviewRows().find(q => q.x.id === id); if (r) rejectRows([r]); };
+  window.inboxCancelPair = function (id) {
+    const rows = reviewRows(), r = rows.find(q => q.x.id === id), o = r && rows.find(q => q.x.id === r.pair);
+    if (o) rejectRows([r, o]);
+  };
+  /* An unknown pocket, in one click: make it (it starts empty, so no total moves), or say it's what
+     your bank calls the main balance. Everything waiting under that name follows. */
+  window.inboxFixPocket = function (id, i, how) {
+    const r = reviewRows().find(q => q.x.id === id), u = r && r.n.unknownPockets[i], acc = u && accountById(u.accountId);
+    if (!acc) return;
+    if (how === 'main') acc.mainName = u.name;
+    else {
+      if (!Array.isArray(acc.pockets)) acc.pockets = [];
+      acc.pockets.push({ id: uid('pk'), icon: '🎯', name: u.name, amountSaved: 0, targetAmount: null, color: POCKET_COLORS[0] });
+    }
+    save(); render(); inboxRefresh();
+    safetyToast(`<span>${how === 'main' ? `${escHtml(u.name)} is the main balance of ${escHtml(acc.name)}` : `Pocket ${escHtml(u.name)} made in ${escHtml(acc.name)}, empty for now`}</span>`, { ms: 4000 });
+  };
   window.inboxAddPicked = function () { addRows(shownRows(reviewRows()).filter(r => isPicked(r) && isAddable(r))); };
   window.inboxRejectPicked = function () { rejectRows(shownRows(reviewRows()).filter(isPicked)); };
   /* Open it where you'd normally enter it, filled in: nothing goes in until you say so. */
@@ -927,9 +1149,9 @@ if (typeof module !== 'undefined' && module.exports) {
   /* In the form: keep your changes here to add later, or add it now. */
   window.inboxFormActions = () => '<button class="btn" onclick="inboxKeepEdit()">Save changes</button><button class="btn primary" onclick="saveTxForm()">Save and add</button>';
   window.inboxKeepEdit = function () {
-    const p = ui.modal.payload, id = p._inboxId, draft = Object.assign({}, p);
+    const p = ui.modal.payload, id = p._inboxId, draft = Object.assign({}, p), x = findItem(id);
     delete draft.step; delete draft._inboxId;
-    state.edits[id] = Object.assign({}, state.edits[id], { _draft: draft });
+    state.edits[id] = Object.assign({}, state.edits[id], { _draft: draft, _seen: x ? JSON.stringify(x.item) : '' });
     delete failed[id];
     saveState(); closeModal();
     const r = reviewRows().find(q => q.x.id === id);
@@ -983,14 +1205,14 @@ if (typeof module !== 'undefined' && module.exports) {
     const on = channelsOn().length > 0, has = !!keys.claude;
     const copyBtn = (label, what, ch) => `<button class="btn small" onclick="inboxCopy('${what}','${ch || ''}')">${ic('copy', 14)} ${label}</button>`;
     return `
-      <div class="ib-note">Send receipts and screenshots to two projects in Claude, <b>Trackr Budget</b> and <b>Trackr Investments</b>. Through a connector, each item waits in <b>Money → From Claude</b> until you add it. Claude only gets an inbox key: it can drop items there and read your category, account and asset names, never an amount.</div>
+      <div class="ib-note">Send receipts and screenshots to two projects in Claude, <b>Trackr Budget</b> and <b>Trackr Investments</b>. Through a connector, each item waits in <b>Money → From Claude</b> until you add it. Claude only gets an inbox key: it can drop items there, correct or withdraw the ones still waiting, and read your category, account, pocket and asset names. It never sees a balance, and what you've reviewed is out of its reach.</div>
       <div class="ib-step"><b>1. Add the inbox to Supabase</b> <span class="dim">(once)</span>
         <div class="ib-row">${copyBtn('Copy the SQL', 'sql')}${dash('sql/new')}<button class="btn small" onclick="inboxCheck()">Check</button></div>
-        <div class="dim" style="font-size:12px;">SQL editor → New query → paste → Run, then Check.${state.missing ? ' <b>Not there yet.</b>' : ''}</div>
+        <div class="dim" style="font-size:12px;">SQL editor → New query → paste → Run, then Check. After an update, run it again: your data isn't touched.${state.missing ? ' <b>Not there yet.</b>' : ''}</div>
       </div>
       <div class="ib-step"><b>2. Add the connector to Supabase</b> <span class="dim">(once)</span>
         <div class="ib-row">${copyBtn('Copy the function', 'function')}${dash('functions')}</div>
-        <div class="dim" style="font-size:12px;">Edge Functions → Deploy a new function → Via editor. Name it <code>trackr-inbox</code>, paste, Deploy. Then in its Details turn off <b>Verify JWT</b> (Claude has no Supabase login) and save.</div>
+        <div class="dim" style="font-size:12px;">Edge Functions → Deploy a new function → Via editor. Name it <code>trackr-inbox</code>, paste, Deploy. Then in its Details turn off <b>Verify JWT</b> (Claude has no Supabase login) and save. After an update, open the function, replace its code and deploy: <b>Test</b> below says if it's up to date.</div>
       </div>
       <div class="ib-step"><div class="row-flex"><b>3. Connect Claude</b><span class="dim" style="font-size:12px;">${on ? (has ? 'on' : 'on (key made on another device)') : 'off'}</span></div>
         <div class="ib-row">${has ? `${copyBtn('Copy the connector URL', 'url')}<button class="btn small" onclick="inboxTest()">Test</button><button class="btn small ghost" onclick="inboxMakeKey()">New key</button><button class="btn small ghost" onclick="inboxTurnOff()">Turn off</button>`
@@ -1021,7 +1243,9 @@ if (typeof module !== 'undefined' && module.exports) {
       await post(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'trackr-test', version: '1' } });
       const r = await post(2, 'tools/call', { name: 'get_trackr_context', arguments: {} });
       if (r.result && r.result.isError) throw new Error(r.result.content[0].text);
-      alert('It works: Claude can reach your Trackr inbox.');
+      const tools = await post(3, 'tools/list', {});
+      const current = ((tools.result && tools.result.tools) || []).some(t => t.name === 'update_inbox_item');
+      alert(current ? 'It works: Claude can reach your Trackr inbox.' : 'Claude can reach your Trackr inbox, but the connector is an older version: redo step 2 to give it the new tools.');
     } catch (e) { alert(e && e.message && !/Failed to fetch|NetworkError|Load failed/i.test(e.message) ? e.message : 'No answer from the function: is it deployed (step 2)?'); }
   };
   window.inboxCheck = async function () {

@@ -9,8 +9,10 @@ it there.
 ```
 Claude project ──▶ connector  …/functions/v1/trackr-inbox/<inbox key>   (MCP server, Edge Function)
                      │ get_trackr_context · add_budget_items · add_investment_items
+                     │ list_inbox_items · update_inbox_item · delete_inbox_items
                      ▼
-               Supabase: inbox_context / inbox_add ──▶ trackr_inbox (status 'new')
+               Supabase: inbox_context / inbox_add / inbox_find / inbox_update / inbox_withdraw
+                                                       ──▶ trackr_inbox (status 'new')
                                                            │
 Trackr (sync secret) ◀── inbox_list ───────────────────────┘
    review: Add / Edit / Reject, one or many ──▶ inbox_resolve ('added' | 'rejected')
@@ -33,16 +35,32 @@ Everything is in Trackr: **Settings → Claude inbox**.
 Custom connectors need a Claude plan that has them. Once added on the web, the connector works in
 the Claude apps too.
 
+## After an update
+
+Pockets and the correction tools need three steps by hand. They can be done in any order, and
+nothing stops working in between:
+
+1. **Copy the SQL** and run it again. It adds functions and touches none of your data.
+2. **Copy the function**, open `trackr-inbox` in Supabase, replace its code, Deploy. Check that
+   "Verify JWT" is still off. **Test** in Trackr says if the connector is an older version.
+3. Paste the two projects' instructions again. If Claude doesn't list the new tools, disconnect and
+   reconnect the connector.
+
+Until then: pockets work by hand and through Paste, and Claude already sees their names. If the new
+function runs before the new SQL, its three new tools answer Claude with this same advice, and
+adding items keeps working.
+
 ## What each side can do
 
 | Who | With | Can |
 |---|---|---|
-| Claude (the connector) | the inbox key at the end of its URL | add up to 50 items per call to the review queue (300 waiting at most); read the names Trackr published: categories, accounts, payment methods, brokers and their assets. No amount, no balance. |
+| Claude (the connector) | the inbox key at the end of its URL | add up to 50 items per call to the review queue (300 waiting at most); read back, correct or withdraw the items still waiting, amounts included (only what Claude itself sent); see the status, date and name of what was reviewed; read the names Trackr published: categories, accounts and pockets, payment methods, brokers and their assets. Never a balance, and nothing reviewed can be changed. |
 | Trackr | your sync secret (never sent to Claude) | make and replace the key (only its sha256 is stored), publish those names, list, add, reject. |
 
 The function holds no secret of its own: it calls the same public functions with the project's
-anon key, and the database checks the inbox key. A leaked URL can only put items in your review
-queue: make a new key in Trackr and paste the new URL in Claude (the old one stops at once).
+anon key, and the database checks the inbox key. A leaked URL can read, change or withdraw what
+waits in your review queue, and add to it, but never reach your data: make a new key in Trackr and
+paste the new URL in Claude (the old one stops at once).
 
 ## Review in Trackr
 
@@ -69,3 +87,27 @@ happens in the app: Claude still sees names only, no amounts. Every action on ma
   the item. An asset that isn't in Trackr yet must be added first. A dividend, deposit or
   withdrawal opens the transaction form.
 - Connector off or failing: Claude gives a JSON block. Paste it in **Add → Paste from Claude**.
+
+## Pockets
+
+`get_trackr_context` lists an account's pockets, with its main balance first (`default: true`, id
+`main`). You can name the main balance on the account's form, so "Personal" at Revolut is understood.
+
+- An expense or income takes `pocket_id` (id or name, spelled any way): only that pocket moves.
+- A transfer takes `from_pocket` / `to_pocket`. Between two pockets of one account, the account's
+  total stays and it never counts as income or spending. Budget leaves it out of the list unless
+  **Show pocket moves** is on.
+- A pocket Trackr doesn't know stays in **To check**, flagged. **Create pocket X** makes it, empty, so
+  no total moves; **It's the main balance** names the main balance instead. Items under that name
+  follow.
+- A pocket can't go below zero. Adding many goes oldest first and tries again what didn't fit.
+- There and back the same day, same amount: **Reject both**. Together they change nothing.
+- To fill a pocket without changing the account's total, move money from the main balance. Typing an
+  amount on the pocket's form adds that money to the total.
+
+## Correcting what Claude sent
+
+While an item waits, Claude can find it (`list_inbox_items`), fix it (`update_inbox_item`) or withdraw
+it (`delete_inbox_items`). The next check in Trackr shows the change, within a minute. If you've edited
+that item yourself, your version stays, with a line saying Claude changed it. A withdrawn item leaves
+the queue, stays on the server for 30 days and isn't listed under Rejected.

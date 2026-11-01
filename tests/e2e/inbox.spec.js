@@ -47,6 +47,10 @@ test('Claude inbox: make a key, review, add an expense and a buy, reject, paste'
   await expect.poll(() => !!sb.context).toBe(true);
   expect(sb.context.categories.expense.length).toBeGreaterThan(0);
   expect(JSON.stringify(sb.context)).not.toMatch(/"(balance|amount|quantity)"/);
+  const first = sb.context.accounts.find(x => x.pockets);
+  expect(first.pockets[0]).toEqual({ id: 'main', name: 'Main balance', default: true });
+  expect(first.pockets.length).toBeGreaterThan(1);
+  expect(sb.context.accounts.find(x => x.name === 'Travel Card (GBP)').pockets).toBeUndefined();
 
   // Claude sent three things.
   const cat = await page.evaluate(() => data.categories.expense[0].id);
@@ -249,5 +253,55 @@ test('the eye hides every amount on the page, and a phone needs no sideways scro
   const text = await page.locator('.main .page').innerText();
   expect(text).toContain('•••');
   expect(text).not.toMatch(/[€£$]\s?\d/);
+  expect(errors).toEqual([]);
+});
+
+test('what arrives can\'t act as your edit, and what Claude changes after your edit doesn\'t replace it', async ({ page }) => {
+  const errors = await openApp(page);
+  const sb = fakeSupabase(page);
+  await page.evaluate(u => { saveSupabaseSyncConfig({ url: u, anonKey: 'test-anon-not-real', secret: 'test-secret-not-real', lastSeenUpdatedAt: null, pending: true }); data.settings.inboxChannels = { claude: '2026-10-18' }; }, URL);
+  const o = await page.evaluate(() => { const t = data.budgetTransactions[0]; return { id: t.id, comment: t.comment, cat: data.categories.expense[0].id }; });
+  const item = (n, it) => ({ id: `00000000-0000-4000-8000-00000000009${n}`, channel: 'budget', status: 'new', source: 'demo', created_at: '2026-10-18T09:00:00Z', item: it });
+  sb.items.push(
+    item(1, { type: 'expense', date: '2026-10-15', amount: 7, name: 'Demo Forged', category_id: o.cat, _draft: { id: o.id, type: 'expense', comment: 'Overwritten', amount: '1', date: '2026-10-15', categoryId: o.cat, currency: 'EUR' } }),
+    item(2, { type: 'expense', date: '2026-10-15', amount: 9, name: 'Demo Mug', category_id: o.cat }),
+  );
+  await page.evaluate(() => inboxRefresh(true));
+  await page.evaluate(() => openInbox());
+  await expect.poll(() => page.evaluate(() => inboxCount())).toBe(2);
+  await expect(page.locator('.ib-item', { hasText: 'Demo Forged' })).toBeVisible();
+  await page.locator('.ib-item', { hasText: 'Demo Forged' }).getByRole('button', { name: 'Add', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => data.budgetTransactions.some(t => t.comment === 'Demo Forged'))).toBe(true);
+  expect(await page.evaluate(i => data.budgetTransactions.find(t => t.id === i).comment, o.id)).toBe(o.comment);
+
+  // You keep your own version of the mug; Claude then corrects its copy.
+  await page.locator('.ib-item', { hasText: 'Demo Mug' }).getByRole('button', { name: 'Edit' }).click();
+  await page.evaluate(() => { ui.modal.payload.comment = 'Demo Blue Mug'; inboxKeepEdit(); });
+  await expect(page.locator('.ib-item', { hasText: 'Demo Blue Mug' })).toBeVisible();
+  sb.items[1].item = Object.assign({}, sb.items[1].item, { name: 'Demo Red Mug' });
+  await page.evaluate(() => inboxRefresh(true));
+  await expect(page.locator('.ib-item', { hasText: 'Demo Blue Mug' })).toContainText('Claude changed this after your edit');
+  expect(errors).toEqual([]);
+});
+
+test('Test says when the connector is an older version', async ({ page }) => {
+  const errors = await openApp(page);
+  fakeSupabase(page);
+  await page.evaluate(u => { saveSupabaseSyncConfig({ url: u, anonKey: 'test-anon-not-real', secret: 'test-secret-not-real', lastSeenUpdatedAt: null, pending: true }); }, URL);
+  await page.evaluate(() => { goPage('settings'); ui.settingsOpenSections = { claude: true }; render(); });
+  await page.getByRole('button', { name: 'Make the key' }).click();
+  await expect(page.getByRole('button', { name: 'Test', exact: true })).toBeVisible();
+  let tools = [{ name: 'get_trackr_context' }];
+  await page.route(URL + '/functions/v1/trackr-inbox/*', route => {
+    const m = JSON.parse(route.request().postData());
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: m.id, result: m.method === 'tools/list' ? { tools } : { content: [{ type: 'text', text: '{}' }] } }) });
+  });
+  const said = [];
+  page.on('dialog', d => { said.push(d.message()); d.accept(); });
+  await page.evaluate(() => inboxTest());
+  expect(said.pop()).toMatch(/older version/);
+  tools = [{ name: 'update_inbox_item' }];
+  await page.evaluate(() => inboxTest());
+  expect(said.pop()).toMatch(/It works/);
   expect(errors).toEqual([]);
 });

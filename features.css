@@ -237,9 +237,10 @@
 .ib-open:disabled { cursor: default; }
 .ib-txt { min-width: 0; display: flex; flex-direction: column; }
 .ib-txt b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ib-txt span { font-size: 12px; color: var(--fx-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ib-txt span { font-size: 12px; color: var(--fx-dim); overflow-wrap: anywhere; }
 .ib-fix { width: calc(100% - 50px); max-width: 320px; margin-left: 50px; padding: 7px 10px; font-size: 13px; }
 .ib-probs { margin: 0 0 0 50px; padding: 0; list-style: none; font-size: 12px; color: var(--fx-dim); line-height: 1.45; }
+.ib-fixes { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0 50px; }
 .ib-probs li.block { color: var(--fx-ink); font-weight: 600; }
 .ib-probs .link-btn { font-size: inherit; }
 .ib-end { display: flex; align-items: center; gap: 10px; }

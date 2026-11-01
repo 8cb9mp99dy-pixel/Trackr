@@ -150,3 +150,102 @@ test('the main balance goes by the name you gave it; moves show on the pocket', 
   await expect(page.locator('.pk-moves').first()).toContainText('Demo Paint');
   expect(errors).toEqual([]);
 });
+
+/* From Claude. Items are pasted here: that takes the same fields as the connector. */
+async function pasteInbox(page, items) {
+  await page.evaluate(list => {
+    goPage('inbox'); openInboxPaste();
+    ui.modal.payload.text = JSON.stringify({ trackr: 'budget', items: list });
+    inboxPasteSave();
+  }, items);
+  await expect.poll(() => page.evaluate(() => inboxCount())).toBe(items.length);
+}
+const tab = (page, name) => page.locator('.ib-tabs .tab-btn', { hasText: name });
+const moved = (a, from, to, date, amount) => ({ type: 'transfer', date, amount, name: `${from} to ${to}`, from_account: a, from_pocket: from, to_account: a, to_pocket: to });
+
+test('a statement of pocket moves: the total stays, each pocket follows, none in Budget, there-and-back offered', async ({ page }) => {
+  const errors = await setUp(page);
+  const before = await state(page);
+  const acc = await page.evaluate(() => data.accounts[0].name);
+  const totals = () => page.evaluate(() => { const m = new Date(2026, 9, 1); return [monthIncome(m), monthExpenses(m)]; });
+  const budget = await totals();
+  await pasteInbox(page, [
+    moved(acc, 'Tax Jar', 'Everyday', '2026-10-12', 30),
+    moved(acc, 'Side Project', 'Tax Jar', '2026-10-09', 5),
+    moved(acc, 'Side Project', 'Everyday', '2026-10-09', 150), // more than it holds until the next one
+    moved(acc, 'Everyday', 'Side Project', '2026-10-10', 60),
+    moved(acc, 'Everyday', 'Tax Jar', '2026-10-13', 2),
+    moved(acc, 'Tax Jar', 'Everyday', '2026-10-13', 2),
+  ]);
+  await expect(page.locator('.ib-item', { hasText: `${acc} · Side Project → Tax Jar` })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Add 4', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => inboxCount())).toBe(2);
+  const now = await state(page);
+  expect(now.total).toBe(before.total);
+  expect(now.tax).toBe(before.tax - 30 + 5);
+  expect(now.side).toBe(before.side - 5 - 150 + 60);
+  expect(now.main).toBe(before.main + 30 + 150 - 60);
+  expect(await totals()).toEqual(budget);
+
+  // There and back the same day: both go at once, and nothing moves.
+  await tab(page, 'To check').click();
+  await expect(page.locator('.ib-item').first()).toContainText('there and back');
+  await page.getByRole('button', { name: 'Reject both' }).first().click();
+  await expect.poll(() => page.evaluate(() => inboxCount())).toBe(0);
+  expect(await state(page)).toEqual(now);
+  expect(await page.evaluate(() => data.inboxRejected.length)).toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test('an unknown pocket waits, flagged: one click makes it, and everything under that name follows', async ({ page }) => {
+  const errors = await setUp(page);
+  const before = await state(page);
+  const o = await page.evaluate(() => ({ acc: data.accounts[0].id, inc: data.categories.income[0].id }));
+  const item = name => ({ type: 'income', date: '2026-10-10', amount: 20, name, category_id: o.inc, account_id: o.acc, pocket_id: 'New Jar' });
+  await pasteInbox(page, [item('Demo Refund A'), item('Demo Refund B')]);
+  const row = page.locator('.ib-item', { hasText: 'Demo Refund A' });
+  await expect(row).toContainText('Unknown pocket: New Jar');
+  await expect(row.getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
+
+  await row.getByRole('button', { name: 'Create pocket New Jar' }).click();
+  const made = await page.evaluate(() => data.accounts[0].pockets.find(p => p.name === 'New Jar'));
+  expect(made.amountSaved).toBe(0);
+  expect((await state(page)).total).toBe(before.total);
+  await expect(page.getByText('Unknown pocket')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add 2', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => inboxCount())).toBe(0);
+  expect(await page.evaluate(() => data.accounts[0].pockets.find(p => p.name === 'New Jar').amountSaved)).toBe(40);
+  expect((await state(page)).main).toBe(before.main);
+  expect(errors).toEqual([]);
+});
+
+test('the name your bank gives the main balance, in one click, so no false pocket is made', async ({ page }) => {
+  const errors = await setUp(page);
+  await page.evaluate(() => { delete data.accounts[0].mainName; save(); });
+  const acc = await page.evaluate(() => data.accounts[0].name);
+  await pasteInbox(page, [moved(acc, 'Tax Jar', 'Current', '2026-10-10', 10)]);
+  const n = await page.evaluate(() => data.accounts[0].pockets.length);
+  await page.getByRole('button', { name: "It's the main balance" }).click();
+  expect(await page.evaluate(() => data.accounts[0].mainName)).toBe('Current');
+  expect(await page.evaluate(() => data.accounts[0].pockets.length)).toBe(n);
+  await expect(page.locator('.ib-item').first()).toContainText(`${acc} · Tax Jar → Current`);
+  expect(errors).toEqual([]);
+});
+
+test('an item goes to the pocket it says; its pocket can be changed before adding it', async ({ page }) => {
+  const errors = await setUp(page);
+  const before = await state(page);
+  const o = await page.evaluate(() => ({ acc: data.accounts[0].id, cat: data.categories.expense[0].id }));
+  await pasteInbox(page, [{ type: 'expense', date: '2026-10-10', amount: 15, name: 'Demo Cable', category_id: o.cat, account_id: o.acc, pocket_id: 'Side Project' }]);
+  await expect(page.locator('.ib-item').first()).toContainText('Side Project');
+  await page.getByRole('button', { name: 'Edit' }).click();
+  expect(await page.evaluate(() => ui.modal.payload.pocketId)).toBe('pk_side');
+  await page.evaluate(() => { updateTxField('pocketId', 'pk_tax'); saveTxForm(); });
+  await expect.poll(() => page.evaluate(() => inboxCount())).toBe(0);
+  const now = await state(page);
+  expect(now.tax).toBe(before.tax - 15);
+  expect(now.side).toBe(before.side);
+  expect(now.main).toBe(before.main);
+  expect(errors).toEqual([]);
+});
