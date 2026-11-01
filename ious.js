@@ -51,14 +51,15 @@ if (typeof module !== 'undefined' && module.exports) {
   window.__pageRenderers.ious = function () {
     const b = balances(), showAll = !!ui.iouHistory;
     const settled = list().filter(i => i.settledAt).sort((a, c) => (a.settledAt < c.settledAt ? 1 : -1));
+    const jump = b.people.length ? `class="drill" onclick="drillScroll('.iou-grid')"` : '';
     return `
     <div class="page surface-light">
       <div class="page-head"><div><h1 class="page-title">IOUs</h1><div class="page-subtitle">Money lent, borrowed and split with people</div></div>
         <button class="btn primary" onclick="openIou()">${ic('plus', 15)} Add</button></div>
       <div class="card iou-stats">
-        <div><div class="eyebrow">Owed to you</div><div class="fl-num positive">${fmtMoney(b.owedToMe)}</div></div>
-        <div><div class="eyebrow">You owe</div><div class="fl-num ${b.iOwe ? 'negative' : ''}">${fmtMoney(b.iOwe)}</div></div>
-        <div><div class="eyebrow">People</div><div class="fl-num">${b.people.length}</div><div class="dim">Not counted in net worth</div></div>
+        <div ${jump}><div class="eyebrow">Owed to you</div><div class="fl-num positive">${fmtMoney(b.owedToMe)}</div></div>
+        <div ${jump}><div class="eyebrow">You owe</div><div class="fl-num ${b.iOwe ? 'negative' : ''}">${fmtMoney(b.iOwe)}</div></div>
+        <div ${jump}><div class="eyebrow">People</div><div class="fl-num">${b.people.length}</div><div class="dim">Not counted in net worth</div></div>
       </div>
       ${b.people.length ? `<div class="iou-grid">${b.people.map(personCardHtml).join('')}</div>` : `
         <div class="card empty-state"><div class="title">Nobody owes anybody</div><div class="sub">Lent someone money, or paid the whole bill for a dinner? Add it here, or open the expense and choose “Split with someone”.</div></div>`}

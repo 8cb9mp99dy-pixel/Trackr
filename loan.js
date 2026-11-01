@@ -453,7 +453,7 @@ function loanPortfolioHtml(L, M) {
     </div>`;
   };
   return `
-    <div class="card-dark stack-gap-8" style="margin-bottom:14px;">
+    <div class="card-dark stack-gap-8 drill" style="margin-bottom:14px;" onclick="openLoanDetails('${L.id}')">
       <div class="eyebrow">Total value — loan portfolio (not your money)</div>
       <div class="big-number">${fmtMoney(value)}</div>
       <div class="${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
@@ -649,8 +649,8 @@ function loanGainChartHtml(L, G) {
     ${multiLineChartHtml(series, { xMin: ymdMs(G.start), xMax: ymdMs(end), markers, h: 260, empty: 'Add the loan details (pencil button) to see the chart.' })}
     <div style="font-size:11.5px;opacity:.65;margin-top:8px;line-height:1.5;">Green = what your investments have earned. Orange = the interest the loan adds. ${G.spent ? 'When green gets above the red dashed line, the investments have paid for the interest and the money you spent.' : 'When green gets above orange, the investments have paid for the interest.'} Touch the chart to read the values.</div>`;
 }
-function loanStat(label, value, sub, cls) {
-  return `<div class="loan-stat"><div class="eyebrow">${label}</div><div class="loan-stat-value ${cls || ''}">${value}</div>${sub ? `<div class="loan-stat-sub">${sub}</div>` : ''}</div>`;
+function loanStat(label, value, sub, cls, tap) {
+  return `<div class="loan-stat drill" onclick="${tap}"><div class="eyebrow">${label}</div><div class="loan-stat-value ${cls || ''}">${value}</div>${sub ? `<div class="loan-stat-sub">${sub}</div>` : ''}</div>`;
 }
 function renderLoanTab() {
   const list = loanList();
@@ -674,9 +674,9 @@ function renderLoanTab() {
         <button class="icon-btn-round" title="Loan details" onclick="openLoanDetails('${L.id}')">${ic('edit')}</button>
       </div>
       <div class="loan-stats">
-        ${loanStat('Your gain', fmtSigned(G.gainNow), M.estimated ? 'add your positions below' : `on ${fmtMoney(G.cost)} invested`, G.gainNow >= 0 ? 'positive' : 'negative')}
-        ${loanStat('Interest so far', fmtMoney(G.interestNow), G.s ? `${fmtMoney(scheduleAt(G.s, G.end, 'interest'))} by ${fmtMonth(G.end)}` : '', 'interest')}
-        ${loanStat(G.result >= 0 ? 'You are ahead' : 'Still to make up', fmtSigned(G.result), `gain − interest${G.spent ? ` − ${fmtMoney(G.spent)} spent` : ''}`, G.result >= 0 ? 'positive' : 'negative')}
+        ${loanStat('Your gain', fmtSigned(G.gainNow), M.estimated ? 'add your positions below' : `on ${fmtMoney(G.cost)} invested`, G.gainNow >= 0 ? 'positive' : 'negative', "drillScroll('.loan-section-title')")}
+        ${loanStat('Interest so far', fmtMoney(G.interestNow), G.s ? `${fmtMoney(scheduleAt(G.s, G.end, 'interest'))} by ${fmtMonth(G.end)}` : '', 'interest', `openLoanDetails('${L.id}')`)}
+        ${loanStat(G.result >= 0 ? 'You are ahead' : 'Still to make up', fmtSigned(G.result), `gain − interest${G.spent ? ` − ${fmtMoney(G.spent)} spent` : ''}`, G.result >= 0 ? 'positive' : 'negative', "drillScroll('.lc-plot')")}
       </div>
       <div class="loan-sentence">${sentence}</div>
     </div>

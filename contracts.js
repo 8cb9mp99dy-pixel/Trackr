@@ -59,14 +59,15 @@ if (typeof module !== 'undefined' && module.exports) {
     const rows = active().map(c => ({ c, t: term(c) })).sort((a, b) => (a.t.rolling - b.t.rolling) || (a.t.cancelBy < b.t.cancelBy ? -1 : 1));
     const perMonth = active().reduce((s, c) => s + eurMonthly(c), 0);
     const ended = list().filter(c => c.cancelledAt);
+    const jump = rows.length ? `class="drill" onclick="drillScroll('.ct-list')"` : '';
     return `
     <div class="page surface-light">
       <div class="page-head"><div><h1 class="page-title">Contracts</h1><div class="page-subtitle">Subscriptions and contracts, and the last day to cancel them</div></div>
         <div class="row-flex" style="gap:8px;"><button class="btn" onclick="openContractImport()">${ic('refresh', 15)} From recurring</button><button class="btn primary" onclick="openContract()">${ic('plus', 15)} Add</button></div></div>
       <div class="card ct-stats">
-        <div><div class="eyebrow">Per month</div><div class="fl-num">${fmtMoney(perMonth)}</div></div>
-        <div><div class="eyebrow">Per year</div><div class="fl-num">${fmtMoney(perMonth * 12)}</div></div>
-        <div><div class="eyebrow">Cancel soon</div><div class="fl-num ${due().length ? 'negative' : ''}">${due().length}</div><div class="dim">within ${CONTRACT_WARN_DAYS} days</div></div>
+        <div ${jump}><div class="eyebrow">Per month</div><div class="fl-num">${fmtMoney(perMonth)}</div></div>
+        <div ${jump}><div class="eyebrow">Per year</div><div class="fl-num">${fmtMoney(perMonth * 12)}</div></div>
+        <div ${jump}><div class="eyebrow">Cancel soon</div><div class="fl-num ${due().length ? 'negative' : ''}">${due().length}</div><div class="dim">within ${CONTRACT_WARN_DAYS} days</div></div>
       </div>
       ${rows.length ? `<div class="card ct-list">${rows.map(rowHtml).join('')}</div>` : `
         <div class="card empty-state"><div class="title">No contracts yet</div><div class="sub">Add your phone plan, insurance, gym or streaming: Trackr tells you when to cancel before they renew. “From recurring” adds your recurring bills quickly.</div></div>`}

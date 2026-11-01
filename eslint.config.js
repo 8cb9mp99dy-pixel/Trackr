@@ -3,7 +3,7 @@
 // rules kept catch real mistakes: duplicate keys, unreachable code, bad comparisons, etc.
 const js = require('@eslint/js');
 module.exports = [
-  { ignores: ['node_modules/**', 'assets/vendor/**', 'assets/logos/logos.js', 'playwright-report/**', 'test-results/**', 'Backups*/**', 'docs/**'] },
+  { ignores: ['node_modules/**', 'assets/vendor/**', 'assets/logos/logos.js', 'playwright-report/**', 'test-results/**', 'Backups*/**', 'docs/**', '.claude/**'] },
   js.configs.recommended,
   {
     files: ['**/*.js'],

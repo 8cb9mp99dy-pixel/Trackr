@@ -243,7 +243,9 @@ function recurringCalendarHtml() {
   for (let i = 0; i < lead; i++) cells.push('<div class="cal-cell empty"></div>');
   for (let d = 1; d <= days; d++) {
     const here = items.filter(it => it.day === d);
-    cells.push(`<div class="cal-cell ${isThis && today.getDate() === d ? 'today' : ''}"><span class="cal-d">${d}</span><div class="cal-marks">${here.slice(0, 3).map(it => `<span class="cal-mark ${it.kind} ${it.state || ''}" title="${escHtml((it.model.comment || it.name || '') + ' · ' + (it.kind === 'detected' ? 'detected, not recurring yet' : (it.state && typeof RECURRING_STATE_LABEL !== 'undefined' ? RECURRING_STATE_LABEL[it.state] : 'recurring')))}">${txAvatarHtml(it.model)}</span>`).join('')}${here.length > 3 ? `<span class="cal-more">+${here.length - 3}</span>` : ''}</div></div>`);
+    const date = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const logged = here.length || data.budgetTransactions.some(t => t.date === date);
+    cells.push(`<div class="cal-cell ${isThis && today.getDate() === d ? 'today' : ''}" ${logged ? `onclick="drillCalendarDay('${date}')" style="cursor:pointer;"` : ''}><span class="cal-d">${d}</span><div class="cal-marks">${here.slice(0, 3).map(it => `<span class="cal-mark ${it.kind} ${it.state || ''}" title="${escHtml((it.model.comment || it.name || '') + ' · ' + (it.kind === 'detected' ? 'detected, not recurring yet' : (it.state && typeof RECURRING_STATE_LABEL !== 'undefined' ? RECURRING_STATE_LABEL[it.state] : 'recurring')))}">${txAvatarHtml(it.model)}</span>`).join('')}${here.length > 3 ? `<span class="cal-more">+${here.length - 3}</span>` : ''}</div></div>`);
   }
   return `
     <div class="cal">

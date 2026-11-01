@@ -258,6 +258,15 @@
 .ib-sum { flex: 1; min-width: 0; display: flex; gap: 8px; font-size: 13px; font-weight: 600; overflow: hidden; white-space: nowrap; }
 .ib-bar-acts { display: flex; gap: 6px; flex: none; margin-left: auto; }
 .ib-bar-acts .btn:disabled { opacity: .4; cursor: default; }
+/* Tap a figure (drill.js): a small mark says there's more behind it. */
+.drill, .drill-link { cursor: pointer; }
+.drill > .eyebrow::after, .drill .row-flex .eyebrow::after { content: ' ›'; opacity: .5; }
+[data-tap]:active { opacity: .65; }
+[data-tap]:focus-visible { outline: 2px solid var(--fx-ink); outline-offset: 2px; }
+.pt-heat i[data-d] { cursor: pointer; }
+.drill-total { margin: 2px 0 2px; }
+.drill-sub { margin-bottom: 8px; font-size: 12.5px; }
+.drill-rows .row-flex { padding: 10px 0; border-bottom: 1px solid var(--fx-line); }
 /* Budget → Select (bulk.js) */
 .bulk-list { margin-bottom: 12px; font-size: 13px; }
 .bulk-list summary { cursor: pointer; font-weight: 600; }

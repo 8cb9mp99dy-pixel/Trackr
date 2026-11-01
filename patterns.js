@@ -108,7 +108,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const cells = [];
     for (let ms = startMs; ms <= t0; ms += PT_DAY) {
       const d = ptYmd(ms), v = days[d] || 0;
-      cells.push(`<i class="l${heatLevel(v, nz)}${d === today ? ' today' : ''}" style="--r:${(new Date(ms).getUTCDay() + 6) % 7 + 1};--i:${Math.floor((ms - startMs) / PT_DAY / 7)}" title="${escHtml(longDay(d))}: ${v ? fmtMoney(v) : 'nothing'}"></i>`);
+      cells.push(`<i class="l${heatLevel(v, nz)}${d === today ? ' today' : ''}" ${v ? `data-d="${d}"` : ''} style="--r:${(new Date(ms).getUTCDay() + 6) % 7 + 1};--i:${Math.floor((ms - startMs) / PT_DAY / 7)}" title="${escHtml(longDay(d))}: ${v ? fmtMoney(v) : 'nothing'}"></i>`);
     }
     const months = [];
     for (let ms = startMs; ms <= t0; ms += 7 * PT_DAY) { const d = new Date(ms); if (d.getUTCDate() <= 7) months.push(`<span style="--i:${Math.floor((ms - startMs) / PT_DAY / 7)}">${d.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' })}</span>`); }
@@ -117,25 +117,25 @@ if (typeof module !== 'undefined' && module.exports) {
       <div class="page-head"><div><h1 class="page-title">Patterns</h1><div class="page-subtitle">When you spend, quiet days, and your own inflation</div></div></div>
       <div class="card pt-heat-card">
         <div class="row-flex"><div class="eyebrow" style="margin:0;">A year of day-to-day spending</div><div class="pt-legend"><span>less</span>${[0, 1, 2, 3, 4].map(l => `<i class="l${l}"></i>`).join('')}<span>more</span></div></div>
-        <div class="pt-heat-wrap" style="--w:${Math.floor((t0 - startMs) / PT_DAY / 7) + 1}"><div class="pt-months">${months.join('')}</div><div class="pt-heat">${cells.join('')}</div></div>
+        <div class="pt-heat-wrap" style="--w:${Math.floor((t0 - startMs) / PT_DAY / 7) + 1}"><div class="pt-months">${months.join('')}</div><div class="pt-heat" data-plain onclick="drillHeat(event)">${cells.join('')}</div></div>
         <div class="dim" style="font-size:12px;margin-top:8px;">Bills and other recurring payments are left out.</div>
       </div>
       <div class="card pt-stats">
         <div><div class="eyebrow">No-spend days this month</div><div class="fl-num">${st.noSpendThisMonth}</div></div>
         <div><div class="eyebrow">Current streak</div><div class="fl-num">${st.current}<span class="yb-unit"> day${st.current === 1 ? '' : 's'}</span></div></div>
         <div><div class="eyebrow">Best streak</div><div class="fl-num">${st.best}<span class="yb-unit"> days</span></div><div class="dim">${st.bestEnd ? 'until ' + escHtml(shortDay(st.bestEnd)) : ''}</div></div>
-        <div><div class="eyebrow">An average day</div><div class="fl-num">${fmtMoney(total / nDays)}</div><div class="dim">${big ? `biggest: ${escHtml(shortDay(big))}, ${fmtMoney(days[big])}` : ''}</div></div>
+        <div ${big ? `class="drill" onclick="drillSpendDay('${big}')"` : ''}><div class="eyebrow">An average day</div><div class="fl-num">${fmtMoney(total / nDays)}</div><div class="dim">${big ? `biggest: ${escHtml(shortDay(big))}, ${fmtMoney(days[big])}` : ''}</div></div>
       </div>
       <div class="pt-two">
         <div class="card"><div class="eyebrow">An average…</div>
-          <div class="pt-week">${wk.map((w, i) => `<div class="pt-wd" title="${w.day}: ${fmtMoney(w.avg)}"><b>${fmtMoney(w.avg)}</b><span class="pt-wbar"><i style="height:${(w.avg / wkTop * 100).toFixed(1)}%;--d:${(i * 0.05).toFixed(2)}s"></i></span><span>${w.day}</span></div>`).join('')}</div></div>
+          <div class="pt-week">${wk.map((w, i) => `<div class="pt-wd" style="cursor:pointer;" onclick="drillWeekday(${i},'${since}','${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][i]}')" title="${w.day}: ${fmtMoney(w.avg)}"><b>${fmtMoney(w.avg)}</b><span class="pt-wbar"><i style="height:${(w.avg / wkTop * 100).toFixed(1)}%;--d:${(i * 0.05).toFixed(2)}s"></i></span><span>${w.day}</span></div>`).join('')}</div></div>
         <div class="card"><div class="eyebrow">Your own inflation</div>
           ${pc.overall ? `<div class="pt-infl ${pc.overall.pct > 0 ? 'negative' : pc.overall.pct < 0 ? 'positive' : ''}">${pctTxt(pc.overall.pct)}</div><div class="dim" style="font-size:12.5px;">Your ${pc.overall.count} recurring payments of a year ago cost ${fmtMoney(pc.overall.after)} now, against ${fmtMoney(pc.overall.before)} then.</div>` : '<div class="dim" style="font-size:13px;">Needs a few months of recurring payments to compare.</div>'}
-          ${pc.changed.length ? `<div class="pt-changes">${pc.changed.slice(0, 8).map(x => `<div><span>${escHtml(x.name)}</span><span class="dim">${fmtMoney(x.before)} → ${fmtMoney(x.after)}</span><b class="${x.pct > 0 ? 'negative' : 'positive'}">${pctTxt(x.pct)}</b></div>`).join('')}</div>` : ''}
+          ${pc.changed.length ? `<div class="pt-changes">${pc.changed.slice(0, 8).map(x => `<div class="drill-link" onclick="drillName(this.dataset.n)" data-n="${escHtml(x.name)}"><span>${escHtml(x.name)}</span><span class="dim">${fmtMoney(x.before)} → ${fmtMoney(x.after)}</span><b class="${x.pct > 0 ? 'negative' : 'positive'}">${pctTxt(x.pct)}</b></div>`).join('')}</div>` : ''}
         </div>
       </div>
       <div class="card" style="margin-top:14px;"><div class="eyebrow">Categories: last 12 months against the 12 before</div>
-        ${cc.length ? `<div class="pt-cats">${cc.map(x => `<div class="pt-cat"><span class="pt-cname">${escHtml(x.name)}</span>
+        ${cc.length ? `<div class="pt-cats">${cc.map(x => `<div class="pt-cat drill-link" onclick="drillCategoryName(this.dataset.n)" data-n="${escHtml(x.name)}"><span class="pt-cname">${escHtml(x.name)}</span>
           <span class="pt-cbars"><i class="before" style="width:${(x.before / ccTop * 100).toFixed(1)}%"></i><i class="now" style="width:${(x.now / ccTop * 100).toFixed(1)}%"></i></span>
           <b class="${x.pct == null ? '' : x.pct > 0 ? 'negative' : 'positive'}">${x.pct == null ? 'new' : pctTxt(x.pct)}</b><span class="dim pt-cnums">${fmtMoney(x.before)} → ${fmtMoney(x.now)}</span></div>`).join('')}</div>
           <div class="pt-key"><span><i class="before"></i>12 months before</span><span><i class="now"></i>last 12 months</span></div>` : '<div class="dim">Not enough history yet.</div>'}

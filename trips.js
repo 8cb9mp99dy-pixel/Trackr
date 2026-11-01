@@ -94,7 +94,7 @@ if (typeof module !== 'undefined' && module.exports) {
       <div class="page-head"><div><button class="link-btn" onclick="ui.tripId=null;render()">${ic('chevronLeft', 14)} Trips</button><h1 class="page-title">${escHtml(t.name)}</h1><div class="page-subtitle">${escHtml(range(t))} · ${s.days} days${t.mode === 'tagged' ? ' · only tagged expenses' : ''}</div></div>
         <div class="row-flex" style="gap:8px;"><button class="btn" onclick="openTrip('${t.id}')">${ic('edit', 15)} Edit</button><button class="btn primary" onclick="tripAddExpense('${t.id}')">${ic('plus', 15)} Add an expense</button></div></div>
       <div class="card tr-stats">
-        <div><div class="eyebrow">Spent</div><div class="fl-num">${fmtMoney(s.spent)}</div><div class="dim">${s.count} expense${s.count === 1 ? '' : 's'}</div></div>
+        <div ${s.count ? `class="drill" onclick="drillTrip('${t.id}')"` : ''}><div class="eyebrow">Spent</div><div class="fl-num">${fmtMoney(s.spent)}</div><div class="dim">${s.count} expense${s.count === 1 ? '' : 's'}</div></div>
         <div><div class="eyebrow">${s.left < 0 ? 'Over budget' : 'Left'}</div><div class="fl-num ${s.left < 0 ? 'negative' : ''}">${fmtMoney(Math.abs(s.left))}</div><div class="dim">of ${fmtMoney(s.budget)}</div></div>
         <div><div class="eyebrow">Per day</div><div class="fl-num ${s.perDay > s.plannedPerDay && s.budget ? 'negative' : ''}">${fmtMoney(s.perDay)}</div><div class="dim">planned ${fmtMoney(s.plannedPerDay)}</div></div>
       </div>
@@ -102,7 +102,7 @@ if (typeof module !== 'undefined' && module.exports) {
       ${s.status === 'ongoing' && s.budget ? `<div class="dim" style="margin:6px 0 14px;">At this pace the trip costs ${fmtMoney(s.projected)}. To stay on budget: ${fmtMoney(s.leftPerDay)} a day from today.</div>` : '<div style="height:14px"></div>'}
       <div class="tr-two">
         <div class="card"><div class="eyebrow">Day by day</div>
-          <div class="tr-days" style="--plan:${(s.plannedPerDay / top * 100).toFixed(1)}%">${s.byDay.map((d, i) => `<div class="tr-day ${d.date === todayYmd() ? 'today' : ''}" title="${escHtml(shortDay(d.date))}: ${fmtMoney(d.total)}"><i style="height:${(d.total / top * 100).toFixed(1)}%;--d:${(i * 0.03).toFixed(2)}s"></i></div>`).join('')}${s.budget ? '<span class="tr-plan" title="Planned per day"></span>' : ''}</div>
+          <div class="tr-days" style="--plan:${(s.plannedPerDay / top * 100).toFixed(1)}%">${s.byDay.map((d, i) => `<div class="tr-day ${d.date === todayYmd() ? 'today' : ''}" ${d.total ? `onclick="drillTrip('${t.id}','${d.date}')" style="cursor:pointer;"` : ''} title="${escHtml(shortDay(d.date))}: ${fmtMoney(d.total)}"><i style="height:${(d.total / top * 100).toFixed(1)}%;--d:${(i * 0.03).toFixed(2)}s"></i></div>`).join('')}${s.budget ? '<span class="tr-plan" title="Planned per day"></span>' : ''}</div>
           <div class="tr-axis"><span>${escHtml(shortDay(t.from))}</span><span>${escHtml(shortDay(t.to))}</span></div></div>
         <div class="card"><div class="eyebrow">By category</div>
           ${s.byCat.length ? s.byCat.map(c => `<div class="tr-cat"><span>${escHtml(c.name)}</span><b>${fmtMoney(c.total)}</b><div class="tr-cbar"><i style="width:${(c.total / catTop * 100).toFixed(1)}%"></i></div></div>`).join('') : '<div class="dim">Nothing spent yet.</div>'}</div>

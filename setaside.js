@@ -52,14 +52,15 @@ if (typeof module !== 'undefined' && module.exports) {
   window.__pageRenderers.yearly = function () {
     const rows = list().map(b => ({ b, s: state(b) })).sort((x, y) => (x.s.due < y.s.due ? -1 : 1));
     const steady = rows.reduce((t, r) => t + r.s.steady, 0), next = rows[0];
+    const jump = rows.length ? `class="drill" onclick="drillScroll('.yb-grid')"` : '';
     return `
     <div class="page surface-light">
       <div class="page-head"><div><h1 class="page-title">Yearly bills</h1><div class="page-subtitle">The costs that don't come every month, put aside month by month</div></div>
         <button class="btn primary" onclick="openYearlyBill()">${ic('plus', 15)} Add</button></div>
       <div class="card yb-stats">
-        <div><div class="eyebrow">Put aside per month</div><div class="fl-num">${fmtMoney(steady)}</div></div>
-        <div><div class="eyebrow">Per year</div><div class="fl-num">${fmtMoney(steady * 12)}</div></div>
-        <div><div class="eyebrow">Next</div><div class="fl-num">${next ? `${next.s.days}<span class="yb-unit"> days</span>` : '—'}</div><div class="dim">${next ? escHtml(next.b.name) : 'nothing planned'}</div></div>
+        <div ${jump}><div class="eyebrow">Put aside per month</div><div class="fl-num">${fmtMoney(steady)}</div></div>
+        <div ${jump}><div class="eyebrow">Per year</div><div class="fl-num">${fmtMoney(steady * 12)}</div></div>
+        <div ${jump}><div class="eyebrow">Next</div><div class="fl-num">${next ? `${next.s.days}<span class="yb-unit"> days</span>` : '—'}</div><div class="dim">${next ? escHtml(next.b.name) : 'nothing planned'}</div></div>
       </div>
       ${rows.length ? `<div class="yb-grid">${rows.map(cardHtml).join('')}</div>` : `
         <div class="card empty-state"><div class="title">No yearly bills yet</div><div class="sub">Car insurance, a yearly subscription, holidays, birthdays in December… Add them and Trackr tells you how much to put aside each month, so they never catch you out.</div></div>`}

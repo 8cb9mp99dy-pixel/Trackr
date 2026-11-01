@@ -174,9 +174,9 @@ if (typeof module !== 'undefined' && module.exports) {
       <div class="page-head"><div><h1 class="page-title">Receipts</h1><div class="page-subtitle">Receipts and warranties of what you bought</div></div>
         <button class="btn primary" onclick="openTxForm()">${ic('plus', 15)} Add expense</button></div>
       <div class="card rc-stats">
-        <div><div class="eyebrow">With a receipt</div><div class="fl-num">${all.filter(r => r.t.receipts && r.t.receipts.length).length}</div></div>
-        <div><div class="eyebrow">Under warranty</div><div class="fl-num">${covered.length}</div><div class="dim">${fmtMoney(covered.reduce((s, r) => s + toEUR(+r.t.amount || 0, r.t.currency), 0))}</div></div>
-        <div><div class="eyebrow">Ending soon</div><div class="fl-num ${soon.length ? 'negative' : ''}">${soon.length}</div><div class="dim">${soon.length ? escHtml(soon.map(r => r.t.comment || r.cat).slice(0, 2).join(', ')) : 'within a month'}</div></div>
+        <div class="drill" onclick="ui.receiptFilter='receipt';render()"><div class="eyebrow">With a receipt</div><div class="fl-num">${all.filter(r => r.t.receipts && r.t.receipts.length).length}</div></div>
+        <div class="drill" onclick="ui.receiptFilter='warranty';render()"><div class="eyebrow">Under warranty</div><div class="fl-num">${covered.length}</div><div class="dim">${fmtMoney(covered.reduce((s, r) => s + toEUR(+r.t.amount || 0, r.t.currency), 0))}</div></div>
+        <div class="drill" onclick="ui.receiptFilter='warranty';render()"><div class="eyebrow">Ending soon</div><div class="fl-num ${soon.length ? 'negative' : ''}">${soon.length}</div><div class="dim">${soon.length ? escHtml(soon.map(r => r.t.comment || r.cat).slice(0, 2).join(', ')) : 'within a month'}</div></div>
       </div>
       ${all.length ? `<div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-bottom:12px;">
         <div class="seg-row" style="margin:0;">${seg('all', 'All')}${seg('warranty', 'Under warranty')}${seg('receipt', 'With receipt')}</div>

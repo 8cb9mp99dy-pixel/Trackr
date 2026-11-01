@@ -2287,6 +2287,7 @@ function render() {
     if (typeof afterRenderMotion === 'function') afterRenderMotion(app);
     if (typeof notifyAfterRender === 'function') notifyAfterRender();
     if (typeof navAfterRender === 'function') navAfterRender(app);
+    if (typeof tapAfterRender === 'function') tapAfterRender(app);
     if (typeof cardsAfterRender === 'function') cardsAfterRender(app);
   } catch (e) {
     console.error('Render failed', e);
@@ -2668,8 +2669,8 @@ function renderAccounts() {
         
       </div>
       <div class="grid-2">
-        <div class="card-nested"><div class="eyebrow">Main balances <span style="opacity:.6;font-weight:500;">(outside pockets)</span></div><div style="font-size:18px;font-weight:700;" class="${avail >= 0 ? 'positive' : 'negative'}">${fmtMoney(avail)}</div></div>
-        <div class="card-nested"><div class="eyebrow">In pockets</div><div style="font-size:18px;font-weight:700;color:var(--accent-1);">${fmtMoney(pockets)}</div></div>
+        <div class="card-nested drill" onclick="drillBalances('main')"><div class="eyebrow">Main balances <span style="opacity:.6;font-weight:500;">(outside pockets)</span></div><div style="font-size:18px;font-weight:700;" class="${avail >= 0 ? 'positive' : 'negative'}">${fmtMoney(avail)}</div></div>
+        <div class="card-nested drill" onclick="drillBalances('pockets')"><div class="eyebrow">In pockets</div><div style="font-size:18px;font-weight:700;color:var(--accent-1);">${fmtMoney(pockets)}</div></div>
       </div>
       <div class="chip-scroll" tabindex="0" role="group" aria-label="Filters">${chips || '<span style="opacity:.5;font-size:13px;">No accounts yet</span>'}</div>
     </div>
@@ -3119,10 +3120,10 @@ function budgetTransactionsTab() {
     ${budgetTimelineHtml(m)}
 
     <div class="card bt-summary">
-      <div><div class="eyebrow">In</div><b class="positive">${fmtMoney(income)}</b></div>
-      <div><div class="eyebrow">Out</div><b class="negative">${fmtMoney(expenses)}</b></div>
-      <div><div class="eyebrow">Balance</div><b class="${balance >= 0 ? 'positive' : 'negative'}">${fmtMoney(balance)}</b></div>
-      <div><div class="eyebrow">Invested</div><b style="color:var(--accent-1);">${fmtMoney(invested)}</b></div>
+      <div class="drill" onclick="drillMonth('in')"><div class="eyebrow">In</div><b class="positive">${fmtMoney(income)}</b></div>
+      <div class="drill" onclick="drillMonth('out')"><div class="eyebrow">Out</div><b class="negative">${fmtMoney(expenses)}</b></div>
+      <div class="drill" onclick="drillMonth('net')"><div class="eyebrow">Balance</div><b class="${balance >= 0 ? 'positive' : 'negative'}">${fmtMoney(balance)}</b></div>
+      <div class="drill" onclick="drillMonth('invested')"><div class="eyebrow">Invested</div><b style="color:var(--accent-1);">${fmtMoney(invested)}</b></div>
     </div>
     ${budgetsGlanceHtml(m)}
     ${toReviewBannerHtml()}
@@ -3499,7 +3500,7 @@ function budgetTotalsSectionHtml(kind) {
       </div>
       ${d.list.length ? `<div class="totals-list">${d.list.map(c => {
         const key = kind + ':' + c.id, pct = d.total ? c.total / d.total * 100 : 0;
-        const subs = Object.values(c.subs).sort((a, b) => b.total - a.total);
+        const subs = Object.entries(c.subs).map(([id, sc]) => Object.assign({ id }, sc)).sort((a, b) => b.total - a.total);
         return `
           <div class="totals-row" onclick="toggleBudgetTotalsCat('${key}')">
             <div class="totals-main">
@@ -3511,7 +3512,7 @@ function budgetTotalsSectionHtml(kind) {
                 ${!isInc && typeof categoryTargetNote === 'function' ? categoryTargetNote(c.id, c.total, d.range.months) : ''}
               </div>
             </div>
-            ${open[key] ? `<div class="totals-subs">${subs.map(sc => `<div class="row-flex"><span>${sc.icon || ''} ${escHtml(sc.name)} <span style="opacity:.5;">· ${sc.count}</span></span><span>${fmtMoney(sc.total)} <span style="opacity:.5;">${c.total ? (sc.total / c.total * 100).toFixed(0) : 0}%</span></span></div>`).join('')}</div>` : ''}
+            ${open[key] ? `<div class="totals-subs">${subs.map(sc => `<div class="row-flex drill-link" onclick="event.stopPropagation();drillCategory('${kind}','${c.id}','${sc.id}')"><span>${sc.icon || ''} ${escHtml(sc.name)} <span style="opacity:.5;">· ${sc.count}</span></span><span>${fmtMoney(sc.total)} <span style="opacity:.5;">${c.total ? (sc.total / c.total * 100).toFixed(0) : 0}%</span></span></div>`).join('')}<button class="link-btn" onclick="event.stopPropagation();drillCategory('${kind}','${c.id}')">See the ${c.count} transaction${c.count === 1 ? '' : 's'}</button></div>` : ''}
           </div>`;
       }).join('')}</div>` : `<div style="opacity:.5;font-size:13px;">Nothing ${isInc ? 'received' : 'spent'} in this period.</div>`}
     </div>`;
@@ -3527,9 +3528,9 @@ function budgetTotalsTab() {
       ${p !== 'all' ? `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? -12 : p === '3m' ? -3 : -1})" aria-label="Previous">‹</button><div style="font-weight:700;">${escHtml(r.label)}</div><button class="icon-btn-round" onclick="shiftBudgetMonth(${p === 'year' ? 12 : p === '3m' ? 3 : 1})" aria-label="Next">›</button></div>` : `<div style="font-weight:700;">All time</div>`}
     </div>
     <div class="grid-3" style="margin-bottom:20px;">
-      <div class="card"><div class="eyebrow">Received</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(inc)}</div></div>
-      <div class="card"><div class="eyebrow">Spent</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(exp)}</div></div>
-      <div class="card"><div class="eyebrow">Left over</div><div style="font-size:20px;font-weight:700;" class="${inc - exp >= 0 ? 'positive' : 'negative'}">${fmtMoney(inc - exp)}</div></div>
+      <div class="card drill" onclick="drillTotals('in')"><div class="eyebrow">Received</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(inc)}</div></div>
+      <div class="card drill" onclick="drillTotals('out')"><div class="eyebrow">Spent</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(exp)}</div></div>
+      <div class="card drill" onclick="drillTotals('net')"><div class="eyebrow">Left over</div><div style="font-size:20px;font-weight:700;" class="${inc - exp >= 0 ? 'positive' : 'negative'}">${fmtMoney(inc - exp)}</div></div>
     </div>
     ${p === 'year' && typeof openYearReview === 'function' ? `<button class="btn full" style="margin-bottom:16px;" onclick="openYearReview(${ui.budgetMonth.getFullYear()})">Your ${ui.budgetMonth.getFullYear()} in review</button>` : ''}
     ${p === 'month' ? `<button class="btn full" style="margin-bottom:16px;" onclick="openRecap(${ui.budgetMonth.getFullYear()},${ui.budgetMonth.getMonth()})">${escHtml(monthLabel(ui.budgetMonth))} recap</button>` : ''}
@@ -4210,7 +4211,7 @@ function recurringMonthSummaryHtml(series, ym) {
   const n = {};
   series.forEach(x => { const s = recurringMonthState(x, ym); if (s) n[s.state] = (n[s.state] || 0) + 1; });
   const parts = [['paid', 'paid'], ['different', 'paid a different amount'], ['expected', 'to confirm'], ['missed', 'missed'], ['upcoming', 'coming']]
-    .filter(([k]) => n[k]).map(([k, l]) => `<span class="rec-state ${k}">${n[k]} ${l}</span>`);
+    .filter(([k]) => n[k]).map(([k, l]) => `<span class="rec-state ${k}" onclick="drillRecurringState('${k}','${ym}','${l[0].toUpperCase() + l.slice(1)}')" style="cursor:pointer;">${n[k]} ${l}</span>`);
   return parts.length ? `<div class="rec-summary"><span class="eyebrow" style="margin:0;">${escHtml(monthLabel(ymdToDate(ym + '-01')))}</span>${parts.join('')}</div>` : '';
 }
 function budgetRecurringTab() {
@@ -4228,9 +4229,9 @@ function budgetRecurringTab() {
     ${recurringMonthSummaryHtml(series, ym)}
     ${hasCal && view === 'calendar' ? `<div class="card" style="margin-bottom:20px;">${recurringCalendarHtml()}</div>` : ''}
     <div class="${moved ? 'grid-3' : 'grid-2'}" style="margin-bottom:20px;">
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed income / month</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(perMonth('income'))}</div></div></div></div>
-      <div class="card"><div class="row-flex"><div><div class="eyebrow">Fixed expenses / month</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(perMonth('expense'))}</div></div></div></div>
-      ${moved ? `<div class="card"><div class="row-flex"><div><div class="eyebrow">Moved / month</div><div style="font-size:20px;font-weight:700;">${fmtMoney(moved)}</div></div></div></div>` : ''}
+      <div class="card drill" onclick="drillFixed('income')"><div class="row-flex"><div><div class="eyebrow">Fixed income / month</div><div style="font-size:20px;font-weight:700;" class="positive">${fmtMoney(perMonth('income'))}</div></div></div></div>
+      <div class="card drill" onclick="drillFixed('expense')"><div class="row-flex"><div><div class="eyebrow">Fixed expenses / month</div><div style="font-size:20px;font-weight:700;" class="negative">${fmtMoney(perMonth('expense'))}</div></div></div></div>
+      ${moved ? `<div class="card drill" onclick="drillFixed('transfer')"><div class="row-flex"><div><div class="eyebrow">Moved / month</div><div style="font-size:20px;font-weight:700;">${fmtMoney(moved)}</div></div></div></div>` : ''}
     </div>
     ${series.length ? `<div class="card stack-gap-16">${series.map(({ id, st, model, next, rhythm, perMonth: monthly }) => `
       <div>
@@ -5202,7 +5203,7 @@ function positionsSummaryCardHtml(label, positions) {
   const cost = positions.reduce((s, p) => s + positionCost(p), 0);
   const pl = value - cost, plPct = cost ? (pl / cost * 100) : 0;
   return `
-    <div class="card-dark stack-gap-8" style="margin-bottom:20px;">
+    <div class="card-dark stack-gap-8 drill" style="margin-bottom:20px;" onclick="goPage('wealth')">
       <div class="eyebrow">Total value — ${escHtml(label)}</div>
       <div class="big-number">${fmtMoney(value)}</div>
       <div class="perf ${pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(pl))} (${fmtPct(Math.abs(plPct), false)})</div>
@@ -5565,7 +5566,7 @@ function renderCryptoTab() {
 
   return `
   <div class="crypto-tab">
-    <div class="card-dark stack-gap-8" style="margin-bottom:20px;">
+    <div class="card-dark stack-gap-8 drill" style="margin-bottom:20px;" onclick="goPage('wealth')">
       <div class="eyebrow">Total value — crypto</div>
       <div class="big-number" id="crypto-total-value">${fmtMoney(t.value)}</div>
       <div id="crypto-total-pl" class="perf ${t.pl >= 0 ? 'positive' : 'negative'}" style="font-weight:700;">${t.pl >= 0 ? '▲' : '▼'} ${fmtMoney(Math.abs(t.pl))} (${fmtPct(Math.abs(t.plPct), false)})</div>

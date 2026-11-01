@@ -309,15 +309,15 @@ function profileCardHtml() {
   const firstDates = [(data.history || [])[0] && data.history[0].date].concat(data.budgetTransactions.map(t => t.date)).filter(Boolean).sort();
   const since = firstDates[0];
   const deferred = loans.find(L => typeof loanDeferralEnd === 'function' && loanDeferralEnd(L) && loanDeferralEnd(L) > todayYmd());
-  const item = (label, value, sub) => `<div class="prof-item"><span class="eyebrow">${label}</span><b>${value}</b>${sub ? `<span class="dim">${sub}</span>` : ''}</div>`;
+  const item = (label, value, sub, tap) => `<div class="prof-item drill" onclick="${tap}"><span class="eyebrow">${label}</span><b>${value}</b>${sub ? `<span class="dim">${sub}</span>` : ''}</div>`;
   return `
     <div class="card" style="margin-top:20px;">
       <div class="eyebrow" style="margin-bottom:12px;">Investor profile</div>
       <div class="prof-grid">
-        ${item('Risk profile', profile || 'No data', share != null ? `${share.toFixed(0)}% in shares, ETFs and crypto` : 'Add your accounts and positions')}
-        ${item('Emergency cushion', cushion != null ? `${cushion.toFixed(1)} months` : 'No data', cushion != null ? (cushion >= 6 ? 'Enough (6 months or more)' : cushion >= 3 ? 'Fair (3 to 6 months)' : 'Insufficient (under 3 months)') : 'Log expenses in Budget')}
-        ${item('Debt ratio', owed ? `${assets ? (owed / assets * 100).toFixed(0) : '—'}% of assets` : 'No debts', owed ? `${fmtMoney(owed)} owed${deferred ? ` · repayments start ${fmtMonth(loanDeferralEnd(deferred))}` : ''}${loans.length ? ' (loan included, with what it bought)' : ''}` : '')}
-        ${item('Tracking since', since ? ymdToDate(since).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today', '')}
+        ${item('Risk profile', profile || 'No data', share != null ? `${share.toFixed(0)}% in shares, ETFs and crypto` : 'Add your accounts and positions', "goPage('wealth')")}
+        ${item('Emergency cushion', cushion != null ? `${cushion.toFixed(1)} months` : 'No data', cushion != null ? (cushion >= 6 ? 'Enough (6 months or more)' : cushion >= 3 ? 'Fair (3 to 6 months)' : 'Insufficient (under 3 months)') : 'Log expenses in Budget', "goPlanSection('emergency')")}
+        ${item('Debt ratio', owed ? `${assets ? (owed / assets * 100).toFixed(0) : '—'}% of assets` : 'No debts', owed ? `${fmtMoney(owed)} owed${deferred ? ` · repayments start ${fmtMonth(loanDeferralEnd(deferred))}` : ''}${loans.length ? ' (loan included, with what it bought)' : ''}` : '', "goPage('wealth');setWealthTab('liabilities')")}
+        ${item('Tracking since', since ? ymdToDate(since).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today', '', "goPage('budget')")}
       </div>
     </div>`;
 }

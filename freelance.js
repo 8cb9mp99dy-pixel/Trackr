@@ -125,9 +125,9 @@ if (typeof module !== 'undefined' && module.exports) {
       <div class="page-head"><div><h1 class="page-title">Freelance</h1><div class="page-subtitle">Invoices and VAT</div></div>
         <button class="btn primary" onclick="openInvoiceForm()">${ic('plus', 15)} New invoice</button></div>
       <div class="grid-3" style="margin-bottom:16px;">
-        <div class="card"><div class="eyebrow">Not paid yet</div><div class="fl-num">${fmtMoney(unpaid.reduce((s, i) => s + toEUR(invoiceGross(i), i.currency || 'EUR'), 0))}</div>
+        <div class="card drill" onclick="ui.freelanceTab='invoices';render()"><div class="eyebrow">Not paid yet</div><div class="fl-num">${fmtMoney(unpaid.reduce((s, i) => s + toEUR(invoiceGross(i), i.currency || 'EUR'), 0))}</div>
           <div class="dim">${unpaid.length} invoice${unpaid.length === 1 ? '' : 's'}${late.length ? ` · <span class="negative">${late.length} late</span>` : ''}</div></div>
-        <div class="card"><div class="eyebrow">VAT ${escHtml(cur.key.replace('-', ' '))} so far</div><div class="fl-num">${fmtMoney(Math.max(0, cur.due))}</div>
+        <div class="card drill" onclick="ui.freelanceTab='vat';render()"><div class="eyebrow">VAT ${escHtml(cur.key.replace('-', ' '))} so far</div><div class="fl-num">${fmtMoney(Math.max(0, cur.due))}</div>
           <div class="dim">Due by ${escHtml(shortDay(cur.deadline))}${cur.paid ? ' · paid' : ''}</div></div>
         <div class="card"><div class="eyebrow">VAT pocket</div>
           ${pocket ? `<div class="fl-num">${fmtMoney(inPocket)}</div><div class="dim">${owed > 0.005 ? (inPocket >= owed ? `<span class="positive">${fmtMoney(inPocket - owed)} more than the ${fmtMoney(owed)} owed</span>` : `<span class="negative">${fmtMoney(owed - inPocket)} short of the ${fmtMoney(owed)} owed</span>`) : 'Nothing owed right now'}</div>`
