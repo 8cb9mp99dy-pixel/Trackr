@@ -210,10 +210,13 @@ function goalTarget(g) {
   const pk = pocketByRef(g.pocket);
   return pk && +pk.p.targetAmount > 0 ? toEUR(+pk.p.targetAmount, pk.a.currency) : (+g.target || 0);
 }
-/* Money moved into / out of a pocket through Budget transfers, newest first. */
+/* Money moved into / out of a pocket through Budget, newest first: transfers, and incomes or
+   expenses paid through the pocket itself. */
 function pocketMoves(ref) {
-  return (data.budgetTransactions || []).filter(t => t.type === 'transfer' && (t.to === ref || t.from === ref))
-    .map(t => ({ date: t.date, amount: (t.to === ref ? 1 : -1) * toEUR(t.amount, t.currency), other: t.to === ref ? (t.fromLabel || '') : (t.toLabel || ''), comment: t.comment || '' }))
+  const paid = t => t.type !== 'transfer' && !!t.pocketId && `pk:${t.accountId}:${t.pocketId}` === ref;
+  return (data.budgetTransactions || []).filter(t => (t.type === 'transfer' && (t.to === ref || t.from === ref)) || paid(t))
+    .map(t => (paid(t) ? { date: t.date, amount: (t.type === 'income' ? 1 : -1) * toEUR(t.amount, t.currency), other: '', comment: t.comment || '' }
+      : { date: t.date, amount: (t.to === ref ? 1 : -1) * toEUR(t.amount, t.currency), other: t.to === ref ? (t.fromLabel || '') : (t.toLabel || ''), comment: t.comment || '' }))
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 function goalColor(g) { return g.color || hashColor(g.name || 'goal'); }

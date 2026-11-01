@@ -70,7 +70,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function upcoming() {
     return (typeof activeRecurringSeries === 'function' ? activeRecurringSeries() : []).filter(x => {
       const t = x.model;
-      if (t.type === 'expense') return true;
+      if (t.type === 'expense') return !t.pocketId;
       return t.type === 'transfer' && isMain(t.from) && !isMain(t.to);
     }).flatMap(x => (x.st.every ? recurDates(x.st, x.next, recurAddDays(todayYmd(), 62)) : [x.next]).map(date => ({ date, amount: toEUR(+x.model.amount || 0, x.model.currency), name: x.model.comment || (x.model.type === 'transfer' ? 'Transfer' : 'Bill') })));
   }

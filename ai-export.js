@@ -34,11 +34,11 @@
 
   function transactionsSheet(txs) {
     const pm = id => ((data.paymentMethods || []).find(p => p.id === id) || {}).name || '';
-    return ['Transactions', ['Date', 'Year', 'Month', 'Weekday', 'Type', 'Category', 'Sub-category', 'Name', 'Amount', 'Currency', 'Amount EUR', 'Signed EUR', 'Account', 'Paid with', 'From', 'To', 'Recurring', 'Added by the app', 'Place', 'Note', 'Impact'],
+    return ['Transactions', ['Date', 'Year', 'Month', 'Weekday', 'Type', 'Category', 'Sub-category', 'Name', 'Amount', 'Currency', 'Amount EUR', 'Signed EUR', 'Account', 'Pocket', 'Paid with', 'From', 'To', 'Recurring', 'Added by the app', 'Place', 'Note', 'Impact'],
       txs.map(t => {
         const [c, s] = catLabel(t), d = ymdToDate(t.date);
         return [str(t.date), d.getFullYear(), str(t.date).slice(0, 7), WEEKDAYS[d.getDay()], t.type, c, s, str(t.comment), r2(t.amount), str(t.currency), r2(toEUR(+t.amount || 0, t.currency)), r2(signedEUR(t)),
-          t.accountId ? (accountById(t.accountId) || {}).name || '' : '', pm(t.paymentMethodId), placeLabel(t.from), placeLabel(t.to),
+          t.accountId ? (accountById(t.accountId) || {}).name || '' : '', (txPocket(t) || {}).name || '', pm(t.paymentMethodId), placeLabel(t.from), placeLabel(t.to),
           t.recurringId || t.nature === 'Fixed' ? 'yes' : 'no', t.auto ? 'yes' : 'no', str(t.location), str(t.description), str(t.impact)];
       })];
   }

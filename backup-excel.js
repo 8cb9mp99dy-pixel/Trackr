@@ -25,6 +25,7 @@
      or app functions), so the tool and the app produce the same thing. */
   function readableSheets(d) {
     const acc = id => ((d.accounts || []).find(a => a.id === id) || {}).name || '';
+    const pocketName = t => ((((d.accounts || []).find(a => a.id === t.accountId) || {}).pockets || []).find(p => p.id === t.pocketId) || {}).name || '';
     const brk = id => ((d.brokers || []).find(b => b.id === id) || {}).name || '';
     const asset = id => (d.assets || []).find(a => a.id === id) || {};
     const S = [];
@@ -32,11 +33,11 @@
       (d.accounts || []).map(a => { const p = (a.pockets || []).reduce((s, x) => s + (+x.amountSaved || 0), 0); return [a.name, a.currency, num(a.balance), num(p), num((+a.balance || 0) + p), a.visibleInTotals ? 'yes' : 'no', str(a.balanceCheckedAt).slice(0, 10), str(a.description)]; })]);
     S.push(['Pockets', ['Account', 'Pocket', 'Saved', 'Target'],
       (d.accounts || []).flatMap(a => (a.pockets || []).map(p => [a.name, p.name, num(p.amountSaved), num(p.targetAmount)]))]);
-    S.push(['Transactions', ['Date', 'Type', 'Category', 'Sub-category', 'Amount', 'Currency', 'Name', 'Account', 'From', 'To', 'Fixed/Variable', 'Location', 'Description', 'Recurring'],
+    S.push(['Transactions', ['Date', 'Type', 'Category', 'Sub-category', 'Amount', 'Currency', 'Name', 'Account', 'From', 'To', 'Fixed/Variable', 'Location', 'Description', 'Recurring', 'Pocket'],
       (d.budgetTransactions || []).slice().sort((x, y) => (x.date < y.date ? 1 : -1)).map(t => {
         const kind = t.type === 'income' ? 'income' : 'expense';
         return [str(t.date), t.type, t.type === 'transfer' ? '' : catName(d, kind, t.categoryId), t.type === 'transfer' ? '' : subName(d, kind, t.categoryId, t.subCategoryId),
-          num(t.amount), t.currency, str(t.comment), acc(t.accountId), str(t.fromLabel || t.from), str(t.toLabel || t.to), str(t.nature), str(t.location), str(t.description), t.recurringId ? 'yes' : ''];
+          num(t.amount), t.currency, str(t.comment), acc(t.accountId), str(t.fromLabel || t.from), str(t.toLabel || t.to), str(t.nature), str(t.location), str(t.description), t.recurringId ? 'yes' : '', t.pocketId ? pocketName(t) : ''];
       })]);
     S.push(['Brokers', ['Name', 'Cash', 'Currency', 'Cash earns interest', 'Interest %', 'Yearly account fee'],
       (d.brokers || []).map(b => [b.name, num(b.cashBalance), str(b.cashCurrency || 'EUR'), b.cashInterestBearing ? 'yes' : 'no', num(b.cashInterestRate), num(b.yearlyFee)])]);

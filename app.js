@@ -395,6 +395,7 @@ function defaultData() {
       compactMode: false,
       budgetLimitsBeta: false, // Settings → Display → "Category budgets (beta)"
       newNav: false, // the beta's switch, no longer read (nav.js)
+      showPocketMoves: false, // Budget: list moves between the pockets of one account (never in the totals)
       mainAccountId: null, // the account new incomes / expenses use by default (Accounts → an account → Main account)
       sageHidden: false, // unused since Sage was removed (24 Oct 2026); kept so old documents keep their shape
       payday: null, // day of the month the salary arrives (spend.js); null = guessed from the biggest recurring income
@@ -2701,7 +2702,7 @@ function accountCardHtml(acc) {
       </div>
     </div>
     ${(acc.pockets || []).length ? `<div class="acc-split">
-      <div><div class="eyebrow">Main balance</div><div class="v">${fmtMoney(acc.balance, acc.currency)}</div></div>
+      <div><div class="eyebrow">${escHtml(mainBalanceName(acc))}</div><div class="v">${fmtMoney(acc.balance, acc.currency)}</div></div>
       <div><div class="eyebrow">In pockets</div><div class="v pk">${fmtMoney(pocketsTot, acc.currency)}</div></div>
       <div><div class="eyebrow">Total</div><div class="v">${fmtMoney(accountTotal(acc), acc.currency)}</div></div>
     </div>` : `<div style="margin-top:14px;"><div class="eyebrow">Balance</div><div style="font-weight:700;font-size:17px;">${fmtMoney(acc.balance, acc.currency)}</div></div>`}
@@ -2747,6 +2748,7 @@ function pocketsFinishedHtml(acc) {
 
 function pocketRowHtml(acc, p) {
   const pct = p.targetAmount ? Math.min(100, (p.amountSaved / p.targetAmount * 100)) : null;
+  const moves = typeof pocketMoves === 'function' ? pocketMoves(`pk:${acc.id}:${p.id}`).slice(0, 3) : [];
   return `
   <div class="card-nested">
     <div class="row-flex">
@@ -2766,6 +2768,7 @@ function pocketRowHtml(acc, p) {
       </div>
     </div>
     ${pct !== null ? `<div style="height:5px;border-radius:4px;background:var(--dark-border);overflow:hidden;margin-top:9px;"><div style="height:100%;width:${pct}%;background:${p.color};"></div></div>` : ''}
+    ${moves.length ? `<div class="pk-moves">${moves.map(m => `<div><span>${escHtml(shortDay(m.date))} · ${escHtml(m.comment || m.other || 'Move')}</span><b>${m.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(m.amount))}</b></div>`).join('')}</div>` : ''}
   </div>`;
 }
 
@@ -2789,7 +2792,7 @@ function accountMovesSince(acc) {
       const d = to ? v : -v;
       if (String(other).startsWith(pkRef)) out.pockets += d; else out.other += d;
       out.n++;
-    } else if (t.accountId === acc.id) { if (t.type === 'income') out.in += v; else out.out += v; out.n++; }
+    } else if (t.accountId === acc.id) { if (t.pocketId) return; if (t.type === 'income') out.in += v; else out.out += v; out.n++; }
     else if (!t.accountId && (t.type === 'income' || t.type === 'expense')) out.unlinked.push(t);
   });
   return out;
@@ -2901,6 +2904,7 @@ window.__modalRenderers.account = function (payload) {
       </div>
       ${acc && linkedBrokerForAccount(acc) ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">This balance is also the cash at your <strong>${escHtml(linkedBrokerForAccount(acc).name)}</strong> broker (Investments) — they always stay the same.</div>` : ''}
       <label class="field"><span class="label-text">Description / note</span><input id="af-desc" value="${escHtml(acc ? acc.description || '' : '')}"></label>
+      ${acc && (acc.pockets || []).length ? `<label class="field"><span class="label-text">Name of the main balance <span style="opacity:.6;">(what your bank calls it, optional)</span></span><input id="af-main" placeholder="Main balance" value="${escHtml(acc.mainName || '')}"></label>` : ''}
       <label class="field"><span class="label-text">Logo / image <span style="opacity:.6;">(a link, or a file from your folders)</span></span>
         <div style="display:flex;gap:6px;align-items:center;"><input id="af-logo" style="flex:1;" value="${escHtml(acc ? (acc.logoKind === 'image' ? acc.logo : '') : '')}" placeholder="Paste a link, or pick a file">${logoPickerButtonHtml('af-logo')}</div>
         ${logoPickerPopoverHtml('af-logo')}
@@ -2970,6 +2974,8 @@ function saveAccountForm(id) {
     const acc = accountById(id);
     acc.balanceCheckedAt = new Date().toISOString(); // saving the form = you just looked at this balance
     Object.assign(acc, { name, balance, icon, currency, description, color, visibleInTotals, countsAsInvestment });
+    const mainEl = document.getElementById('af-main');
+    if (mainEl) { if (mainEl.value.trim()) acc.mainName = mainEl.value.trim(); else delete acc.mainName; }
     if (logo) { acc.logo = logo; acc.logoKind = 'image'; } else { acc.logoKind = 'emoji'; }
   } else {
     const newLogo = logo || builtinLogoFor(name); // a brand-new account picks up its bundled logo automatically
@@ -3074,6 +3080,7 @@ function renderBudget() {
   </div>`;
 }
 function toggleHideTransfers() { data.settings.hideTransfers = !data.settings.hideTransfers; save(); render(); }
+function togglePocketMoves() { data.settings.showPocketMoves = !data.settings.showPocketMoves; save(); render(); }
 function setBudgetTab(t) {
   ui.budgetTab = t === 'budgets' && !budgetLimitsOn() ? 'transactions' : t;
   ui.budgetLastTab = ui.budgetLastTab || {};
@@ -3088,7 +3095,10 @@ function budgetTransactionsTab() {
   // counted it anyway). Saved with your settings, so every device shows the list the same way.
   const hideTransfers = !!data.settings.hideTransfers;
   const transferCount = allTxs.filter(t => t.type === 'transfer').length;
-  const txs = hideTransfers ? allTxs.filter(t => t.type !== 'transfer') : allTxs;
+  // Moves between the pockets of one account stay out of the list unless you ask for them.
+  const pocketMoveCount = allTxs.filter(isPocketMove).length;
+  const showPocketMoves = !!data.settings.showPocketMoves;
+  const txs = hideTransfers ? allTxs.filter(t => t.type !== 'transfer') : showPocketMoves ? allTxs : allTxs.filter(t => !isPocketMove(t));
   const income = monthIncome(m), expenses = monthExpenses(m), balance = income - expenses;
   const dayGroups = groupTransactionsByDay(txs);
   const trend = monthSpendTrend(m);
@@ -3143,11 +3153,15 @@ function budgetTransactionsTab() {
     </div>
 
     <div class="tx-list-tools">
-      <div class="eyebrow" style="margin:0;">${txs.length} transaction${txs.length === 1 ? '' : 's'}${hideTransfers && transferCount ? ` · ${transferCount} transfer${transferCount === 1 ? '' : 's'} hidden` : ''}</div>
-      <label class="switch-row"><span>Show transfers</span><button class="toggle ${hideTransfers ? '' : 'on'}" onclick="toggleHideTransfers()" aria-label="Show transfers"></button></label>
+      <div class="eyebrow" style="margin:0;">${txs.length} transaction${txs.length === 1 ? '' : 's'}${hideTransfers && transferCount ? ` · ${transferCount} transfer${transferCount === 1 ? '' : 's'} hidden` : !hideTransfers && !showPocketMoves && pocketMoveCount ? ` · ${pocketMoveCount} pocket move${pocketMoveCount === 1 ? '' : 's'} hidden` : ''}</div>
+      <div class="row-flex" style="gap:14px;">
+        ${pocketMoveCount && !hideTransfers ? `<label class="switch-row"><span>Show pocket moves</span><button class="toggle ${showPocketMoves ? 'on' : ''}" onclick="togglePocketMoves()" aria-label="Show pocket moves"></button></label>` : ''}
+        <label class="switch-row"><span>Show transfers</span><button class="toggle ${hideTransfers ? '' : 'on'}" onclick="toggleHideTransfers()" aria-label="Show transfers"></button></label>
+      </div>
     </div>
     ${dayGroups.length ? dayGroups.map(dayGroupHtml).join('') : hideTransfers && transferCount ? `
-      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Only transfers this month</div><div class="sub">${transferCount} transfer${transferCount === 1 ? ' is' : 's are'} hidden. <button class="link-btn" onclick="toggleHideTransfers()">Show them</button></div></div></div>` : `
+      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Only transfers this month</div><div class="sub">${transferCount} transfer${transferCount === 1 ? ' is' : 's are'} hidden. <button class="link-btn" onclick="toggleHideTransfers()">Show them</button></div></div></div>` : pocketMoveCount ? `
+      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Only pocket moves this month</div><div class="sub">${pocketMoveCount} move${pocketMoveCount === 1 ? ' is' : 's are'} hidden. <button class="link-btn" onclick="togglePocketMoves()">Show them</button></div></div></div>` : `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}`;
 }
 /* The month's charts sit in one fold under the summary; it remembers whether you left it open. */
@@ -3885,6 +3899,7 @@ function txRowDisplayHtml(t) {
   const subcat = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null;
   const pm = paymentMethodById(t.paymentMethodId);
   const acc = t.accountId ? accountById(t.accountId) : null;
+  const pk = txPocket(t);
   const label = t.comment || (cat ? cat.name : '—');
   const catLabel = subcat ? `${cat.name} · ${subcat.name}` : (cat ? cat.name : '');
   const subtitle = t.comment ? catLabel : (pm ? pm.name : '');
@@ -3894,7 +3909,7 @@ function txRowDisplayHtml(t) {
         ${txAvatarHtml(t)}
         <div>
           <div style="font-weight:600;font-size:14px;">${escHtml(label)}${t.nature === 'Fixed' ? ` <span class="tx-rec" title="${escHtml(recurringTxTitle(t))}">↻</span>` : ''}${(t.receipts || []).length ? ` <span class="tx-rec" title="Receipt attached" aria-label="Receipt attached">${ic('file', 12)}</span>` : ''}</div>
-          <div style="font-size:12px;opacity:.65;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}${acc ? ' · ' + escHtml(acc.name) : ''}</div>
+          <div style="font-size:12px;opacity:.65;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}${acc ? ' · ' + escHtml(acc.name) : ''}${pk ? ' · ' + escHtml(pk.name) : ''}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
@@ -3948,6 +3963,7 @@ function recurringEntry(id, model, ym, day) {
     recurringId: id, auto: true,
   };
   if (model.type === 'transfer') Object.assign(entry, { from: model.from, to: model.to, fromLabel: model.fromLabel || '', toLabel: model.toLabel || '' });
+  if (model.pocketId) entry.pocketId = model.pocketId;
   return entry;
 }
 /* One date of a series that isn't monthly. More than once a month, nobody confirms each one. */
@@ -3956,12 +3972,12 @@ function recurringEntryOn(id, model, st, date) {
   if (recurIsShort(st)) entry.confirmed = true;
   return entry;
 }
-/* A recurring transfer only happens if the pocket / broker / exchange it takes from holds enough. */
+/* A recurring transfer or pocket payment only happens if the pocket / broker / exchange it takes from holds enough. */
 function recurringEntryFits(entry) {
-  if (entry.type !== 'transfer') return true;
-  const src = transferEndpoint(entry.from), dst = transferEndpoint(entry.to);
-  if (!src || !dst) return false;
-  return !src.floor || src.get() + 0.005 >= convertCurrency(entry.amount, entry.currency, src.ccy);
+  const src = txSource(entry);
+  if (entry.type !== 'transfer') return !src || txSourceHolds(src, entry);
+  if (!src || !transferEndpoint(entry.to)) return false;
+  return txSourceHolds(src, entry);
 }
 function recurringOccurrences(seriesId) {
   return data.budgetTransactions.filter(t => t.recurringId === seriesId).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
@@ -4167,7 +4183,7 @@ function saveRecurringAmount() {
   applyTxToAccountBalance(t, -1);
   const before = t.amount;
   t.amount = Math.round(amt * 100) / 100;
-  if (t.type === 'transfer' && !recurringEntryFits(t)) { t.amount = before; applyTxToAccountBalance(t, 1); alert('There isn\'t enough in the place it comes from for that amount.'); return; }
+  if (!recurringEntryFits(t)) { t.amount = before; applyTxToAccountBalance(t, 1); alert('There isn\'t enough in the place it comes from for that amount.'); return; }
   applyTxToAccountBalance(t, 1);
   t.confirmed = true;
   if (p.scope === 'month') t.oneOff = true; else delete t.oneOff;
@@ -4286,9 +4302,36 @@ function applyTxToAccountBalance(record, sign) {
   const acc = accountById(record.accountId);
   if (!acc) return;
   const converted = convertCurrency(record.amount, record.currency, acc.currency);
-  acc.balance += sign * (record.type === 'income' ? converted : -converted);
+  const delta = sign * (record.type === 'income' ? converted : -converted);
+  // Paid from or into a pocket: only that pocket moves. Deleted since: nothing left to keep in sync.
+  if (record.pocketId) {
+    const pk = (acc.pockets || []).find(p => p.id === record.pocketId);
+    if (pk) pk.amountSaved = round2(pk.amountSaved + delta);
+    return;
+  }
+  acc.balance += delta;
 }
 const round2 = n => Math.round(n * 100) / 100;
+/* The name of an account's main balance: its default pocket, "Personal" at Revolut. */
+function mainBalanceName(acc) { return (acc && acc.mainName) || 'Main balance'; }
+/* The pocket an income / expense went through (no pocketId: the main balance). */
+function txPocket(t) {
+  const a = t && t.pocketId && accountById(t.accountId);
+  return (a && (a.pockets || []).find(p => p.id === t.pocketId)) || null;
+}
+/* Money moved between the pockets of one account: its total doesn't change. */
+function isPocketMove(t) {
+  if (!t || t.type !== 'transfer') return false;
+  const a = parseTransferRef(t.from), b = parseTransferRef(t.to);
+  return !!(a && b && a.accountId && a.accountId === b.accountId);
+}
+/* Where a transaction takes its money from, when that can run out: a transfer's "from", or the
+   pocket an expense is paid from. */
+function txSource(record) {
+  if (record.type === 'transfer') return transferEndpoint(record.from);
+  return record.type === 'expense' && record.pocketId ? transferEndpoint(`pk:${record.accountId}:${record.pocketId}`) : null;
+}
+const txSourceHolds = (src, record) => !src.floor || src.get() + 0.005 >= convertCurrency(record.amount, record.currency, src.ccy);
 /* ---- Transfers: money moving between places the app already tracks ----
    A transfer has a "from" and a "to", each one of: a bank account's main balance, one of its
    pockets, a stock broker's cash, or a crypto exchange's cash. Refs are plain strings so they
@@ -4628,7 +4671,7 @@ function linkTxAccount(t, accId) {
   return false;
 }
 function blankTxDraft() {
-  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: defaultMoneyAccountId(), currency: data.settings.defaultCurrency, amount: '', date: todayYmd(), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
+  return { type: 'expense', categoryId: '', subCategoryId: '', nature: 'Variable', paymentMethodId: '', accountId: defaultMoneyAccountId(), pocketId: '', currency: data.settings.defaultCurrency, amount: '', date: todayYmd(), comment: '', location: '', description: '', logo: '', impact: '', from: '', to: '' };
 }
 function openTxForm(id, prefill) {
   const existing = id ? data.budgetTransactions.find(t => t.id === id) : null;
@@ -4714,6 +4757,14 @@ window.__modalRenderers.tx = function (p) {
       <div class="tx-chips">
         ${data.accounts.map(a => chip(p.accountId === a.id, `updateTxField('accountId','${a.id}')`, `${escHtml(a.name)}`)).join('')}
       </div>` : ''}
+      ${(() => {
+        const a = accountById(p.accountId), pks = a ? (a.pockets || []).filter(k => !k.finishedAt || +k.amountSaved > 0 || k.id === p.pocketId) : [];
+        return pks.length ? `<div class="tx-label">Pocket</div>
+      <div class="tx-chips">
+        ${chip(!p.pocketId, `updateTxField('pocketId','')`, escHtml(mainBalanceName(a)))}
+        ${pks.map(k => chip(p.pocketId === k.id, `updateTxField('pocketId','${k.id}')`, escHtml(k.name))).join('')}
+      </div>` : '';
+      })()}
       <div class="tx-label">Paid with</div>
       <div class="tx-chips">
         ${data.paymentMethods.map(pm => chip(p.paymentMethodId === pm.id, `updateTxField('paymentMethodId','${p.paymentMethodId === pm.id ? '' : pm.id}')`, `${pm.icon || ''} ${escHtml(pm.name)}`)).join('')}
@@ -4854,6 +4905,7 @@ function txSuggestionsHtml() {
 }
 function updateTxField(field, value) {
   if (!ui.modal) return;
+  const accBefore = ui.modal.payload.accountId;
   ui.modal.payload[field] = value;
   const p = ui.modal.payload;
   if (field === 'type') { p.categoryId = ''; p.subCategoryId = ''; }
@@ -4862,6 +4914,7 @@ function updateTxField(field, value) {
   if (field === 'warrantyUntil') delete p.warrantyNoted; // a new date gets its reminder again
   // "Paid with: Cash" and the cash wallet pick each other (wallet.js).
   if (typeof walletLinkTxField === 'function') walletLinkTxField(p, field, value);
+  if (p.accountId !== accBefore) p.pocketId = ''; // a pocket belongs to its account
   // Default the amount's currency to whatever the money is leaving, so a transfer out of a EUR
   // account starts in EUR — still changeable, and converted automatically if the other side differs.
   if (p.type === 'transfer' && (field === 'from' || field === 'type')) {
@@ -4929,6 +4982,7 @@ function saveTxForm() {
     comment, location: isTransfer ? '' : (p.location || '').trim(), description: (p.description || '').trim(), logo, impact: isTransfer ? '' : (p.impact || ''),
   };
   if (p.recurringId) record.recurringId = p.recurringId;
+  if (!isTransfer && p.pocketId) record.pocketId = p.pocketId;
   // Links and marks the form doesn't show are kept when you edit (an income's split, its invoice…).
   ['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil', 'warrantyNoted', 'tripId'].forEach(k => { if (p[k] != null && p[k] !== '') record[k] = p[k]; });
   if (p.type === 'expense' && p.business) { record.business = true; if (p.vatRate != null && p.vatRate !== '') record.vatRate = +p.vatRate; }
@@ -4943,16 +4997,14 @@ function saveTxForm() {
   const idx = p.id ? data.budgetTransactions.findIndex(t => t.id === p.id) : -1;
   const prior = idx !== -1 ? data.budgetTransactions[idx] : null;
   if (prior) applyTxToAccountBalance(prior, -1);
-  if (isTransfer) {
-    // A pocket / broker / exchange can't go below zero, so refuse a transfer bigger than what's
-    // actually there (checked after undoing the old version, so editing a transfer down/up works).
-    const src = transferEndpoint(record.from);
+  // A pocket / broker / exchange can't go below zero, so refuse a transfer or a pocket payment bigger
+  // than what's actually there (checked after undoing the old version, so editing down/up works).
+  const src = txSource(record);
+  if (src && !txSourceHolds(src, record)) {
+    if (prior) applyTxToAccountBalance(prior, 1);
     const need = convertCurrency(record.amount, record.currency, src.ccy);
-    if (src.floor && src.get() + 0.005 < need) {
-      if (prior) applyTxToAccountBalance(prior, 1);
-      alert(`${src.label} only holds ${fmtMoney(src.get(), src.ccy)}, so ${fmtMoney(need, src.ccy)} can't be moved out of it.`);
-      return;
-    }
+    alert(`${src.label} only holds ${fmtMoney(src.get(), src.ccy)}, so ${fmtMoney(need, src.ccy)} can't be ${isTransfer ? 'moved out of it' : 'paid from it'}.`);
+    return;
   }
   if (prior) data.budgetTransactions[idx] = record;
   else data.budgetTransactions.push(record);
@@ -6738,6 +6790,7 @@ const BUDGET_TX_EXPORT_COLUMNS = {
   'Nature': { width: 90, type: 'String', value: t => t.nature },
   'Payment Method': { width: 125, type: 'String', value: t => (paymentMethodById(t.paymentMethodId) || {}).name || '' },
   'Account': { width: 130, type: 'String', value: t => (t.accountId && accountById(t.accountId) || {}).name || '' },
+  'Pocket': { width: 120, type: 'String', value: t => (txPocket(t) || {}).name || '' },
   // Transfers: where the money left and arrived — the same names the import template's From / To lists use.
   'From': { width: 150, type: 'String', value: t => (t.type === 'transfer' ? (transferEndpoint(t.from) || {}).label || t.fromLabel || '' : '') },
   'To': { width: 150, type: 'String', value: t => (t.type === 'transfer' ? (transferEndpoint(t.to) || {}).label || t.toLabel || '' : '') },

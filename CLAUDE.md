@@ -34,6 +34,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
   - Sync goes through the Supabase RPCs `get_trackr_data` / `set_trackr_data`, with a stale-write guard.
 - **Feature hooks.** Files add themselves through registries made in app.js: `window.__pageRenderers` (pages), `__attention` (Action required), `__notifiers`, `__addMenu`, `__palette`, `__aiSheets` (Export for AI), `__overviewCards`, `__txFormBlocks` (the expense form); `runHooks(name, fn)` calls them safely.
 - **Undo.** Destructive or big actions are listed in `UNDO_ACTIONS` (`safety.js`); each gets 10 s of undo.
+- **Pockets.** A pocket is `a.pockets[]` (`amountSaved`, `targetAmount`, `finishedAt`), money on top of the account's main balance `a.balance`, so account total = main balance + pockets. The main balance is the default pocket (`a.mainName`, optional, read with `mainBalanceName(a)`: "Personal" at Revolut). An expense or income with `t.pocketId` moves only that pocket: `applyTxToAccountBalance`, and anything that assumes main balance must skip it (`accountMovesSince`, Safe to spend, Forecast). A pocket never goes below zero: `txSource` / `txSourceHolds` refuse it, like a transfer. `isPocketMove(t)` is a transfer inside one account: Budget hides it unless `settings.showPocketMoves`.
 
 ### File map
 

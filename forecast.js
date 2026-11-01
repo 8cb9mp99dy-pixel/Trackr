@@ -87,7 +87,7 @@ if (typeof window !== 'undefined') {
         amt = toEUR(+t.amount || 0, t.currency) * sign;
       } else {
         if (t.type !== 'income' && t.type !== 'expense') return;
-        if (!inScope(t.accountId)) return;
+        if (!inScope(t.accountId) || t.pocketId) return; // paid from a pocket: no bank balance moves
         amt = toEUR(+t.amount || 0, t.currency) * (t.type === 'income' ? 1 : -1);
       }
       // From the first month not logged yet (the series' lastMonth is already in your list).
