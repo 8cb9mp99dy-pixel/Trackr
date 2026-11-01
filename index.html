@@ -27,7 +27,7 @@
   #splash .splash-icon { width: 104px; height: 104px; border-radius: 24px; background: #000; overflow: hidden; display: flex; align-items: center; justify-content: center; animation: splash-in .5s cubic-bezier(.2,.8,.2,1) both; transition: transform .45s cubic-bezier(.2,.8,.2,1); }
   #splash .splash-icon img { width: 104px; height: 104px; border-radius: 50%; animation: splash-spin 1.4s cubic-bezier(.45,.05,.35,1) infinite; }
   #splash .splash-name { font-family: 'Inter', -apple-system, sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.01em; color: #FFFFFF; opacity: 0; animation: splash-fade .5s .15s ease forwards; }
-  #splash.done { opacity: 0; visibility: hidden; }
+  #splash.done { opacity: 0; visibility: hidden; pointer-events: none; }
   #splash.done .splash-icon { transform: scale(1.18); }
   @keyframes splash-spin { to { transform: rotate(360deg); } }
   @keyframes splash-in { from { transform: scale(.82); opacity: 0; } to { transform: none; opacity: 1; } }
