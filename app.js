@@ -493,7 +493,10 @@ function defaultData() {
     assetEntries: [],
     investmentTransactions: [],
     // Goals → Future (future.js): your own assumptions; null = worked out from your data.
-    future: { monthly: null, investShare: null, investReturn: null, cashReturn: null, inflation: 2, real: true, years: 20 },
+    future: { monthly: null, investShare: null, investReturn: null, cashReturn: null, inflation: 2, real: true, years: 20,
+      // Phase 6 (2 Nov 2026): your birth date (typed by you, for your age on the axis), amounts and
+      // returns per kind of asset, debts, yearly raise of the saving, scenario spread, phases, events.
+      birthDate: '', returns: {}, start: {}, debts: null, growth: 0, spread: 2, phases: [], events: [] },
     // Freelance (freelance.js): invoices you send, and VAT per quarter.
     invoices: [],
     watchlist: [],

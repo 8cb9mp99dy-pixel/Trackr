@@ -564,3 +564,71 @@ html.tx-dragging, html.tx-dragging * { cursor: grabbing !important; }
 @media (prefers-reduced-motion: reduce) {
   .bl-enter *, .tx-tray, .tx-tray-cat { animation: none !important; transition: none !important; }
 }
+
+/* ===================== Future, long range (future.js) ===================== */
+.fu-horizons { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px -2px 4px; padding: 2px; align-items: center; }
+.fu-horizons::-webkit-scrollbar { display: none; }
+.fu-horizons .seg { flex: none; min-width: 44px; min-height: 36px; }
+.fu-custom { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 13px; padding-left: 4px; }
+.fu-custom.on span { font-weight: 700; }
+.fu-custom .fu-num { width: 70px; }
+.fu-viewrow { flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.fu-plot { position: relative; margin-top: 10px; touch-action: pan-y; cursor: crosshair; }
+.fu-plot .fu-chart { display: block; width: 100%; height: 220px; margin: 0; }
+.fu-grid { stroke: var(--fx-line, rgba(127,127,127,.2)); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.fu-grid.zero { stroke: var(--fx-line-strong, rgba(127,127,127,.45)); }
+.fu-ylbl { position: absolute; inset: 0; pointer-events: none; }
+.fu-ylbl span { position: absolute; left: 0; transform: translateY(-115%); font-size: 10.5px; color: var(--light-text-dim, #777); background: color-mix(in srgb, var(--fx-paper, #fff) 70%, transparent); padding: 0 3px; border-radius: 3px; }
+.fu-plot .fu-band { fill: color-mix(in srgb, var(--chart-1) 12%, transparent); }
+.fu-plot .fu-line { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.fu-plot .fu-line.mid { stroke: var(--chart-1); stroke-width: 2.5; }
+.fu-plot .fu-line.high { stroke: var(--chart-3); stroke-dasharray: 6 4; }
+.fu-plot .fu-line.low { stroke: var(--chart-2); stroke-dasharray: 2 4; }
+.fu-plot .fu-fi { vector-effect: non-scaling-stroke; }
+.fu-cursor { stroke: var(--fx-ink, #111); stroke-width: 1; opacity: .35; vector-effect: non-scaling-stroke; }
+.fu-k.mid { height: 3px; background: var(--chart-1); }
+.fu-k.high { height: 0; border-top: 2px dashed var(--chart-3); }
+.fu-k.low { height: 0; border-top: 2px dotted var(--chart-2); }
+.fu-tip { position: absolute; top: 6px; transform: translateX(10px); z-index: 2; display: flex; flex-direction: column; gap: 3px; min-width: 170px; padding: 8px 10px; border-radius: 10px; font-size: 12px; background: var(--fx-paper, #fff); border: 1px solid var(--fx-line, rgba(127,127,127,.25)); box-shadow: 0 6px 20px rgba(0,0,0,.12); pointer-events: none; }
+.fu-tip.flip { transform: translateX(calc(-100% - 10px)); }
+.fu-tip[hidden] { display: none; }
+.fu-tip span { display: inline-flex; align-items: center; gap: 6px; }
+.fu-ticks.aged { height: 32px; }
+.fu-ticks small { display: block; font-size: 10.5px; opacity: .75; text-align: inherit; }
+.fu-ticks span { text-align: center; }
+.fu-ticks span.first { text-align: left; }
+.fu-ticks span.last { text-align: right; }
+.fu-birth-ask { font-size: 12px; margin-top: 6px; }
+.fu-table-wrap { overflow-x: auto; margin-top: 12px; }
+.fu-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.fu-table th { text-align: right; font-weight: 600; font-size: 11.5px; opacity: .65; padding: 6px 8px; border-bottom: 1px solid var(--fx-line, rgba(127,127,127,.25)); white-space: nowrap; }
+.fu-table td { text-align: right; padding: 7px 8px; border-bottom: 1px solid var(--fx-line, rgba(127,127,127,.12)); white-space: nowrap; }
+.fu-table th:first-child, .fu-table td:first-child { text-align: left; }
+.fu-num { width: 96px; padding: 6px 8px; font: inherit; font-size: 13.5px; text-align: right; }
+.fu-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; flex-wrap: wrap; }
+.fu-field > span:last-child { display: inline-flex; align-items: center; gap: 6px; }
+.fu-field input[type=date] { width: auto; }
+.fu-sub { font-size: 13px; font-weight: 600; margin-top: 6px; }
+.fu-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto 32px; gap: 6px; align-items: center; }
+.fu-item input { min-width: 0; padding: 6px 8px; font-size: 13px; }
+.fu-item input[type=month] { width: 132px; }
+.fu-item .fu-num { width: 86px; }
+.fu-item .icon-btn-round { width: 32px; height: 32px; }
+@media (max-width: 520px) {
+  .fu-item { grid-template-columns: minmax(0, 1fr) 32px; }
+  .fu-item .fu-txt { grid-column: 1 / -1; }
+  .fu-item input[type=month] { width: 100%; }
+  .fu-item .fu-num { grid-column: 1; width: 100%; }
+  .fu-item .icon-btn-round { grid-row: 2 / span 2; grid-column: 2; }
+}
+.fu-classes { display: flex; flex-direction: column; gap: 6px; }
+.fu-class { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 13.5px; }
+.fu-class-head { font-size: 11.5px; opacity: .65; font-weight: 600; }
+.fu-class .fu-num { width: 92px; }
+.fu-class > span:last-child { display: inline-flex; align-items: center; gap: 4px; }
+.fu-class > span:last-child .fu-num { width: 64px; }
+@media (max-width: 520px) {
+  .fu-class { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .fu-class > span:nth-child(2) { display: none; }
+  .fu-class .fu-num { width: 82px; }
+}
