@@ -3383,10 +3383,11 @@ function budgetRowHtml(c, st) {
     <div class="bl-row">
       <span class="totals-icon">${c.icon || ''}</span>
       <div style="flex:1;min-width:0;">
-        <div class="row-flex" style="gap:8px;"><span class="totals-name ${typeof budgetFilterCat === 'function' ? 'bl-see' : ''}" ${typeof budgetFilterCat === 'function' ? `onclick="budgetFilterCat('expense','${c.id}')" title="See its transactions"` : ''}>${escHtml(c.name)}</span><span style="font-size:13px;"><strong>${fmtMoney(st.spent)}</strong> <span style="opacity:.65;">of</span> <input class="bl-input" inputmode="decimal" value="${st.limit}" onchange="setBudgetLimit('${c.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur();else if(event.key==='Escape'){this.value=this.defaultValue;this.blur();}" aria-label="Monthly limit for ${escHtml(c.name)}"></span></div>
+        <div class="row-flex" style="gap:8px;"><span class="totals-name ${typeof budgetFilterCat === 'function' ? 'bl-see' : ''}" ${typeof budgetFilterCat === 'function' ? `onclick="budgetFilterCat('expense','${c.id}')" title="See its transactions"` : ''}>${escHtml(c.name)}</span><span style="font-size:13px;white-space:nowrap;"><strong>${fmtMoney(st.spent)}</strong> <span style="opacity:.65;">of</span> <input class="bl-input" inputmode="decimal" value="${st.limit}" onchange="setBudgetLimit('${c.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur();else if(event.key==='Escape'){this.value=this.defaultValue;this.blur();}" aria-label="Monthly limit for ${escHtml(c.name)}"></span></div>
         <div class="totals-bar" style="height:7px;"><span style="width:${pctW.toFixed(1)}%;background:${budgetBarColor(st.level)};"></span></div>
         <div class="totals-sub">${Math.round(st.pct)}% used · ${status}${pace}</div>
       </div>
+      ${typeof removeBudget === 'function' ? `<button class="icon-btn-round bl-remove" aria-label="Remove the budget for ${escHtml(c.name)}" title="Remove this budget" onclick="removeBudget('${c.id}')">${ic('x', 13)}</button>` : ''}
     </div>`;
 }
 function budgetLimitsTab() {
@@ -3407,14 +3408,14 @@ function budgetLimitsTab() {
       <div class="totals-bar" style="height:8px;margin-top:8px;"><span style="width:${Math.min(100, planned ? spent / planned * 100 : 0).toFixed(1)}%;background:${budgetBarColor(spent > planned ? 'over' : spent > planned * 0.8 ? 'near' : 'ok')};"></span></div>
       <div class="totals-sub" style="margin-top:4px;">${planned - spent >= 0 ? `${fmtMoney(planned - spent)} left to spend in these categories` : `${fmtMoney(spent - planned)} over your plan`}</div>
     </div>
-    <div class="card" style="margin-bottom:16px;"><div class="eyebrow" style="margin-bottom:8px;">Your budgets</div><div class="totals-list">${withLimit.map(x => budgetRowHtml(x.c, x.st)).join('')}</div>
-      <div style="font-size:11.5px;opacity:.65;margin-top:8px;">Tap an amount to change it; empty it to remove the budget. Orange from 80%, red past 100%.</div></div>` : `
+    <div class="card" style="margin-bottom:16px;"><div class="row-flex" style="margin-bottom:8px;"><div class="eyebrow">Your budgets</div>${typeof openBudgetPick === 'function' ? `<button class="btn small" onclick="openBudgetPick()">Choose categories</button>` : ''}</div><div class="totals-list">${withLimit.map(x => budgetRowHtml(x.c, x.st)).join('')}</div>
+      <div style="font-size:11.5px;opacity:.65;margin-top:8px;">Tap an amount to change it; × removes the budget (the category stays). Orange from 80%, red past 100%.</div></div>` : `
     <div class="card" style="margin-bottom:16px;"><div class="empty-state"><div class="emoji">🎯</div><div class="title">Set your monthly budgets</div>
       <div class="sub">Give a category a limit (e.g. €250 for groceries) and see how much is left as the month goes on.</div>
-      <button class="btn primary" style="margin-top:14px;" onclick="suggestAllBudgets()">Suggest budgets from my spending</button></div></div>`}
+      ${typeof openBudgetPick === 'function' ? `<button class="btn primary" style="margin-top:14px;" onclick="openBudgetPick()">Choose categories</button><br>` : ''}<button class="btn ${typeof openBudgetPick === 'function' ? 'ghost small' : 'primary'}" style="margin-top:10px;" onclick="suggestAllBudgets()">Suggest budgets for every category</button></div></div>`}
     ${without.length ? `
     <div class="card">
-      <div class="row-flex" style="margin-bottom:10px;"><div class="eyebrow">Add a budget</div>${withLimit.length ? `<button class="btn small" onclick="suggestAllBudgets()">Suggest the rest</button>` : ''}</div>
+      <div class="row-flex" style="margin-bottom:10px;"><div class="eyebrow">Add a budget</div>${withLimit.length && typeof openBudgetPick === 'function' ? `<button class="btn small" onclick="openBudgetPick()">Choose…</button>` : ''}</div>
       <div class="tx-chips">${without.map(c => { const sg = suggestedLimit(c.id, m); return `<button type="button" class="chip" style="cursor:pointer;" onclick="addBudgetFor('${c.id}', ${sg || 0})">${c.icon || ''} ${escHtml(c.name)}${sg ? ` <span style="opacity:.65;font-weight:500;">~${fmtMoney(sg)}</span>` : ''}</button>`; }).join('')}</div>
       <div style="font-size:11.5px;opacity:.65;margin-top:8px;">The amount shown is your average over the last 3 months.</div>
     </div>` : ''}`;

@@ -85,6 +85,51 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   window.openBudgetArrange = function () { ui.modal = { type: 'budgetArrange' }; render(); };
   window.budgetLayoutMove = function (kind, id, delta) { setLayout(kind, moveId(budgetLayout(kind), id, delta)); };
+  /* ---- Choose your budgets ----
+     One window lists every expense category: tick the few you want a monthly budget for, with
+     its amount (your current one, else your 3-month average). Unticked ones lose their budget.
+     One save, one Undo. */
+  window.openBudgetPick = function () { ui.modal = { type: 'budgetPick' }; render(); };
+  window.__modalRenderers.budgetPick = function () {
+    const m = ui.budgetMonth, lim = budgetLimits();
+    const rows = (data.categories.expense || []).map(c => {
+      const has = parseFloat(lim[c.id]) > 0, sg = suggestedLimit(c.id, m);
+      const v = has ? lim[c.id] : (sg || '');
+      return `
+        <label class="bp-row ${has ? 'on' : ''}" data-id="${c.id}">
+          <input type="checkbox" class="bp-on" ${has ? 'checked' : ''} onchange="this.closest('.bp-row').classList.toggle('on',this.checked);if(this.checked){const a=this.closest('.bp-row').querySelector('.bp-amt');if(!a.value)a.focus();}">
+          <span class="totals-icon">${c.icon || ''}</span>
+          <span class="bp-name">${escHtml(c.name)}${sg ? `<small>~${fmtMoney(sg)} a month</small>` : ''}</span>
+          <input class="bl-input bp-amt" inputmode="decimal" value="${v}" placeholder="€" aria-label="Monthly budget for ${escHtml(c.name)}" onfocus="const r=this.closest('.bp-row');if(!r.classList.contains('on')){r.classList.add('on');r.querySelector('.bp-on').checked=true;}">
+        </label>`;
+    }).join('');
+    return `
+      <div class="modal-head"><div class="modal-title">Choose your budgets</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
+      <div class="dim" style="font-size:13px;margin-bottom:12px;">Tick only the categories you want to keep an eye on. The amount is a monthly limit; "~" is what you spent on average over the last 3 months.</div>
+      <div class="row-flex" style="gap:8px;justify-content:flex-start;margin-bottom:10px;"><button class="btn small ghost" onclick="budgetPickAll(false)">Untick all</button><button class="btn small ghost" onclick="setBudgetTab('categories');closeModal()">Edit or delete categories</button></div>
+      <div class="bp-list">${rows || '<div class="dim">No expense categories yet.</div>'}</div>
+      <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveBudgetPick()">Save</button></div>`;
+  };
+  window.budgetPickAll = function (on) {
+    document.querySelectorAll('.bp-row').forEach(r => { r.classList.toggle('on', on); r.querySelector('.bp-on').checked = on; });
+  };
+  window.saveBudgetPick = function () {
+    const lim = budgetLimits();
+    for (const r of document.querySelectorAll('.bp-row')) {
+      const id = r.dataset.id, on = r.querySelector('.bp-on').checked;
+      const v = parseAmountInput(r.querySelector('.bp-amt').value);
+      if (!on) { delete lim[id]; continue; }
+      if (!(v > 0)) { r.querySelector('.bp-amt').focus(); alert('Type an amount for each ticked category, or untick it.'); return; }
+      lim[id] = Math.round(v * 100) / 100;
+    }
+    ui.modal = null;
+    save(); render();
+  };
+  window.removeBudget = function (catId) {
+    if (!(catId in budgetLimits())) return;
+    delete budgetLimits()[catId];
+    save(); render();
+  };
   window.budgetLayoutReset = function () {
     const before = JSON.stringify(data);
     data.settings.budgetLayout = { sections: [], charts: [] };

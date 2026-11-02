@@ -632,3 +632,16 @@ html.tx-dragging, html.tx-dragging * { cursor: grabbing !important; }
   .fu-class > span:nth-child(2) { display: none; }
   .fu-class .fu-num { width: 82px; }
 }
+
+/* Choose your budgets (budget-live.js) */
+.bl-remove { flex: none; width: 32px; height: 32px; align-self: center; opacity: .6; }
+.bl-remove:hover, .bl-remove:focus-visible { opacity: 1; }
+.bp-list { display: flex; flex-direction: column; gap: 6px; max-height: 58vh; overflow-y: auto; padding: 2px; }
+.bp-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-height: 48px; border: 1px solid var(--fx-line, rgba(127,127,127,.25)); border-radius: 12px; cursor: pointer; }
+.bp-row .bp-on { width: 20px; height: 20px; flex: none; accent-color: var(--fx-ink, #111); }
+.bp-row .totals-icon { flex: none; }
+.bp-name { flex: 1; min-width: 0; font-size: 14px; }
+.bp-name small { display: block; font-size: 11.5px; opacity: .6; }
+.bp-row .bp-amt { flex: none; opacity: .45; }
+.bp-row.on { border-color: var(--fx-ink, #111); }
+.bp-row.on .bp-amt { opacity: 1; }

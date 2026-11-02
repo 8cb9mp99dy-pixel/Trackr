@@ -193,3 +193,30 @@ test('swipe the month with a finger', async ({ page }) => {
   await expect(page.locator('.bt-month')).toContainText('September');
   expect(errors).toEqual([]);
 });
+
+test('choose your budgets: tick a few, untick the rest, × removes one, Undo brings it back', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const errors = await openApp(page);
+  await page.evaluate(() => { data.budgetLimits = { exp_food: 220, exp_restaurants: 60, exp_housing: 600 }; save(); goPage('budget'); setBudgetTab('budgets'); });
+  const limits = () => page.evaluate(() => ({ ...data.budgetLimits }));
+  await page.getByRole('button', { name: 'Choose categories' }).click();
+  const pick = id => page.locator(`.bp-row[data-id="${id}"]`);
+  await expect(pick('exp_food').locator('.bp-on')).toBeChecked();
+  await page.getByRole('button', { name: 'Untick all' }).click();
+  await pick('exp_food').locator('.bp-on').check();
+  await pick('exp_restaurants').locator('.bp-amt').fill('75');  // typing an amount ticks it
+  await expect(pick('exp_restaurants').locator('.bp-on')).toBeChecked();
+  await page.getByRole('button', { name: 'Save' }).click();
+  expect(await limits()).toEqual({ exp_food: 220, exp_restaurants: 75 });
+  await expect(page.locator('.bl-row')).toHaveCount(2);
+  // The whole choice comes back with one Undo.
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(limits).toEqual({ exp_food: 220, exp_restaurants: 60, exp_housing: 600 });
+  // × on a line removes that budget only; the category stays.
+  await page.getByRole('button', { name: /Remove the budget for Housing/ }).click();
+  expect(await limits()).toEqual({ exp_food: 220, exp_restaurants: 60 });
+  expect(await page.evaluate(() => data.categories.expense.some(c => c.id === 'exp_housing'))).toBe(true);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(limits).toEqual({ exp_food: 220, exp_restaurants: 60, exp_housing: 600 });
+  expect(errors).toEqual([]);
+});
