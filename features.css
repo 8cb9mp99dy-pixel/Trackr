@@ -431,3 +431,53 @@
   .cw-sheen { transform: none; }
   .cw-track { scroll-behavior: auto; }
 }
+/* Cards: details, menu, arrange, crop, gradient (cards.js) */
+.cw-card { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: pan-x pan-y; }
+.cw-f-gradient { background-image: linear-gradient(135deg, var(--cw-g1), var(--cw-g2)); }
+.cw-f-photo { background-size: cover; background-position: center; }
+.cw-ink-light .cw-bank b, .cw-ink-light .cw-money, .cw-ink-light .cw-id { text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.cw-ink-dark .cw-bank b, .cw-ink-dark .cw-money, .cw-ink-dark .cw-id { text-shadow: 0 1px 2px rgba(255,255,255,.5); }
+.cw-type { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
+.cw-detail { margin-top: 12px; padding: 16px; border: 1px solid var(--fx-line); border-radius: var(--radius-md); background: var(--fx-fill, transparent); animation: cw-in var(--dur-med, .3s) var(--ease-out, ease-out); }
+@keyframes cw-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.cw-d-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.cw-d-amount { font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+.cw-d-amount .dim { font-size: 13px; font-weight: 500; }
+.cw-d-actions { display: flex; gap: 6px; flex: none; }
+.cw-d-cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 18px; }
+.cw-d-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; padding: 7px 0; border: 0; border-bottom: 1px solid var(--fx-line); background: none; color: inherit; font: inherit; font-size: 13px; text-align: left; }
+button.cw-d-row { cursor: pointer; }
+button.cw-d-row:hover span { text-decoration: underline; }
+.cw-d-row span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cw-d-row b { flex: none; font-weight: 600; }
+.cw-menu { display: flex; flex-direction: column; }
+.cw-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 4px; border: 0; border-bottom: 1px solid var(--fx-line); background: none; color: inherit; font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
+.cw-menu-item:last-child { border-bottom: 0; }
+.cw-menu-item.danger { color: #d64545; }
+.cw-hint { font-size: 12.5px; margin-bottom: 10px; }
+.cw-arrange { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.cw-mini { position: relative; aspect-ratio: 1.586; border-radius: 12px; cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; container-type: inline-size; }
+.cw-mini .cw-face { padding: 9px 10px; border-radius: 12px; font-size: 9px; }
+.cw-mini .cw-bank { font-size: 10px; }
+.cw-mini .cw-bank img { width: 14px; height: 14px; border-radius: 4px; }
+.cw-mini .cw-chip { width: 20px; height: 15px; border-radius: 3px; }
+.cw-mini .cw-money b { font-size: 12px; }
+.cw-mini .cw-money span, .cw-mini .cw-id, .cw-mini .cw-type { font-size: 8.5px; }
+.cw-mini .cw-wave, .cw-mini .cw-sheen { display: none; }
+.cw-mini-ghost { opacity: .35; }
+.sortable-drag, .sortable-fallback { opacity: .95 !important; transform: rotate(-2deg) scale(1.04); box-shadow: 0 14px 30px rgba(0,0,0,.25); }
+.cf-from { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.cf-grad { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.cf-palette { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12.5px; }
+.cf-swatch { width: 28px; height: 28px; padding: 0; border: 1px solid var(--fx-line-strong); border-radius: 50%; cursor: pointer; }
+.cc-frame { position: relative; width: 100%; aspect-ratio: 1.586; overflow: hidden; border-radius: 16px; background: #111; box-shadow: 0 0 0 2px var(--fx-ink), 0 0 0 9999px rgba(0,0,0,.06); cursor: grab; touch-action: none; }
+.cc-frame:active { cursor: grabbing; }
+.cc-frame img { position: absolute; max-width: none; height: auto; -webkit-user-select: none; user-select: none; pointer-events: none; }
+@media (max-width: 640px) {
+  .cw-d-cols { grid-template-columns: 1fr; gap: 12px; }
+  .cw-d-amount { font-size: 21px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cw-detail { animation: none; }
+  .sortable-drag, .sortable-fallback { transform: none; }
+}

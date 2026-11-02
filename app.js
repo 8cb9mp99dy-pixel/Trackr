@@ -3080,6 +3080,7 @@ function renderBudget() {
       <div><h1 class="page-title">Budget</h1><div class="page-subtitle">${data.budgetTransactions.length} transaction${data.budgetTransactions.length !== 1 ? 's' : ''} logged</div></div>
       ${typeof renderReceipts === 'function' && !(typeof newNavOn === 'function' && newNavOn()) ? `<button class="btn" onclick="goPage('receipts')" title="Receipts and warranties of what you bought">${ic('file', 15)} Receipts</button>` : ''}
     </div>
+    ${typeof cardsHtml === 'function' ? cardsHtml() : ''}
     <div class="tab-row budget-tabs">
       ${budgetGroups().map(g => `<button class="tab-btn ${group.id === g.id ? 'active' : ''}" onclick="setBudgetGroup('${g.id}')">${g.label}</button>`).join('')}
     </div>
