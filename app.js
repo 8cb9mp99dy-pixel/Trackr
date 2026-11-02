@@ -156,6 +156,8 @@ const ICON_PATHS = {
   swap: '<path d="M7 10h14l-4 -4"/><path d="M17 14h-14l4 4"/>',
   folder: '<path d="M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2"/>',
   x: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
+  lock: '<path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6z"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/>',
+  undo: '<path d="M9 14l-4 -4l4 -4"/><path d="M5 10h11a4 4 0 1 1 0 8h-1"/>',
   check: '<path d="M5 12l5 5l10 -10"/>',
   refresh: '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>',
   briefcase: '<path d="M3 9a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M8 7v-2a2 2 0 0 1 2 -2h4a2 2 0 0 1 2 2v2"/><path d="M12 12l0 .01"/><path d="M3 13a20 20 0 0 0 18 0"/>',
@@ -554,6 +556,12 @@ function defaultData() {
     // Budget → Income plan (allocation.js): how a salary / freelance payment is split when it comes in.
     incomePlan: {
       on: true, since: null, version: 2, triggerCats: ['inc_salary', 'inc_freelance'],
+      // VAT: per income source, is the amount typed incl. or excl. VAT ({ catId: 'incl'|'excl' },
+      // 'incl' when missing: what lands in the bank holds its VAT); VAT set aside rounded up to the
+      // euro (the user's choice: €1 too much rather than too little). The VAT rate is the VAT step's pct.
+      vatModes: {}, vatRoundUp: true,
+      // Your own split presets: [{ id, name, parts: [{ label, pct, to, color }] }].
+      presets: [],
       // VAT first (freelance), then savings, then pockets, then money for the month. Empty "to" =
       // guessed from the name (VAT pocket, Trade Republic, a pocket, Revolut) until you choose.
       steps: [

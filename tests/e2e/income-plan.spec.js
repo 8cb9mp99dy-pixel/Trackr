@@ -9,15 +9,15 @@ test('a freelance income is split: VAT first, then savings, pockets, and money f
     save();
   });
   const before = await page.evaluate(() => ({ bank: accountById('acc_demo1').balance, broker: brokerCash(brokerById('brk_demo1')), trip: accountById('acc_demo1').pockets.find(p => p.id === 'pk_demo1').amountSaved }));
-  // Add €1,000 of freelance income to the current account, as the form does.
+  // €1,210 of freelance income lands in the current account (VAT included), as the form adds it.
   await page.evaluate(() => {
-    openTxForm(null, { type: 'income', categoryId: 'inc_freelance', amount: '1000', comment: 'Client invoice', accountId: 'acc_demo1', date: '2026-10-18' });
+    openTxForm(null, { type: 'income', categoryId: 'inc_freelance', amount: '1210', comment: 'Client invoice', accountId: 'acc_demo1', date: '2026-10-18' });
     saveTxForm();
   });
   await expect(page.locator('.modal-title')).toHaveText('Split this income');
   const lines = await page.evaluate(() => ui.modal.payload.lines.map(l => [l.label, l.amount, l.to]));
-  expect(lines).toEqual([['VAT', 210, 'pk:acc_demo1:pk_vat'], ['Savings (invest)', 197.5, 'brk:brk_demo1'], ['Pockets', 197.5, 'pk:acc_demo1:pk_demo1'], ['Monthly expenses', 197.5, 'stay']]);
-  await expect(page.locator('.split-rest')).toContainText('€197.50');
+  expect(lines).toEqual([['VAT', 210, 'pk:acc_demo1:pk_vat'], ['Savings (invest)', 250, 'brk:brk_demo1'], ['Pockets', 250, 'pk:acc_demo1:pk_demo1'], ['Monthly expenses', 250, 'stay']]);
+  await expect(page.locator('.split-rest')).toContainText('€250.00');
   await expect(page.locator('.split-row').first()).toContainText('VAT Storage');
   await page.getByRole('button', { name: 'Split now' }).click();
 
@@ -27,9 +27,9 @@ test('a freelance income is split: VAT first, then savings, pockets, and money f
     trip: accountById('acc_demo1').pockets.find(p => p.id === 'pk_demo1').amountSaved,
     split: data.budgetTransactions.find(t => t.comment === 'Client invoice').split,
   }));
-  expect(Math.round((after.bank - before.bank) * 100) / 100).toBe(1000 - 210 - 197.5 - 197.5);
-  expect(Math.round((after.trip - before.trip) * 100) / 100).toBe(197.5);
-  expect(Math.round((after.broker - before.broker) * 100) / 100).toBe(197.5);
+  expect(Math.round((after.bank - before.bank) * 100) / 100).toBe(1210 - 210 - 250 - 250);
+  expect(Math.round((after.trip - before.trip) * 100) / 100).toBe(250);
+  expect(Math.round((after.broker - before.broker) * 100) / 100).toBe(250);
   expect(after.vat).toBe(210);
   expect(after.split.transfers.length).toBe(3);
   // Undo puts everything back as it was right after the income.
@@ -88,4 +88,34 @@ test('an unedited first plan moves to the new order; an edited one is kept', asy
   });
   expect(out.a).toEqual(['VAT', 'Savings (invest)', 'Pockets', 'Monthly expenses']);
   expect(out.b).toEqual(['VAT', 'Invest', 'Day-to-day spending']);
+});
+
+test('VAT line: incl./excl., 9 %, 0 %, round up; unnamed parts take their place name', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const errors = await openApp(page);
+  await page.evaluate(() => openIncomePlanEditor(2));
+  const vat = page.locator('.ip-vat-amt');
+  await expect(vat).toHaveText('€174.00');                       // €1,000 incl. 21 % = €173.55, rounded up
+  await page.locator('.ip-check input').uncheck();
+  await expect(vat).toHaveText('€173.55');
+  await page.getByRole('button', { name: 'excl. VAT' }).click();
+  await expect(vat).toHaveText('€210.00');
+  await expect(page.locator('.ip-part-amt').first()).toHaveText('€250.00');
+  await page.getByRole('button', { name: '9%', exact: true }).click();
+  await expect(vat).toHaveText('€90.00');
+  await page.getByRole('button', { name: '0%', exact: true }).click();
+  await expect(vat).toHaveText('€0.00');
+  await page.getByRole('button', { name: '21%', exact: true }).click();
+  // A part with no name is saved with its place's name.
+  await page.getByRole('button', { name: '+ Add a part' }).click();
+  await page.locator('.ip-part').nth(3).locator('select').selectOption('pk:acc_demo1:pk_demo1');
+  await page.locator('.ip-part').nth(1).locator('input[aria-label="Percent"]').fill('15');
+  await page.locator('.ip-part').nth(1).locator('input[aria-label="Percent"]').dispatchEvent('change');
+  await page.getByRole('button', { name: 'Save plan' }).click();
+  const p = await page.evaluate(() => ({ names: data.incomePlan.steps.map(s => s.label), modes: data.incomePlan.vatModes, round: data.incomePlan.vatRoundUp }));
+  expect(p.names[4]).toBe(await page.evaluate(() => accountById('acc_demo1').pockets.find(x => x.id === 'pk_demo1').name));
+  expect(p.names).not.toContain('Part');
+  expect(p.modes).toEqual({ inc_freelance: 'excl' });
+  expect(p.round).toBe(false);
+  expect(errors).toEqual([]);
 });

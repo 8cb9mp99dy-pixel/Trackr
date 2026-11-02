@@ -8,27 +8,64 @@
  * data.incomePlan = { on, since (incomes from this day are offered), triggerCats: [income
  *   category ids], steps: [{ id, label, pct, setAside (taken first, from the whole amount),
  *   onlyCat ('' = every income in triggerCats), to (a transfer ref, 'stay' = stays in the
- *   account, '' = guessed from the label) }] }
+ *   account, '' = guessed from the label), color (a slice colour for a place that isn't a pocket) }],
+ *   vatModes: { catId: 'incl' | 'excl' }, vatRoundUp, presets } — the VAT rate is the VAT step's pct.
+ * A real payment is always split as VAT included (it's what landed in the bank); the incl./excl.
+ * choice is for planning, e.g. from an invoice's amount before it's paid.
  * An income that was split (or skipped) keeps { split: { at, skipped?, transfers: [ids] } }.
  * The first half is pure and tested in Node (tests/unit/allocation.test.js).
  */
 
-/* Steps that apply to an income of this category, with their amounts. Set-aside steps (taxes)
-   are taken from the whole amount first; the other percentages apply to what's left after them.
-   Never gives out more than the income: once it's used up, later steps get what remains. */
-function incomeSplit(amount, catId, steps) {
-  const r2 = n => Math.round(n * 100) / 100;
+/* VAT on an amount at rate %. mode 'incl': the amount already holds the VAT (what lands in the
+   bank), VAT = amount × rate / (100 + rate). mode 'excl': the amount is before VAT (an invoice's
+   net), VAT = amount × rate / 100 comes on top. roundUp sets aside the VAT rounded up to the next
+   whole euro (the user would rather keep €1 too much for the tax office than too little); those
+   extra cents come out of what is split, so VAT + splittable is always exactly what's received. */
+const r2 = n => Math.round(n * 100) / 100;
+function vatSplit(amount, rate, mode, roundUp) {
+  const a = Math.max(0, +amount || 0), r = Math.max(0, +rate || 0);
+  const exact = r2(mode === 'excl' ? a * r / 100 : a * r / (100 + r));
+  const received = r2(mode === 'excl' ? a + exact : a);
+  const vat = roundUp && exact > 0 ? Math.min(received, Math.ceil(exact - 1e-9)) : exact;
+  return { vat, exact, splittable: r2(received - vat), received };
+}
+/* Shares a total out by weights, in whole cents, so the shares always add up to the total
+   exactly: everyone gets the cents below their exact share, then the cents left over go to the
+   biggest fractions (largest-remainder method; ties to the first). */
+function largestRemainder(total, weights) {
+  const cents = Math.round(Math.max(0, +total || 0) * 100);
+  const w = (weights || []).map(x => Math.max(0, +x || 0)), sum = w.reduce((a, b) => a + b, 0);
+  if (!sum) return w.map(() => 0);
+  const exact = w.map(x => cents * x / sum), out = exact.map(x => Math.floor(x + 1e-9));
+  let left = cents - out.reduce((a, b) => a + b, 0);
+  const order = exact.map((x, i) => [x - out[i], i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (let k = 0; left > 0 && k < order.length; k++, left--) out[order[k][1]]++;
+  return out.map(c => c / 100);
+}
+/* Percentages never add up to more than 100: once 100 is used, later parts get what remains. */
+function capPercents(pcts) {
+  let used = 0;
+  return (pcts || []).map(p => { const v = Math.max(0, Math.min(+p || 0, 100 - used)); used += v; return v; });
+}
+/* Steps that apply to an income of this category, with their amounts. The VAT step (setAside) is
+   taken first, as above (opts.vatMode, 'incl' by default: a payment that lands in the bank holds
+   its VAT; opts.vatRoundUp, on unless false); the parts' percentages are of what's left after it (the splittable amount). Parts and
+   what stays add up to the splittable amount to the cent. */
+function incomeSplit(amount, catId, steps, opts) {
   const gross = Math.max(0, +amount || 0);
   const mine = (steps || []).filter(s => (+s.pct || 0) > 0 && (!s.onlyCat || s.onlyCat === catId));
-  let left = gross;
-  const lines = [];
-  const take = (s, want) => { const amt = r2(Math.min(left, Math.max(0, want))); left = r2(left - amt); lines.push({ step: s, pct: +s.pct, amount: amt }); };
-  mine.filter(s => s.setAside).forEach(s => take(s, gross * s.pct / 100));
-  const base = left;
-  mine.filter(s => !s.setAside).forEach(s => take(s, base * s.pct / 100));
-  return { gross, base, lines, rest: left };
+  const vatStep = mine.find(s => s.setAside) || null;
+  const o = opts || {};
+  const V = vatStep ? vatSplit(gross, vatStep.pct, o.vatMode || 'incl', o.vatRoundUp !== false) : { vat: 0, exact: 0, splittable: r2(gross), received: r2(gross) };
+  const parts = mine.filter(s => s !== vatStep);
+  const pcts = capPercents(parts.map(s => s.pct));
+  const used = pcts.reduce((a, b) => a + b, 0);
+  const shares = largestRemainder(V.splittable, pcts.concat([Math.max(0, 100 - used)]));
+  const lines = (vatStep ? [{ step: vatStep, pct: +vatStep.pct, amount: V.vat, vat: true }] : [])
+    .concat(parts.map((s, i) => ({ step: s, pct: pcts[i], amount: shares[i] })));
+  return { gross, base: V.splittable, received: V.received, vat: V.vat, vatExact: V.exact, lines, rest: shares[shares.length - 1] };
 }
-if (typeof module !== 'undefined' && module.exports) module.exports = { incomeSplit };
+if (typeof module !== 'undefined' && module.exports) module.exports = { incomeSplit, vatSplit, largestRemainder, capPercents };
 
 if (typeof window !== 'undefined') {
   window.incomePlan = function () {
@@ -65,6 +102,16 @@ if (typeof window !== 'undefined') {
     }
     return 'stay';
   };
+  /* A destination's own name (a pocket, an account, a broker), used when a part has no name. */
+  window.ipPlaceName = function (ref) {
+    const ep = parseTransferRef(ref);
+    if (!ep) return ref === 'stay' ? 'Keep' : '';
+    if (ep.kind === 'pk') { const a = accountById(ep.accountId), pk = a && (a.pockets || []).find(p => p.id === ep.pocketId); return pk ? pk.name : ''; }
+    if (ep.kind === 'acc') { const a = accountById(ep.accountId); return a ? a.name : ''; }
+    if (ep.kind === 'brk') { const b = brokerById(ep.brokerId); return b ? b.name : ''; }
+    return ep.exchange || '';
+  };
+  window.ipPartName = x => String((x && x.label) || '').trim() || ipPlaceName(x && (x.to || incomeStepTarget(x))) || 'Part';
   const placeLabel = ref => (ref === 'stay' ? 'stays in the account' : ref && parseTransferRef(ref) && parseTransferRef(ref).kind === 'pk' ? shortPlace({ ref, label: (transferEndpoint(ref) || {}).label || '' }) : ((transferEndpoint(ref) || {}).label || 'choose where'));
   window.incomePlanTriggers = function (t) {
     const p = incomePlan();
@@ -83,16 +130,16 @@ if (typeof window !== 'undefined') {
   window.openIncomeSplit = function (txId) {
     const t = data.budgetTransactions.find(x => x.id === txId);
     if (!t) return;
-    const S = incomeSplit(t.amount, t.categoryId, incomePlan().steps);
+    const S = incomeSplit(t.amount, t.categoryId, incomePlan().steps, { vatMode: 'incl', vatRoundUp: incomePlan().vatRoundUp !== false });
     ui.modal = { type: 'incomeSplit', payload: {
       txId, from: t.accountId || (data.accounts.find(a => !(typeof isCashWallet === 'function' && isCashWallet(a))) || {}).id || '',
-      lines: S.lines.map(l => ({ id: l.step.id, label: l.step.label, pct: l.pct, amount: l.amount, to: incomeStepTarget(l.step), on: true })),
+      lines: S.lines.map(l => ({ id: l.step.id, label: ipPartName(l.step), pct: l.pct, amount: l.amount, to: incomeStepTarget(l.step), on: true })),
     } };
     render();
   };
   /* Offered right after you add an income by hand. */
   window.incomePlanOffer = function (t) {
-    if (incomePlanTriggers(t) && !t.split && incomeSplit(t.amount, t.categoryId, incomePlan().steps).lines.length) openIncomeSplit(t.id);
+    if (incomePlanTriggers(t) && !t.split && incomeSplit(t.amount, t.categoryId, incomePlan().steps, { vatMode: 'incl' }).lines.length) openIncomeSplit(t.id);
   };
   const placeOptions = (sel, withStay) => `${withStay ? `<option value="stay" ${sel === 'stay' ? 'selected' : ''}>Keep in the account</option>` : ''}
     <option value="" ${!sel ? 'selected' : ''} disabled>Choose where…</option>
@@ -189,7 +236,8 @@ if (typeof window !== 'undefined') {
     ui.modal = { type: 'incomePlanEdit', payload: {
       step: step || 1, cats: p.triggerCats.slice(),
       vatOn: !!v, vatPct: v ? v.pct : 21, vatTo: v ? incomeStepTarget(v) : incomeStepTarget({ label: 'VAT', to: '' }), vatCat: v ? (v.onlyCat || '') : 'inc_freelance',
-      parts: partSteps(p).map(x => ({ id: x.id, label: x.label, pct: x.pct, to: incomeStepTarget(x) })),
+      vatMode: (p.vatModes || {})[(v && v.onlyCat) || '*'] || 'incl', vatRoundUp: p.vatRoundUp !== false,
+      parts: partSteps(p).map(x => ({ id: x.id, label: x.label, pct: x.pct, to: incomeStepTarget(x), color: x.color || '' })),
     } };
     render();
   };
@@ -197,7 +245,7 @@ if (typeof window !== 'undefined') {
   window.ipSet = function (field, value, i) {
     const d = D();
     const num = v => Math.max(0, Math.min(100, parseFloat(String(v).replace(',', '.')) || 0));
-    if (i == null) d[field] = field === 'vatPct' ? num(value) : value;
+    if (i == null) d[field] = field === 'vatPct' ? Math.min(50, num(value)) : value;
     else d.parts[i][field] = field === 'pct' ? num(value) : value;
     render();
   };
@@ -207,9 +255,14 @@ if (typeof window !== 'undefined') {
   window.saveIncomePlan = function () {
     const d = D(), p = incomePlan();
     if (!d.cats.length) { alert('Choose at least one kind of income.'); return; }
-    const parts = d.parts.filter(x => (x.label || '').trim() || x.pct > 0).map(x => ({ id: x.id, label: (x.label || '').trim() || 'Part', pct: x.pct, setAside: false, onlyCat: '', to: x.to || 'stay' }));
+    // A part with no name takes its place's name (a pocket's, a broker's…), never "Part".
+    const parts = d.parts.filter(x => (x.label || '').trim() || x.pct > 0).map(x => Object.assign({ id: x.id, label: ipPartName(x), pct: x.pct, setAside: false, onlyCat: '', to: x.to || 'stay' }, x.color ? { color: x.color } : {}));
+    const vatCat = d.cats.includes(d.vatCat) ? d.vatCat : '';
     p.triggerCats = d.cats.slice();
-    p.steps = (d.vatOn ? [{ id: (vatStep(p) || {}).id || 'ip_vat', label: 'VAT', pct: d.vatPct, setAside: true, onlyCat: d.cats.includes(d.vatCat) ? d.vatCat : '', to: d.vatTo || '' }] : []).concat(parts);
+    p.steps = (d.vatOn ? [{ id: (vatStep(p) || {}).id || 'ip_vat', label: 'VAT', pct: d.vatPct, setAside: true, onlyCat: vatCat, to: d.vatTo || '' }] : []).concat(parts);
+    if (!p.vatModes || typeof p.vatModes !== 'object') p.vatModes = {};
+    p.vatModes[vatCat || '*'] = d.vatMode === 'excl' ? 'excl' : 'incl';
+    p.vatRoundUp = d.vatRoundUp !== false;
     p.on = true;
     save(); closeModal();
   };
@@ -224,39 +277,63 @@ if (typeof window !== 'undefined') {
         <div class="ip-vat">
           <label class="switch-row"><button class="toggle ${d.vatOn ? 'on' : ''}" onclick="ipSet('vatOn', ${!d.vatOn})" aria-label="Set VAT aside"></button><span style="font-weight:600;">Set VAT aside first</span></label>
           ${d.vatOn ? `<div class="ip-vat-row">
-            <span class="split-pct"><input type="number" min="0" max="100" step="0.5" value="${d.vatPct}" onchange="ipSet('vatPct', this.value)" aria-label="VAT percent">%</span>
-            <span>of</span>
+            <span>On</span>
             <select class="mini-select" onchange="ipSet('vatCat', this.value)" aria-label="Which income pays VAT">
               ${cats.filter(c => d.cats.includes(c.id)).map(c => `<option value="${c.id}" ${d.vatCat === c.id ? 'selected' : ''}>${escHtml(c.name)}</option>`).join('')}<option value="" ${!d.vatCat ? 'selected' : ''}>every payment</option></select>
-            <span>to</span>
-            <select class="mini-select" onchange="ipSet('vatTo', this.value)" aria-label="Where VAT goes">${placeOptions(d.vatTo, false)}</select>
+            <span class="dim">· rate and where it goes on the next step</span>
           </div>` : ''}
         </div>
         <button class="btn primary full" style="margin-top:16px;" onclick="ui.modal.payload.step=2;render();" ${d.cats.length ? '' : 'disabled'}>Next</button>`;
     }
     const total = d.parts.reduce((s, x) => s + (+x.pct || 0), 0);
     const exCat = d.vatOn && d.vatCat && d.cats.includes(d.vatCat) ? d.vatCat : d.cats[0];
-    const ex = incomeSplit(1000, exCat, (d.vatOn ? [{ id: 'v', label: 'VAT', pct: d.vatPct, setAside: true, onlyCat: d.vatCat }] : []).concat(d.parts.map(x => ({ id: x.id, label: x.label || 'Part', pct: x.pct }))));
+    const exAmt = 1000;
+    const ex = ipExample(d, exCat, exAmt);
     const exName = (categoryById('income', exCat) || {}).name || 'income';
+    const partLine = (x, i) => ex.lines.find(l => l.step.id === x.id) || { amount: 0 };
     return `${head}
+      ${d.vatOn ? ipVatLineHtml(d, ex) : ''}
       <div class="tx-label">${d.vatOn ? 'After VAT, how do you split the rest?' : 'How do you split it?'}</div>
       <div class="ip-parts">
         ${d.parts.map((x, i) => `
         <div class="ip-part">
-          <input class="ip-name" value="${escHtml(x.label)}" placeholder="e.g. Invest" onchange="ipSet('label', this.value, ${i})" aria-label="Name">
+          <input class="ip-name" value="${escHtml(x.label)}" placeholder="${escHtml(ipPlaceName(x.to) || 'e.g. Invest')}" onchange="ipSet('label', this.value, ${i})" aria-label="Name">
           <span class="split-pct"><input type="number" min="0" max="100" step="1" value="${x.pct}" onchange="ipSet('pct', this.value, ${i})" aria-label="Percent">%</span>
-          <select class="mini-select ip-to" onchange="ipSet('to', this.value, ${i})" aria-label="Where it goes">${placeOptions(x.to, true)}</select>
-          <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="ipRemovePart(${i})" aria-label="Remove">${ic('trash')}</button>
+          <button class="icon-btn-round ip-del" onclick="ipRemovePart(${i})" aria-label="Remove ${escHtml(ipPartName(x))}">${ic('trash')}</button>
+          <select class="mini-select ip-to" onchange="ipSet('to', this.value, ${i})" aria-label="Where ${escHtml(ipPartName(x))} goes">${placeOptions(x.to, true)}</select>
+          <div class="ip-part-amt">${fmtMoney(partLine(x, i).amount)}</div>
         </div>`).join('')}
       </div>
       <button class="btn small" style="margin-top:8px;" onclick="ipAddPart()">+ Add a part</button>
       <div class="ip-left ${total > 100 ? 'negative' : ''}">${total > 100 ? `That's ${total}%. Keep it at 100% or less.` : `${100 - total}% left stays in the account.`}</div>
-      <div class="split-example"><div class="eyebrow">${escHtml(exName)} of ${fmtMoney(1000)}</div>
-        ${ex.lines.map(l => `<div class="split-row"><span class="split-row-what">${escHtml(l.step.label)}</span><b>${fmtMoney(l.amount)}</b></div>`).join('')}
+      <div class="split-example"><div class="eyebrow">${escHtml(exName)} of ${fmtMoney(exAmt)}${d.vatOn && ex.vat ? ` · VAT ${d.vatMode === 'excl' ? 'on top' : 'included'}` : ''}</div>
+        ${ex.lines.map(l => `<div class="split-row"><span class="split-row-what">${escHtml(l.vat ? 'VAT' : ipPartName(l.step))}</span><b>${fmtMoney(l.amount)}</b></div>`).join('')}
         <div class="split-row split-rest"><span class="split-row-what">Stays in the account</span><b>${fmtMoney(ex.rest)}</b></div></div>
       <div class="grid-2" style="margin-top:14px;">
         <button class="btn" onclick="ui.modal.payload.step=1;render();">Back</button>
         <button class="btn primary" onclick="saveIncomePlan()" ${total > 100 ? 'disabled' : ''}>Save plan</button>
+      </div>`;
+  };
+  /* The editor's plan (VAT + parts) split for an amount, the way it would be saved. */
+  window.ipExample = function (d, catId, amount) {
+    const steps = (d.vatOn ? [{ id: 'ip_vat_x', label: 'VAT', pct: d.vatPct, setAside: true, onlyCat: d.vatCat }] : []).concat(d.parts.map(x => ({ id: x.id, label: x.label, pct: x.pct, to: x.to })));
+    return incomeSplit(amount, catId, steps, { vatMode: d.vatMode, vatRoundUp: d.vatRoundUp });
+  };
+  /* VAT: a locked first line, taken before your split and not part of its 100 %. */
+  const VAT_RATES = [21, 9, 0];
+  window.ipVatLineHtml = function (d, ex) {
+    const other = !VAT_RATES.includes(+d.vatPct);
+    return `
+      <div class="ip-vatline">
+        <div class="ip-vatline-top"><span class="ip-lock" aria-hidden="true">${ic('lock', 15)}</span><b>VAT</b><span class="dim">set aside first · not part of your split</span><b class="ip-vat-amt">${fmtMoney(ex.vat)}</b></div>
+        <div class="ip-vat-opts">
+          <div class="seg-row" role="group" aria-label="VAT rate">${VAT_RATES.map(r => `<button type="button" class="seg ${+d.vatPct === r ? 'on' : ''}" aria-pressed="${+d.vatPct === r}" onclick="ipSet('vatPct', ${r})">${r}%</button>`).join('')}
+            <span class="split-pct ip-vat-other ${other ? 'on' : ''}"><input type="number" min="0" max="50" step="0.5" value="${other ? d.vatPct : ''}" placeholder="other" onchange="ipSet('vatPct', this.value)" aria-label="Another VAT rate">%</span></div>
+          <div class="seg-row" role="group" aria-label="The amount entered is">${[['incl', 'incl. VAT'], ['excl', 'excl. VAT']].map(([m, l]) => `<button type="button" class="seg ${d.vatMode === m ? 'on' : ''}" aria-pressed="${d.vatMode === m}" onclick="ipSet('vatMode', '${m}')">${l}</button>`).join('')}</div>
+        </div>
+        <div class="ip-vat-note">${d.vatMode === 'excl' ? 'Amount entered is before VAT (planning from an invoice): VAT comes on top.' : 'Amount entered is what lands in the bank, VAT included.'} A payment you receive is always split as VAT included.</div>
+        <label class="ip-check"><input type="checkbox" ${d.vatRoundUp !== false ? 'checked' : ''} onchange="ipSet('vatRoundUp', this.checked)"> Round VAT up to the euro${ex.vatExact != null && ex.vatExact !== ex.vat ? ` <span class="dim">(${fmtMoney(ex.vatExact)} exactly)</span>` : ''}</label>
+        <select class="mini-select ip-to" onchange="ipSet('vatTo', this.value)" aria-label="Where VAT goes">${placeOptions(d.vatTo, false)}</select>
       </div>`;
   };
 
@@ -267,7 +344,7 @@ if (typeof window !== 'undefined') {
     const pending = incomePlanPending();
     const vatCat = v && v.onlyCat ? (categoryById('income', v.onlyCat) || {}).name : '';
     const exCat = v && v.onlyCat ? v.onlyCat : p.triggerCats[0];
-    const ex = exCat ? incomeSplit(1000, exCat, p.steps) : null;
+    const ex = exCat ? incomeSplit(1000, exCat, p.steps, { vatMode: (p.vatModes || {})[(v && v.onlyCat) || '*'] || 'incl', vatRoundUp: p.vatRoundUp !== false }) : null;
     return `
     <div class="card" style="margin-bottom:16px;">
       <div class="row-flex" style="gap:10px;">
@@ -279,11 +356,11 @@ if (typeof window !== 'undefined') {
         <div class="ip-sum-row dim">For ${escHtml(catNames.join(', ') || 'no income yet')}</div>
         ${v ? `<div class="ip-sum-row"><b class="ip-pct">${v.pct}%</b><span>VAT${vatCat ? ` on ${escHtml(vatCat)}` : ''}</span><span class="dim">${escHtml(placeText(incomeStepTarget(v)))}</span></div>` : ''}
         ${v && parts.length ? '<div class="ip-sum-row dim" style="padding-left:2px;">Then, of what\'s left:</div>' : ''}
-        ${parts.map(x => `<div class="ip-sum-row"><b class="ip-pct">${x.pct}%</b><span>${escHtml(x.label)}</span><span class="dim">${escHtml(placeText(incomeStepTarget(x)))}</span></div>`).join('')}
+        ${parts.map(x => `<div class="ip-sum-row"><b class="ip-pct">${x.pct}%</b><span>${escHtml(ipPartName(x))}</span><span class="dim">${escHtml(placeText(incomeStepTarget(x)))}</span></div>`).join('')}
         ${total < 100 ? `<div class="ip-sum-row"><b class="ip-pct dim">${100 - total}%</b><span class="dim">Left</span><span class="dim">stays in the account</span></div>` : ''}
       </div>
       ${ex ? `<div class="split-example" style="margin-top:12px;"><div class="eyebrow">Example: ${escHtml((categoryById('income', exCat) || {}).name || '')} of ${fmtMoney(1000)}</div>
-        <div style="font-size:13px;">${ex.lines.map(l => `${escHtml(l.step.label)} <b>${fmtMoney(l.amount)}</b>`).join(' · ')} · stays <b>${fmtMoney(ex.rest)}</b></div></div>` : ''}
+        <div style="font-size:13px;">${ex.lines.map(l => `${escHtml(l.vat ? 'VAT' : ipPartName(l.step))} <b>${fmtMoney(l.amount)}</b>`).join(' · ')} · stays <b>${fmtMoney(ex.rest)}</b></div></div>` : ''}
       <button class="btn primary" style="margin-top:14px;" onclick="openIncomePlanEditor()">Edit plan</button>
     </div>
     ${pending.length ? `<div class="card"><div class="eyebrow" style="margin-bottom:8px;">Waiting to be split</div>
