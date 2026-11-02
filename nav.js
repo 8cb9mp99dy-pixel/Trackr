@@ -6,7 +6,7 @@
  *   Home      Overview
  *   Money     Budget (Transactions · Recurring · Forecast · Totals · Categories · Import) · Receipts · Trips · IOUs · Contracts · Freelance · From Claude (once connected)
  *   Wealth    Overview · Cash (the old Accounts page) · Investments (+ each account) · Watchlist · Debts
- *   Plan      Goals · Yearly bills · Future · Emergency · Patterns · Insights (the old Analysis page)
+ *   Plan      Goals · Yearly bills · Emergency · Patterns · Insights (the old Analysis page)
  *   Settings
  *
  * On a computer the side bar stays short: Home, the three groups with their icons, Settings. The
@@ -32,7 +32,7 @@ function navItemActive(item) {
   return ui.page === item.id || (item.id === 'investments' && ['investAccount', 'watchlist'].includes(ui.page)) || (item.id === 'budget' && ['receipts', 'trips', 'ious', 'contracts', 'inbox'].includes(ui.page)) || (item.id === 'goals' && ['yearly', 'patterns'].includes(ui.page));
 }
 function goWealthSection(tab) { ui.wealthTab = tab === 'liabilities' ? 'liabilities' : 'assets'; goPage('wealth'); }
-function goPlanSection(tab) { ui.goalsTab = ['emergency', 'future'].includes(tab) ? tab : 'goals'; goPage('goals'); }
+function goPlanSection(tab) { ui.goalsTab = tab === 'emergency' ? tab : 'goals'; goPage('goals'); }
 const SECTION_TABS = {
   budget: [
     ['Budget', "goPage('budget')", () => ui.page === 'budget'],
@@ -51,9 +51,8 @@ const SECTION_TABS = {
     ['Debts', "goWealthSection('liabilities')", () => ui.page === 'wealth' && ui.wealthTab === 'liabilities'],
   ],
   goals: [
-    ['Goals', "goPlanSection('goals')", () => ui.page === 'goals' && !['emergency', 'future'].includes(ui.goalsTab)],
+    ['Goals', "goPlanSection('goals')", () => ui.page === 'goals' && ui.goalsTab !== 'emergency'],
     ['Yearly bills', "goPage('yearly')", () => ui.page === 'yearly'],
-    ['Future', "goPlanSection('future')", () => ui.page === 'goals' && ui.goalsTab === 'future'],
     ['Emergency', "goPlanSection('emergency')", () => ui.page === 'goals' && ui.goalsTab === 'emergency'],
     ['Patterns', "goPage('patterns')", () => ui.page === 'patterns'],
     ['Insights', "goPage('analysis')", () => ui.page === 'analysis'],

@@ -9,8 +9,10 @@
  *   - Diversification: how evenly your investments are spread across types and positions, and —
  *     when you've filled in what's inside your funds — across sectors and countries. /10.
  *   - Recurring payments: your recurring expenses and the repeats Trackr detected.
- * Wealth simulator: today's net worth + a monthly amount over 10/20/30 years at three yearly
- * returns you choose (3/5/7 % by default). An assumption, not a forecast.
+ * Wealth simulator: today's net worth + a monthly amount over 1 to 60 years (chips, or type any
+ * number) at three yearly returns (3/5/7 % by default): pick a ready-made set (savings account,
+ * cautious, balanced, all stocks, or from the returns you typed on your positions) or nudge each
+ * one with − / +. An assumption, not a forecast.
  * Investor profile: risk profile, emergency cushion in months, debt ratio, tracking since.
  */
 
@@ -232,12 +234,28 @@ function simSettings() {
     for (let i = 1; i <= 3; i++) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); if (d < budgetMinMonth()) break; sum += monthIncome(d) - monthExpenses(d); n++; }
     return n ? Math.max(0, sum / n) : 0;
   })();
-  return { monthly: s.monthly != null ? +s.monthly : Math.round(flow), years: +s.years || 30, rates: Array.isArray(s.rates) && s.rates.length === 3 ? s.rates.map(Number) : [3, 5, 7], realFlow: flow, typedMonthly: s.monthly != null };
+  return { monthly: s.monthly != null ? +s.monthly : Math.round(flow), years: Math.min(SIM_MAX_YEARS, Math.max(1, Math.round(+s.years) || 30)), rates: Array.isArray(s.rates) && s.rates.length === 3 ? s.rates.map(Number) : [3, 5, 7], realFlow: flow, typedMonthly: s.monthly != null };
 }
+const SIM_MAX_YEARS = 60;
+const SIM_YEARS = [1, 3, 5, 10, 15, 20, 25, 30, 40, 50];
+/* Ready-made sets of yearly returns: pessimistic / median / optimistic. */
+const SIM_PRESETS = [
+  ['Savings account', [1, 2, 3]],
+  ['Cautious', [2, 4, 6]],
+  ['Balanced', [3, 5, 7]],
+  ['All stocks', [4, 7, 10]],
+];
+const SIM_RATE_NAMES = ['Pessimistic', 'Median', 'Optimistic'];
+function setSimRates(rates) {
+  const s = data.settings.simulator = Object.assign({}, data.settings.simulator);
+  s.rates = rates.map(r => Math.max(-20, Math.min(30, Math.round(r * 2) / 2)));
+  save(); render();
+}
+function stepSimRate(i, d) { const r = simSettings().rates; r[i] = r[i] + d; setSimRates(r); }
 function setSim(key, v) {
   const s = data.settings.simulator = Object.assign({}, data.settings.simulator);
   if (key === 'monthly') { const n = parseFloat(String(v).replace(',', '.')); if (isNaN(n)) delete s.monthly; else s.monthly = Math.max(0, n); }
-  else if (key === 'years') s.years = +v;
+  else if (key === 'years') { const n = Math.round(parseFloat(String(v).replace(',', '.'))); if (!(n >= 1)) return render(); s.years = Math.min(SIM_MAX_YEARS, n); }
   else if (key.startsWith('rate')) { const i = +key.slice(4), r = simSettings().rates; const n = parseFloat(String(v).replace(',', '.')); if (!isNaN(n)) { r[i] = Math.max(-20, Math.min(30, n)); s.rates = r; } }
   save(); render();
 }
@@ -247,7 +265,7 @@ function simulate(start, monthly, rate, years) {
   pts.push({ x: now.getTime(), y: v });
   for (let m = 1; m <= years * 12; m++) {
     v = v * (1 + r) + monthly;
-    if (m % 12 === 0) pts.push({ x: new Date(now.getFullYear(), now.getMonth() + m, 1).getTime(), y: v });
+    if (m % 12 === 0 || years <= 5) pts.push({ x: new Date(now.getFullYear(), now.getMonth() + m, 1).getTime(), y: v });
   }
   return pts;
 }
@@ -260,14 +278,17 @@ function simulatorCardHtml() {
   const S = simSettings(), start = netWorthTotal();
   const [lo, mid, hi] = S.rates;
   const series = [
-    { label: `Optimistic ${hi}%`, color: 'var(--positive)', points: simulate(start, S.monthly, hi, S.years) },
-    { label: `Median ${mid}%`, color: 'var(--accent-1)', points: simulate(start, S.monthly, mid, S.years), width: 2.5 },
-    { label: `Pessimistic ${lo}%`, color: '#E8963C', points: simulate(start, S.monthly, lo, S.years) },
+    { label: `Optimistic ${hi}%`, color: chartColor(0), points: simulate(start, S.monthly, hi, S.years) },
+    { label: `Median ${mid}%`, color: 'var(--fx-ink, currentColor)', points: simulate(start, S.monthly, mid, S.years), width: 2.5 },
+    { label: `Pessimistic ${lo}%`, color: chartColor(1), points: simulate(start, S.monthly, lo, S.years) },
   ];
   const final = series[1].points[series[1].points.length - 1].y;
   const contrib = S.monthly * 12 * S.years;
   const gains = final - start - contrib;
   const typed = weightedTypedReturn();
+  const presets = SIM_PRESETS.slice();
+  if (typed) { const m = Math.round(typed.rate * 2) / 2; presets.push(['From my positions', [m - 2, m, m + 2]]); }
+  const sameRates = r => r.every((x, i) => Math.abs(Math.round(x * 2) / 2 - S.rates[i]) < 1e-9);
   return `
     <div class="card" style="margin-top:20px;">
       <div class="row-flex" style="gap:8px;flex-wrap:wrap;">
@@ -277,14 +298,26 @@ function simulatorCardHtml() {
       ${ui.simInfo ? `<div class="info-box">Starts from today's net worth (${fmtMoney(start)}), adds the monthly amount at the end of each month, and grows everything at a fixed yearly return. Three returns give three paths. These are <b>assumptions, not a forecast</b>: real markets go up and down, and inflation isn't taken off. Default monthly amount: what you really kept on average over your last 3 full months (${fmtMoney(S.realFlow)}).</div>` : ''}
       <div class="sim-inputs">
         <label class="field"><span class="label-text">Monthly savings (€)</span><input type="number" min="0" step="10" inputmode="decimal" value="${S.monthly}" onchange="setSim('monthly', this.value)"></label>
-        <div class="field"><span class="label-text">Period</span><div class="seg-row" style="margin:0;">${[10, 20, 30].map(y => `<button class="seg ${S.years === y ? 'on' : ''}" onclick="setSim('years', ${y})">${y} years</button>`).join('')}</div></div>
-        <label class="field"><span class="label-text">Yearly returns % (low / median / high)</span><span style="display:flex;gap:6px;">${S.rates.map((r, i) => `<input type="number" step="0.5" inputmode="decimal" value="${r}" onchange="setSim('rate${i}', this.value)" style="width:70px;">`).join('')}</span></label>
+        <div class="field sim-period"><span class="label-text">How long</span>
+          <div class="sim-years">${SIM_YEARS.map(y => `<button class="seg ${S.years === y ? 'on' : ''}" onclick="setSim('years', ${y})">${y}${y === 1 ? ' yr' : ''}</button>`).join('')}
+            <label class="sim-own">or <input type="number" min="1" max="${SIM_MAX_YEARS}" step="1" inputmode="numeric" value="${SIM_YEARS.includes(S.years) ? '' : S.years}" placeholder="…" aria-label="Number of years" onchange="setSim('years', this.value)"> years</label>
+          </div>
+        </div>
+        <div class="field sim-returns"><span class="label-text">Yearly return</span>
+          <div class="sim-presets">${presets.map(([name, r]) => `<button class="seg ${sameRates(r) ? 'on' : ''}" onclick="setSimRates([${r.join(',')}])">${escHtml(name)} <small>${r.map(x => Math.round(x * 2) / 2).join(' · ')}%</small></button>`).join('')}</div>
+          <div class="sim-rates">${S.rates.map((r, i) => `<div class="sim-rate">
+            <span>${SIM_RATE_NAMES[i]}</span>
+            <button class="icon-btn-round" onclick="stepSimRate(${i}, -0.5)" aria-label="${SIM_RATE_NAMES[i]} return lower">−</button>
+            <input type="number" step="0.5" inputmode="decimal" value="${r}" aria-label="${SIM_RATE_NAMES[i]} yearly return in %" onchange="setSim('rate${i}', this.value)"><span class="sim-pct">%</span>
+            <button class="icon-btn-round" onclick="stepSimRate(${i}, 0.5)" aria-label="${SIM_RATE_NAMES[i]} return higher">+</button>
+          </div>`).join('')}</div>
+        </div>
       </div>
       ${multiLineChartHtml(series, { h: 260 })}
       <div class="sim-legend">${series.map(s => `<span><span class="donut-swatch" style="background:${s.color};"></span>${escHtml(s.label)} · <b>${fmtMoney(s.points[s.points.length - 1].y)}</b></span>`).join('')}</div>
       <div class="sim-kpis">
         <div><span class="eyebrow">Total contributions</span><b>${fmtMoney(contrib)}</b></div>
-        <div><span class="eyebrow">Gains generated</span><b class="positive">${fmtMoney(gains)}</b></div>
+        <div><span class="eyebrow">Gains generated</span><b class="${gains >= 0 ? 'positive' : 'negative'}">${fmtMoney(gains)}</b></div>
         <div><span class="eyebrow">Contributions share</span><b>${final > 0 ? ((contrib + start) / final * 100).toFixed(1) : '—'}%</b></div>
         <div><span class="eyebrow">Yearly return (median)</span><b>${mid}% / yr</b></div>
       </div>

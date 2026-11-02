@@ -147,7 +147,7 @@ function avgMonthlyExpenses(n, exclude) {
 
 /* ---- Page ---- */
 function renderGoals() {
-  const tab = ['emergency', 'future'].includes(ui.goalsTab) ? ui.goalsTab : 'goals';
+  const tab = ui.goalsTab === 'emergency' ? 'emergency' : 'goals';
   const ef = data.emergencyFund || {};
   return `
   <div class="page surface-light">
@@ -156,9 +156,8 @@ function renderGoals() {
     ${typeof newNavOn === 'function' && newNavOn() ? '' : `<div class="tab-row" style="margin:20px 0;width:auto;">
       <button class="tab-btn ${tab === 'goals' ? 'active' : ''}" onclick="ui.goalsTab='goals';render()">Goals${(data.goals || []).length ? ` (${data.goals.length})` : ''}</button>
       <button class="tab-btn ${tab === 'emergency' ? 'active' : ''}" onclick="ui.goalsTab='emergency';render()">Emergency savings ${ef.enabled ? '' : '<span class="dim">· not set</span>'}</button>
-      ${typeof futureTabHtml === 'function' ? `<button class="tab-btn ${tab === 'future' ? 'active' : ''}" onclick="ui.goalsTab='future';render()">Future</button>` : ''}
     </div>`}
-    ${tab === 'emergency' ? emergencyTabHtml() : tab === 'future' && typeof futureTabHtml === 'function' ? futureTabHtml() : goalsTabHtml()}
+    ${tab === 'emergency' ? emergencyTabHtml() : goalsTabHtml()}
   </div>`;
 }
 /* ---- Goals and pockets ----

@@ -494,7 +494,7 @@ function defaultData() {
     assets: [],
     assetEntries: [],
     investmentTransactions: [],
-    // Goals → Future (future.js): your own assumptions; null = worked out from your data.
+    // The old Goals → Future page (removed at the user's request, 2 Nov 2026); kept so old data stays.
     future: { monthly: null, investShare: null, investReturn: null, cashReturn: null, inflation: 2, real: true, years: 20,
       // Phase 6 (2 Nov 2026): your birth date (typed by you, for your age on the axis), amounts and
       // returns per kind of asset, debts, yearly raise of the saving, scenario spread, phases, events.
@@ -6573,7 +6573,7 @@ function settingsDisplayHtml() {
       ${boolSettingRow('Compact mode', 'compactMode', 'Tighter spacing and smaller headline numbers, so more fits on the screen.')}
       <div class="row-flex"><div><div style="font-size:13.5px;">Dutch box 3 estimate</div><div style="font-size:12px;opacity:.65;margin-top:2px;">A card in Analysis estimating the Dutch wealth tax from your 1 January figures (2026 rules, editable). An estimate, not tax advice.</div></div><div class="toggle ${data.settings.box3 && data.settings.box3.enabled ? 'on' : ''}" style="flex:none;" onclick="setBox3('enabled', !(data.settings.box3 && data.settings.box3.enabled))"></div></div>
       ${typeof appearanceSettingHtml === 'function' ? appearanceSettingHtml() : ''}
-      ${boolSettingRow('Classic navigation', 'classicNav', 'Every page in the side bar, as before. Off: Home · Money (budget, receipts, freelance) · Wealth (overview, cash, investments, watchlist, debts) · Plan (goals, future, emergency, insights). Same pages, grouped differently.')}
+      ${boolSettingRow('Classic navigation', 'classicNav', 'Every page in the side bar, as before. Off: Home · Money (budget, receipts, freelance) · Wealth (overview, cash, investments, watchlist, debts) · Plan (goals, emergency, insights). Same pages, grouped differently.')}
       ${boolSettingRow('Update holdings when I record a trade', 'applyTradesToHoldings', 'After Buy / Sell / Convert (or a plan) on an account page, show how quantities, average price and cash would change, and apply it if you confirm. Never places a real order.')}
       ${boolSettingRow('Category budgets', 'categoryBudgets', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}
       <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.65;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>

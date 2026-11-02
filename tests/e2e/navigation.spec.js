@@ -6,7 +6,7 @@ const { openApp, PAGES } = require('./helpers');
 
 const MAP = [['Budget', 'budget', 'Money'], ['Receipts', 'receipts', 'Money'], ['Trips', 'trips', 'Money'], ['IOUs', 'ious', 'Money'], ['Contracts', 'contracts', 'Money'], ['Freelance', 'freelance', 'Money'],
   ['Net worth', 'wealth', 'Wealth'], ['Cash', 'accounts', 'Wealth'], ['Investments', 'investments', 'Wealth'], ['Watchlist', 'watchlist', 'Wealth'], ['Debts', 'wealth', 'Wealth'],
-  ['Goals', 'goals', 'Plan'], ['Yearly bills', 'yearly', 'Plan'], ['Future', 'goals', 'Plan'], ['Emergency', 'goals', 'Plan'], ['Patterns', 'patterns', 'Plan'], ['Insights', 'analysis', 'Plan']];
+  ['Goals', 'goals', 'Plan'], ['Yearly bills', 'yearly', 'Plan'], ['Emergency', 'goals', 'Plan'], ['Patterns', 'patterns', 'Plan'], ['Insights', 'analysis', 'Plan']];
 
 test('computer: a short side bar, only the group you are in is open', async ({ page }, info) => {
   test.skip(info.project.name === 'phone');
@@ -49,8 +49,7 @@ test('phone: 5 tabs, section tabs in view, every page in More', async ({ page },
   expect(inView).toBe(true);
   await page.evaluate(() => goPage('goals'));
   await expect(page.locator('.main .tab-row .tab-btn', { hasText: 'Emergency savings' })).toHaveCount(0);
-  await page.locator('.section-tabs button', { hasText: 'Future' }).click();
-  expect(await page.evaluate(() => ui.goalsTab)).toBe('future');
+  await expect(page.locator('.section-tabs button', { hasText: 'Future' })).toHaveCount(0);
   for (const [label, id] of MAP) {
     await page.locator('.nav-more .nav-item').click();
     await page.locator('.more-tile', { hasText: label }).first().click();
@@ -85,6 +84,7 @@ test('classic navigation: every page in the side bar, no section tabs', async ({
   await page.locator('.page-head').getByRole('button', { name: 'Watchlist' }).click();
   expect(await page.evaluate(() => ui.page)).toBe('watchlist');
   await page.evaluate(() => goPage('goals'));
-  await expect(page.locator('.main .tab-row .tab-btn', { hasText: 'Future' })).toHaveCount(1);
+  await expect(page.locator('.main .tab-row .tab-btn', { hasText: 'Emergency savings' })).toHaveCount(1);
+  await expect(page.locator('.main .tab-row .tab-btn', { hasText: 'Future' })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

@@ -3,10 +3,11 @@
  *
  * Everything you own and owe on one page:
  *   - your net worth with its history (the daily snapshots) over 1M / 3M / 1Y / All;
- *   - Assets / Liabilities tabs;
+ *   - Net worth (assets) and Debts (liabilities): the Debts view lists your debts in a table;
+ *     the list of everything you own was removed from Net worth at the user's request (2 Nov 2026);
  *   - an allocation donut, grouped by asset, type or institution, with "Compare" against the
  *     allocation you aim for (data.targetAllocation, % per asset type);
- *   - a table: filters (type, institution), "group by type", search, sortable columns
+ *   - the Debts table: filters (type, institution), "group by type", search, sortable columns
  *     (name, type, allocation, value, +/- value, change over the period) and a "…" menu per row.
  *
  * One row = one place your money sits: a bank account (pockets included), one holding at one
@@ -168,13 +169,10 @@ function renderWealth() {
     </div>
     ${typeof nwMovesCardHtml === 'function' ? nwMovesCardHtml() : ''}
 
-    <div class="card" style="margin-top:20px;">
-      <div class="tab-row" style="margin-bottom:14px;width:auto;">
-        <button class="tab-btn ${tab === 'assets' ? 'active' : ''}" onclick="setWealthTab('assets')">Assets</button>
-        <button class="tab-btn ${tab === 'liabilities' ? 'active' : ''}" onclick="setWealthTab('liabilities')">Liabilities</button>
-      </div>
-      ${wealthTableHtml(tab === 'liabilities' ? liabilities : assets, tab, period)}
-    </div>
+    ${tab === 'liabilities' ? `<div class="card" style="margin-top:20px;">
+      <div class="eyebrow" style="margin-bottom:14px;">Debts</div>
+      ${wealthTableHtml(liabilities, tab, period)}
+    </div>` : typeof newNavOn === 'function' && !newNavOn() ? `<button class="btn small" style="margin-top:20px;" onclick="setWealthTab('liabilities')">Debts ${ic('chevronRight', 14)}</button>` : ''}
   </div>`;
 }
 function setWealthTab(t) { ui.wealthTab = t; ui.wealthMenu = null; ui.wealthFilter = null; render(); }
