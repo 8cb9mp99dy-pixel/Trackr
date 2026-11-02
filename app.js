@@ -7293,15 +7293,33 @@ function syncConflictBannerHtml() {
       </div>
     </div>`;
 }
+/* Each choice replaces the whole other copy, so show what it would lose first. Counted by
+   transaction id: an edit made on one side isn't a difference here. */
+function syncDifference(local, remote) {
+  const ids = d => new Set(((d && d.budgetTransactions) || []).map(t => t.id));
+  const here = ids(local), there = ids(remote);
+  return { here: here.size, there: there.size, onlyHere: [...here].filter(id => !there.has(id)).length, onlyThere: [...there].filter(id => !here.has(id)).length };
+}
+const syncTxCount = n => `${n} transaction${n === 1 ? '' : 's'}`;
+function syncDifferenceHtml() {
+  const c = syncState.conflict;
+  if (!c) return '';
+  const d = syncDifference(data, c.serverData);
+  const localAt = data && data.updatedAt ? timeAgo(data.updatedAt) : 'unknown';
+  const remoteAt = c.serverData && c.serverData.updatedAt ? timeAgo(c.serverData.updatedAt) : 'unknown';
+  const verdict = !d.onlyHere && !d.onlyThere ? 'Same transactions on both: the difference is elsewhere (balances, pockets, settings…).'
+    : !d.onlyThere ? "Keeping this device's data loses no transaction."
+    : !d.onlyHere ? "Using the cloud's data loses no transaction."
+    : 'Each side has transactions the other lacks, so either choice loses some.';
+  return `<span class="sync-diff">This device, changed ${escHtml(localAt)}: ${syncTxCount(d.here)}, ${d.onlyHere} only here.<br>Cloud, changed ${escHtml(remoteAt)}: ${syncTxCount(d.there)}, ${d.onlyThere} only there.<br><strong>${verdict}</strong></span>`;
+}
 function syncConflictExplanationHtml() {
   const c = syncState.conflict;
   if (!c) return '';
-  const localAt = data && data.updatedAt ? timeAgo(data.updatedAt) : 'unknown';
-  const remoteAt = c.serverData && c.serverData.updatedAt ? timeAgo(c.serverData.updatedAt) : 'unknown';
   const intro = c.reason === 'unverified'
     ? 'This device and the cloud (your other device) both hold data, and they are different.'
     : 'Changes were made here and on your other device before they could sync. Nothing has been overwritten.';
-  return `${intro} Pick the one to keep — the other is replaced on both devices.<br>This device: last changed ${escHtml(localAt)} · Cloud: last changed ${escHtml(remoteAt)}`;
+  return `${intro} Pick the one to keep — the other is replaced on both devices.<br>${syncDifferenceHtml()}`;
 }
 /* A short code derived from the project + secret: every device showing the same Sync ID shares
    the same data in the cloud. Different IDs = different "rooms" (e.g. a mistyped secret), which
@@ -7320,9 +7338,9 @@ function syncGlobalBannerHtml() {
   if (!cfg || ui.page === 'settings') return '';
   if (syncState.conflict) return `
     <div class="sync-banner">
-      <div><strong>Sync is paused — choose which data to keep.</strong> ${syncState.conflict.reason === 'unverified' ? 'This device and the cloud have different data.' : 'This device and another one were both changed.'} Until you choose, nothing is sent or received.</div>
+      <div><strong>Sync is paused — choose which data to keep.</strong> ${syncState.conflict.reason === 'unverified' ? 'This device and the cloud have different data.' : 'This device and another one were both changed.'} Until you choose, nothing is sent or received.<br>${syncDifferenceHtml()}</div>
       <div class="sync-banner-actions">
-        <button class="btn small primary" onclick="resolveSyncConflictKeepLocal()">Keep this device's data</button>
+        <button class="btn small" onclick="resolveSyncConflictKeepLocal()">Keep this device's data</button>
         <button class="btn small" onclick="resolveSyncConflictUseRemote()">Use the cloud's data</button>
       </div>
     </div>`;
@@ -7514,7 +7532,20 @@ async function pushSupabaseSyncOverwrite() {
     setSupabaseSyncStatusText(supabaseSyncErrorMessage(e, 'push'));
   }
 }
+function syncConfirmChoice(keepLocal) {
+  const d = syncDifference(data, syncState.conflict.serverData);
+  const lost = keepLocal ? d.onlyThere : d.onlyHere;
+  const other = keepLocal ? 'the cloud' : 'this device';
+  return confirm(`${keepLocal ? "Keep this device's data" : "Use the cloud's data"}?\n\n${lost ? `${syncTxCount(lost)} found only in ${other} will disappear from all your devices.` : 'No transaction disappears.'} Any other change in ${other} is replaced too.\n\nA copy of what's replaced goes to Settings → Backup & Restore → Restore points.`);
+}
+async function syncKeepCopy(doc, label) {
+  await safetyPut({ key: 'before:' + Date.now(), kind: 'before-restore', day: todayYmd(), savedAt: new Date().toISOString(), summary: safetySummary(doc), json: JSON.stringify(doc), label });
+  ui.restoreLoaded = false;
+}
 async function resolveSyncConflictKeepLocal() {
+  const c = syncState.conflict;
+  if (!c || !syncConfirmChoice(true)) return;
+  await syncKeepCopy(c.serverData, 'The cloud, before keeping this device');
   setSupabaseSyncStatusText('Sending…');
   try {
     await syncForceLocal();
@@ -7524,9 +7555,10 @@ async function resolveSyncConflictKeepLocal() {
     setSupabaseSyncStatusText(supabaseSyncErrorMessage(e, 'push'));
   }
 }
-function resolveSyncConflictUseRemote() {
+async function resolveSyncConflictUseRemote() {
   const c = syncState.conflict;
-  if (!c) return;
+  if (!c || !syncConfirmChoice(false)) return;
+  await syncKeepCopy(data, 'This device, before using the cloud');
   syncState.conflict = null;
   syncAdoptRemote({ data: c.serverData, updated_at: c.serverUpdatedAt });
 }
@@ -7610,8 +7642,8 @@ window.__modalRenderers.syncStatus = function () {
       <div class="modal-head"><div class="modal-title">${unverified ? 'Which data do you want to keep?' : 'Both devices were changed'}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
       <div style="font-size:13px;opacity:.75;line-height:1.6;margin-bottom:16px;">${syncConflictExplanationHtml()}</div>
       <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
-        <button class="btn primary" onclick="ui.modal=null;resolveSyncConflictUseRemote();">Use the cloud's version</button>
-        <button class="btn" onclick="ui.modal=null;resolveSyncConflictKeepLocal();">Keep this device's version</button>
+        <button class="btn primary" onclick="closeModal();resolveSyncConflictUseRemote();">Use the cloud's version</button>
+        <button class="btn" onclick="closeModal();resolveSyncConflictKeepLocal();">Keep this device's version</button>
       </div>`;
   }
   const errorHtml = syncState.lastError ? `

@@ -207,6 +207,9 @@ html[data-mode="dark"] .modal-backdrop { background: rgba(0,0,0,.72); }
 .btn.primary:hover { filter: none; opacity: .88; }
 html[data-mode="dark"] .btn { background: var(--fx-fill); border-color: var(--fx-line); }
 html[data-mode="dark"] .btn.ghost { background: none; }
+/* The sync banner stays light in dark mode, so its buttons must too. */
+.sync-banner .btn, html[data-mode="dark"] .sync-banner .btn { background: #fff; border-color: rgba(0,0,0,.25); color: #111; }
+.sync-diff { display: inline-block; margin-top: 4px; }
 .tb-btn { border-color: var(--fx-line); background: var(--fx-paper); }
 .tb-btn:hover { border-color: var(--fx-line-strong); }
 html[data-mode="dark"] .tb-btn { background: var(--fx-fill); }
