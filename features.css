@@ -744,3 +744,15 @@ html.tx-dragging, html.tx-dragging * { cursor: grabbing !important; }
 .ip-summary-wrap .ip-summary { flex: 1; min-width: 0; }
 @media (max-width: 420px) { .ip-summary-wrap { flex-direction: column; align-items: stretch; } .ip-summary-wrap .sd-wrap.small { margin: 0 auto; } }
 @media (prefers-reduced-motion: reduce) { .sd-slice, .sd-slice.lift-in, .sd-rest.shake, .sd-knob { animation: none !important; transition: none !important; } }
+.ip-tools { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 4px; }
+.ip-presets { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.ip-presets .chip { min-height: 36px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.ip-presets .chip[disabled] { opacity: .4; cursor: default; }
+.ip-preset-own { padding: 0; overflow: hidden; }
+.ip-preset-own button { border: none; background: none; color: inherit; font: inherit; padding: 6px 4px 6px 12px; min-height: 36px; cursor: pointer; }
+.ip-preset-own .ip-preset-x { padding: 6px 10px 6px 6px; opacity: .6; display: inline-flex; align-items: center; }
+.ip-try { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; }
+.ip-try small { font-weight: 500; opacity: .6; }
+.ip-try-row { display: flex; align-items: center; gap: 10px; }
+.ip-try-row input[type=range] { flex: 1; min-width: 0; min-height: 44px; accent-color: var(--fx-ink, #111); }
+.ip-try-num { width: 110px; text-align: right; }

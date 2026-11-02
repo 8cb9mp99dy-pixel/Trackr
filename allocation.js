@@ -259,8 +259,40 @@ if (typeof window !== 'undefined') {
     render();
   };
   const D = () => ui.modal.payload;
+  /* ---- Undo inside the window (Cmd/Ctrl+Z, or the Undo button): every change keeps the plan
+     as it was just before; nothing here touches your data until Save plan. ---- */
+  const SNAP_KEYS = ['vatOn', 'vatPct', 'vatTo', 'vatCat', 'vatMode', 'vatRoundUp', 'parts'];
+  const snap = d => JSON.stringify(SNAP_KEYS.map(k => d[k]));
+  window.ipRemember = function () {
+    const d = D(); if (!d) return;
+    if (!d.hist) d.hist = [];
+    const now = snap(d);
+    if (d.hist[d.hist.length - 1] !== now) d.hist.push(now);
+    if (d.hist.length > 60) d.hist.shift();
+  };
+  window.ipUndo = function () {
+    const d = ui.modal && ui.modal.type === 'incomePlanEdit' && ui.modal.payload;
+    if (!d || !d.hist || !d.hist.length) return false;
+    const now = snap(d);
+    let was = d.hist.pop();
+    while (was === now && d.hist.length) was = d.hist.pop();
+    if (was === now) return false;
+    JSON.parse(was).forEach((v, n) => { d[SNAP_KEYS[n]] = v; });
+    d.sel = null; d.pick = null; d.np = null;
+    render();
+    return true;
+  };
+  document.addEventListener('keydown', ev => {
+    if (!(ev.metaKey || ev.ctrlKey) || ev.shiftKey || ev.altKey || String(ev.key).toLowerCase() !== 'z') return;
+    if (!ui.modal || ui.modal.type !== 'incomePlanEdit') return;
+    // A field you're typing in keeps its own undo until you leave it.
+    const el = ev.target;
+    if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && /^(text|number|search|)$/.test(el.type || '') && el.value !== el.defaultValue) return;
+    if (ipUndo()) ev.preventDefault();
+  });
   window.ipSet = function (field, value, i) {
     const d = D();
+    ipRemember();
     const num = v => Math.max(0, Math.min(100, parseFloat(String(v).replace(',', '.')) || 0));
     if (i == null) d[field] = field === 'vatPct' ? Math.min(50, num(value)) : value;
     else if (field === 'pct') {
@@ -272,7 +304,7 @@ if (typeof window !== 'undefined') {
     render();
   };
   window.ipToggleCat = function (id) { const d = D(); d.cats = d.cats.includes(id) ? d.cats.filter(c => c !== id) : d.cats.concat([id]); render(); };
-  window.ipAddPart = function () { const d = D(); d.parts.push({ id: uid('ip'), label: '', pct: Math.min(10, sdClampPart(d.parts.map(x => +x.pct || 0).concat([0]), d.parts.length, 10).value), to: 'stay' }); ipFixColors(d); render(); };
+  window.ipAddPart = function () { const d = D(); ipRemember(); d.parts.push({ id: uid('ip'), label: '', pct: Math.min(10, sdClampPart(d.parts.map(x => +x.pct || 0).concat([0]), d.parts.length, 10).value), to: 'stay' }); ipFixColors(d); render(); };
   /* A part that isn't a pocket keeps one colour wherever it moves: the first chart colour no other
      part uses (a pocket's part takes the pocket's colour). */
   window.ipFixColors = function (d) {
@@ -283,7 +315,7 @@ if (typeof window !== 'undefined') {
       x.color = slot; taken.add(slot);
     });
   };
-  window.ipRemovePart = function (i) { const d = D(); d.parts.splice(i, 1); d.sel = null; render(); };
+  window.ipRemovePart = function (i) { const d = D(); ipRemember(); d.parts.splice(i, 1); d.sel = null; render(); };
   window.saveIncomePlan = function () {
     const d = D(), p = incomePlan();
     if (!d.cats.length) { alert('Choose at least one kind of income.'); return; }
@@ -327,6 +359,7 @@ if (typeof window !== 'undefined') {
     return `${head}
       ${splitDonutHtml(ipDonutModel(d, ex))}
       <div class="sd-hint">Drag a handle between two slices${matchMedia('(pointer: coarse)').matches ? ' (hold still first for 1 % steps)' : ' (Shift for 1 % steps)'}, or tap a slice.</div>
+      ${ipToolsHtml(d, exAmt)}
       ${d.vatOn ? ipVatLineHtml(d, ex) : ''}
       <div class="tx-label">${d.vatOn ? 'After VAT, how do you split the rest?' : 'How do you split it?'}</div>
       <div class="ip-parts" data-sortable>
@@ -343,13 +376,76 @@ if (typeof window !== 'undefined') {
       </div>
       <button class="btn small" style="margin-top:8px;" onclick="ipAddPart()">+ Add a part</button>
       <div class="ip-left ${total > 100 ? 'negative' : ''}">${total > 100 ? `That's ${total}%. Keep it at 100% or less.` : `${100 - total}% left stays in the account.`}</div>
-      <div class="split-example"><div class="eyebrow">${escHtml(exName)} of ${fmtMoney(exAmt)}${d.vatOn && ex.vat ? ` · VAT ${d.vatMode === 'excl' ? 'on top' : 'included'}` : ''}</div>
-        ${ex.lines.map(l => `<div class="split-row"><span class="split-row-what">${escHtml(l.vat ? 'VAT' : ipPartName(l.step))}</span><b>${fmtMoney(l.amount)}</b></div>`).join('')}
-        <div class="split-row split-rest"><span class="split-row-what">Stays in the account</span><b>${fmtMoney(ex.rest)}</b></div></div>
+      ${ipExampleCard(d, exName, exAmt, ex)}
       <div class="grid-2" style="margin-top:14px;">
         <button class="btn" onclick="ui.modal.payload.step=1;render();">Back</button>
         <button class="btn primary" onclick="saveIncomePlan()" ${total > 100 ? 'disabled' : ''}>Save plan</button>
       </div>`;
+  };
+  window.ipExampleCard = (d, exName, exAmt, ex) => `<div class="split-example"><div class="eyebrow">${escHtml(exName)} of ${fmtMoney(exAmt)}${d.vatOn && ex.vat ? ` · VAT ${d.vatMode === 'excl' ? 'on top' : 'included'}` : ''}</div>
+        ${ex.lines.map(l => `<div class="split-row"><span class="split-row-what">${escHtml(l.vat ? 'VAT' : ipPartName(l.step))}</span><b>${fmtMoney(l.amount)}</b></div>`).join('')}
+        <div class="split-row split-rest"><span class="split-row-what">Stays in the account</span><b>${fmtMoney(ex.rest)}</b></div></div>`;
+  /* ---- Presets and "try another amount" ---- */
+  const BUILT_IN = [
+    { id: 'p503020', name: '50/30/20', pcts: [50, 30, 20], names: ['Needs', 'Wants', 'Savings'] },
+    { id: 'even', name: 'Even split' },
+  ];
+  window.ipToolsHtml = function (d, amt) {
+    const presets = incomePlan().presets || [];
+    const max = Math.max(10000, Math.ceil(amt / 1000) * 1000);
+    return `<div class="ip-tools">
+        <div class="ip-presets" role="group" aria-label="Presets">
+          ${BUILT_IN.map(b => `<button type="button" class="chip" onclick="ipApplyPreset('${b.id}')">${escHtml(b.name)}</button>`).join('')}
+          ${presets.map(pr => `<span class="chip ip-preset-own"><button type="button" onclick="ipApplyPreset('${escHtml(pr.id)}')">${escHtml(pr.name)}</button><button type="button" class="ip-preset-x" aria-label="Delete preset ${escHtml(pr.name)}" onclick="removeIncomePreset('${escHtml(pr.id)}')">${ic('x', 12)}</button></span>`).join('')}
+          <button type="button" class="chip ip-preset-save" onclick="saveIncomePreset()">${ic('plus', 12)} Save current as preset</button>
+          <button type="button" class="chip ip-undo" onclick="ipUndo()" ${d.hist && d.hist.length ? '' : 'disabled'} aria-label="Undo" title="Undo (${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'}+Z)">${ic('undo', 14)} Undo</button>
+        </div>
+        <label class="ip-try"><span>Try another amount <small>(only a preview, no payment changes)</small></span>
+          <span class="ip-try-row"><input type="range" min="0" max="${max}" step="10" value="${amt}" aria-label="Amount to preview" oninput="ipTry(this.value, true)" onchange="ipTry(this.value)">
+          <input type="number" min="0" step="10" class="ip-try-num" value="${amt}" aria-label="Amount to preview in euros" onchange="ipTry(this.value)"></span></label>
+      </div>`;
+  };
+  /* The preview amount: while the slider moves only the numbers change, then the window redraws. */
+  window.ipTry = function (v, live) {
+    const d = D();
+    d.amt = Math.max(0, parseFloat(String(v).replace(',', '.')) || 0) || 0.01;
+    if (!live) { render(); return; }
+    const num = document.querySelector('.ip-try-num'); if (num) num.value = Math.round(d.amt);
+    ipLive();
+  };
+  window.ipApplyPreset = function (id) {
+    const d = D(), own = (incomePlan().presets || []).find(p => p.id === id);
+    ipRemember();
+    if (own) d.parts = own.parts.map(x => ({ id: uid('ip'), label: x.label || '', pct: +x.pct || 0, to: x.to || 'stay', color: x.color || '' }));
+    else if (id === 'even') {
+      if (!d.parts.length) d.parts = [{ id: uid('ip'), label: '', pct: 0, to: 'stay' }];
+      const shares = largestRemainder(1, d.parts.map(() => 1)); // whole % that add up to 100
+      d.parts.forEach((x, n) => { x.pct = Math.round(shares[n] * 100); });
+    } else {
+      const b = BUILT_IN.find(x => x.id === id);
+      if (d.parts.length === b.pcts.length) d.parts.forEach((x, n) => { x.pct = b.pcts[n]; });
+      else {
+        // Needs stay in the account; savings go where your first saving part goes.
+        const saving = d.parts.find(x => x.to && x.to !== 'stay');
+        d.parts = b.pcts.map((pct, n) => ({ id: uid('ip'), label: b.names[n], pct, to: n === 2 && saving ? saving.to : 'stay', color: '' }));
+      }
+    }
+    ipFixColors(d);
+    d.sel = null; d.pick = null;
+    render();
+  };
+  window.saveIncomePreset = function () {
+    const d = D(), name = prompt('Name this split', d.parts.map(x => `${Math.round(x.pct)}`).join('/'));
+    if (name == null || !String(name).trim()) return;
+    const p = incomePlan();
+    if (!Array.isArray(p.presets)) p.presets = [];
+    p.presets.push({ id: uid('ipp'), name: String(name).trim().slice(0, 40), parts: d.parts.map(x => ({ label: x.label || '', pct: +x.pct || 0, to: x.to || 'stay', color: x.color || '' })) });
+    save(); render();
+  };
+  window.removeIncomePreset = function (id) {
+    const p = incomePlan();
+    p.presets = (p.presets || []).filter(x => x.id !== id);
+    save(); render();
   };
   /* The editor's plan (VAT + parts) split for an amount, the way it would be saved. */
   window.ipExample = function (d, catId, amount) {
@@ -359,7 +455,12 @@ if (typeof window !== 'undefined') {
   /* The amount the editor shows its split for: €1,000 of the first kind of income chosen. */
   window.ipPreview = function (d) {
     const catId = d.vatOn && d.vatCat && d.cats.includes(d.vatCat) ? d.vatCat : d.cats[0];
-    const amount = d.amt > 0 ? d.amt : 1000;
+    if (!(d.amt > 0)) {
+      // Start from your latest payment of this kind (what you'd really split), else €1,000.
+      const last = data.budgetTransactions.filter(t => t.type === 'income' && t.categoryId === catId && +t.amount > 0).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+      d.amt = last && last.currency === 'EUR' ? Math.round(+last.amount * 100) / 100 : 1000;
+    }
+    const amount = d.amt;
     return { catId, amount, ex: ipExample(d, catId, amount) };
   };
   /* A part's colour: its pocket's, else the one you gave it, else the chart colour of its place. */
@@ -390,11 +491,15 @@ if (typeof window !== 'undefined') {
       const imp = row.querySelector('.ip-imp'); if (imp) imp.innerHTML = ipImpactHtml(x.to, a0);
     });
     const left = document.querySelector('.ip-left'); if (left) left.textContent = `${Math.round((100 - total) * 100) / 100}% left stays in the account.`;
+    const va = document.querySelector('.ip-vat-amt'); if (va) va.textContent = fmtMoney(ex.vat);
+    const vi = document.querySelector('.ip-vatline > .ip-impact'); if (vi) vi.outerHTML = ipImpactHtml(d.vatTo || 'new:vat', ex.vat);
+    const card = document.querySelector('.split-example'), P = ipPreview(d);
+    if (card) card.outerHTML = ipExampleCard(d, (categoryById('income', P.catId) || {}).name || 'income', P.amount, ex);
   }
   const ipHost = {
     pcts: () => D().parts.map(x => +x.pct || 0),
     set(pcts, phase) {
-      if (phase === 'start') return;
+      if (phase === 'start') { ipRemember(); return; }
       const d = D();
       pcts.forEach((p, i) => { if (d.parts[i]) d.parts[i].pct = p; });
       if (phase === 'move') { ipLive(); return; }
@@ -451,7 +556,7 @@ if (typeof window !== 'undefined') {
     if (P.kind === 'missing') return `<div class="ip-impact negative">Choose where it goes</div>`;
     if (P.kind === 'new') return `<div class="ip-impact">+${fmtMoney(add)} → ${P.emoji} ${escHtml(P.name)} <span class="dim">(made when you save)</span></div>`;
     const sameCcy = !P.ccy || P.ccy === 'EUR';
-    const line = `<div class="ip-impact">+${fmtMoney(add)} → ${P.emoji ? escHtml(P.emoji) + ' ' : ''}${escHtml(P.name)}${P.balance != null && sameCcy ? `: ${fmtMoney(P.balance)} → <b>${fmtMoney(P.balance + add)}</b>` : ''}</div>`;
+    const line = `<div class="ip-impact">+${fmtMoney(add)} → ${P.emoji && (P.kind === 'pk' || P.kind === 'acc') ? escHtml(P.emoji) + ' ' : ''}${escHtml(P.name)}${P.balance != null && sameCcy ? `: ${fmtMoney(P.balance)} → <b>${fmtMoney(P.balance + add)}</b>` : ''}</div>`;
     if (P.kind !== 'pk' || !(P.target > 0) || !sameCcy) return line;
     const G = goalImpact(P.balance, add, P.target);
     const note = G.already ? 'Goal already reached' : G.completes ? '<span class="ip-badge">🎉 This payment reaches the goal</span>' + (opts && opts.closeHint ? ' <span class="dim">You can close the pocket after the transfer.</span>' : '')
@@ -504,11 +609,12 @@ if (typeof window !== 'undefined') {
   window.ipPick = function (i) { const d = D(); d.pick = d.pick === i ? null : i; d.np = null; render(); };
   window.ipChoose = function (i, ref) {
     const d = D();
+    ipRemember();
     if (i === 'vat') d.vatTo = ref; else d.parts[i].to = ref;
     ipFixColors(d);
     d.pick = null; render();
   };
-  window.ipSetColor = function (i, c) { D().parts[i].color = c; render(); };
+  window.ipSetColor = function (i, c) { ipRemember(); D().parts[i].color = c; render(); };
   /* The account a new pocket goes in: where your latest income of this kind landed, else the first. */
   const homeAccount = () => {
     const d = D(), t = data.budgetTransactions.filter(x => x.type === 'income' && d.cats.includes(x.categoryId) && x.accountId).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
@@ -534,6 +640,7 @@ if (typeof window !== 'undefined') {
     const ref = makePocket(np.acc, { icon: String(np.icon || '').trim(), name: String(np.name).trim(), target: np.target, color: np.color });
     if (!ref) return;
     save();
+    ipRemember();
     if (np.for === 'vat') d.vatTo = ref; else d.parts[np.for].to = ref;
     d.np = null; d.pick = null;
     render();
@@ -556,6 +663,7 @@ if (typeof window !== 'undefined') {
         handle: '.ip-grip', animation: 160, forceFallback: true, fallbackOnBody: true, delayOnTouchOnly: true, delay: 120,
         onEnd: ev => {
           if (ev.oldIndex === ev.newIndex) return;
+          ipRemember();
           const d = D(), [x] = d.parts.splice(ev.oldIndex, 1);
           d.parts.splice(ev.newIndex, 0, x);
           d.sel = null; d.pick = null;
@@ -589,7 +697,7 @@ if (typeof window !== 'undefined') {
   function ipTabDonut(p) {
     const v = vatStep(p), parts = partSteps(p).map(x => ({ id: x.id, label: x.label, pct: x.pct, to: incomeStepTarget(x), color: x.color || '' }));
     if (!parts.length) return '';
-    const d = { vatOn: !!v, vatPct: v ? v.pct : 0, vatCat: v ? v.onlyCat || '' : '', vatMode: (p.vatModes || {})[(v && v.onlyCat) || '*'] || 'incl', vatRoundUp: p.vatRoundUp !== false, cats: p.triggerCats, parts };
+    const d = { vatOn: !!v, vatPct: v ? v.pct : 0, vatCat: v ? v.onlyCat || '' : '', vatMode: (p.vatModes || {})[(v && v.onlyCat) || '*'] || 'incl', vatRoundUp: p.vatRoundUp !== false, cats: p.triggerCats, parts, amt: 1000 };
     const m = ipDonutModel(d, ipPreview(d).ex);
     return splitDonutHtml(Object.assign(m, { key: 'ip-tab', interactive: false, small: true, sel: null, center: { amount: m.center.amount, label: `of ${fmtMoney(1000)}` } }));
   }
