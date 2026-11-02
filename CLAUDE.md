@@ -29,7 +29,7 @@ A personal finance PWA for one person in the EU, EUR first. It is zero-build van
   - `render()` redraws everything from `ui` and `data`.
   - Modals are `ui.modal = { type, payload }`, drawn by `window.__modalRenderers[type]`.
   - Background redraws use `renderWhenIdle()` so they never wipe what the user is typing.
-  - A redraw keeps the window scroll, the scroll inside lists and windows, and the focused field with its cursor (`renderKeep` / `renderRestore`), while the page and window stay the same; a new page starts at its top. Never add your own scroll-to-top after `render()` (the user complained of the view jumping to the top, 2 Nov 2026).
+  - A redraw keeps the window scroll, the scroll inside lists and windows, and the focused field with its cursor (`renderKeep` / `renderRestore`), while the page and window stay the same; a new page starts at its top. Never add your own scroll-to-top after `render()` (the user complained of the view jumping to the top, 2 Nov 2026). A redraw asked for by a text field's `change` waits until the tap that caused it is over (`renderShouldWait`), so the tap lands; anything that must redraw at once from a text field's change should not rely on the DOM being new right after `render()` returns.
 - **Persistence.**
   - `save()` writes localStorage, records today's history snapshot (`recordHistorySnapshot`: netWorth, portfolioValue, byType, per-holding `pos`), then syncs.
   - Sync goes through the Supabase RPCs `get_trackr_data` / `set_trackr_data`, with a stale-write guard.

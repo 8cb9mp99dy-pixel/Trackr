@@ -1779,12 +1779,13 @@ function monthLabel(d) { return d.toLocaleDateString('en-US', { month: 'long', y
 // a confusing "-€400 available". So both the account total and "available" include pockets;
 // "available" no longer means "balance minus what's earmarked" the way a stock broker's cash
 // does — here it's simply the account's full worth.
-function bankTotal() { return data.accounts.filter(a => a.visibleInTotals).reduce((s, a) => s + toEUR(a.balance + pocketsTotalFor(a), a.currency), 0); }
+function bankTotal() { return data.accounts.filter(a => a.visibleInTotals).reduce((s, a) => s + toEUR((+a.balance || 0) + pocketsTotalFor(a), a.currency), 0); }
 // What's in the main balances, outside the pockets (visible accounts).
 function bankAvailable() { return data.accounts.filter(a => a.visibleInTotals).reduce((s, a) => s + toEUR(+a.balance || 0, a.currency), 0); }
-function pocketsTotalFor(acc) { return (acc.pockets || []).reduce((s, p) => s + p.amountSaved, 0); }
-function pocketsTotal() { return data.accounts.reduce((s, a) => s + toEUR(pocketsTotalFor(a), a.currency), 0); }
-function accountTotal(acc) { return acc.balance + pocketsTotalFor(acc); }
+function pocketsTotalFor(acc) { return (acc.pockets || []).reduce((s, p) => s + (+p.amountSaved || 0), 0); }
+// Only accounts counted in your totals, like bankTotal(), so main + pockets + invested = net worth.
+function pocketsTotal() { return data.accounts.filter(a => a.visibleInTotals).reduce((s, a) => s + toEUR(pocketsTotalFor(a), a.currency), 0); }
+function accountTotal(acc) { return (+acc.balance || 0) + pocketsTotalFor(acc); }
 
 /* Converts an amount from `currency` into EUR — the single currency every aggregate total in
    the app (net worth, portfolio value, category/broker totals, budgets, the loan) is expressed
@@ -2345,6 +2346,7 @@ if (window.visualViewport) { visualViewport.addEventListener('resize', syncVisua
 const scrollKeyOf = el => el.tagName + '.' + (String(el.className && el.className.baseVal != null ? el.className.baseVal : el.className).trim().split(/\s+/)[0] || '');
 const focusKeyOf = el => [el.tagName, el.id, el.getAttribute('name'), el.getAttribute('aria-label'), el.getAttribute('placeholder'), el.getAttribute('type')].join('|');
 let renderedWhere = null; // the page and window last drawn: ui.page has already changed when a redraw starts
+const whereNow = () => { const p = ui.modal && ui.modal.payload; return ui.page + '|' + (ui.modal ? ui.modal.type + ':' + (p && typeof p === 'object' ? p.id || p.txId || p.goalId || p.title || '' : '') : ''); };
 function renderKeep(app) {
   if (!app) return null;
   const where = renderedWhere;
@@ -2356,7 +2358,7 @@ function renderKeep(app) {
   });
   let focus = null;
   const act = document.activeElement;
-  if (act && act !== document.body && app.contains(act) && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(act.tagName)) {
+  if (act && act !== document.body && app.contains(act) && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(act.tagName) && (act.tagName !== 'BUTTON' || act.id || act.getAttribute('aria-label'))) {
     const k = focusKeyOf(act), same = Array.from(app.querySelectorAll(act.tagName)).filter(x => focusKeyOf(x) === k);
     let sel = null;
     try { if (typeof act.selectionStart === 'number') sel = [act.selectionStart, act.selectionEnd]; } catch (e) { /* number inputs have no cursor */ }
@@ -2365,7 +2367,7 @@ function renderKeep(app) {
   return { where, x: window.scrollX, y: window.scrollY, scrolled, focus };
 }
 function renderRestore(app, kept) {
-  const now = ui.page + '|' + (ui.modal ? ui.modal.type : '');
+  const now = whereNow();
   const was = renderedWhere;
   renderedWhere = now;
   if (!app || !kept || !was) return;
@@ -2388,8 +2390,31 @@ function renderRestore(app, kept) {
   }
   if (window.scrollY !== kept.y || window.scrollX !== kept.x) window.scrollTo(kept.x, kept.y);
 }
+/* Leaving a text field (its change) as you tap something else used to redraw the screen under
+   your finger: the tap landed on nothing and was lost, and the next field never got the focus. A
+   redraw asked for by a text field's change now waits until the tap is over (the tap lands
+   first), or, from the keyboard, until the focus has moved on. */
+let pointerDownAt = 0, renderAfterTap = false;
+document.addEventListener('pointerdown', () => { pointerDownAt = Date.now(); }, true);
+const tapOver = () => {
+  if (!pointerDownAt) return;
+  pointerDownAt = 0;
+  if (renderAfterTap) { renderAfterTap = false; setTimeout(render, 0); }
+};
+document.addEventListener('pointerup', tapOver, true);
+document.addEventListener('pointercancel', tapOver, true);
+function renderShouldWait() {
+  const ev = window.event, t = ev && ev.target;
+  if (!ev || !/^(change|blur|focusout)$/.test(ev.type) || !t || !t.tagName) return false;
+  const textField = t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !/^(checkbox|radio|range|file|color|date|month|week|time|datetime-local|button|submit)$/i.test(t.type));
+  if (!textField) return false;
+  if (pointerDownAt && Date.now() - pointerDownAt < 4000) { renderAfterTap = true; return true; }
+  if (!render.queued) { render.queued = true; setTimeout(() => { render.queued = false; render(); }, 0); }
+  return true;
+}
 function render() {
   if (window.__quietBatch) return;
+  if (renderShouldWait()) return;
   ui.renderDeferred = false;
   const app = document.getElementById('app');
   // The live price bar keeps scrolling through redraws: the same bar (same holdings) is put back.
@@ -3120,7 +3145,7 @@ window.__modalRenderers.pocket = function (payload) {
       <label class="field"><span class="label-text">Icon</span><input id="pf-icon" value="${escHtml(pk ? pk.icon : '🎯')}" maxlength="4"></label>
       <label class="field"><span class="label-text">Pocket name</span><input id="pf-name" value="${escHtml(pk ? pk.name : '')}"></label>
       <div class="form-grid">
-        <label class="field"><span class="label-text">Amount saved</span><input id="pf-saved" type="number" step="0.01" value="${pk ? pk.amountSaved : ''}"></label>
+        <label class="field"><span class="label-text">Amount saved</span><input id="pf-saved" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0" value="${pk ? pk.amountSaved : ''}"></label>
         <label class="field"><span class="label-text">Target amount</span><input id="pf-target" type="number" step="0.01" value="${pk && pk.targetAmount ? pk.targetAmount : ''}"></label>
       </div>
       <div>
@@ -3136,8 +3161,10 @@ window.__modalRenderers.pocket = function (payload) {
 };
 function savePocketForm(accId, pkId) {
   const name = document.getElementById('pf-name').value.trim();
-  const amountSaved = parseFloat(document.getElementById('pf-saved').value);
-  if (!name || isNaN(amountSaved)) return;
+  const savedRaw = document.getElementById('pf-saved').value.trim();
+  const amountSaved = savedRaw === '' ? 0 : parseFloat(savedRaw.replace(',', '.'));
+  if (!name) { alert('Give the pocket a name.'); return; }
+  if (isNaN(amountSaved) || amountSaved < 0) { alert('The amount saved can\'t be below zero.'); return; }
   const targetRaw = document.getElementById('pf-target').value;
   const targetAmount = targetRaw === '' ? null : parseFloat(targetRaw);
   const icon = document.getElementById('pf-icon').value.trim() || '🎯';

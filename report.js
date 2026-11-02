@@ -45,6 +45,30 @@ function prepareCloneForPdf(doc, original) {
     });
   });
 }
+/* html2canvas can't read newer colour functions (color-mix(), color(srgb …), oklch…): each one
+   found on the page is drawn once on a 1-pixel canvas and given to the clone as plain rgba(). */
+function pdfPlainColor(v) {
+  if (!v || !/color\(|color-mix|oklch|oklab|\blab\(|\blch\(/.test(v)) return null;
+  const cv = pdfPlainColor.cv || (pdfPlainColor.cv = Object.assign(document.createElement('canvas'), { width: 1, height: 1 }));
+  const c = cv.getContext('2d', { willReadFrequently: true });
+  c.clearRect(0, 0, 1, 1); c.fillStyle = '#000'; c.fillStyle = v; c.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = c.getImageData(0, 0, 1, 1).data;
+  return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+}
+function plainColorsForPdf(doc) {
+  const clone = doc.querySelector('.main .page'), view = doc.defaultView || window;
+  if (!clone) return;
+  // Read in the clone itself: html2canvas adds elements of its own there, so it can't be paired with the page.
+  [clone, ...clone.querySelectorAll('*')].forEach(c => {
+    const st = view.getComputedStyle(c);
+    ['color', 'backgroundColor', 'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor', 'outlineColor', 'textDecorationColor', 'fill', 'stroke'].forEach(k => {
+      const plain = pdfPlainColor(st[k]); if (plain) c.style[k] = plain;
+    });
+    if (/color\(|color-mix|oklch|oklab/.test(st.backgroundImage)) c.style.backgroundImage = 'none';
+    if (/color\(|color-mix|oklch|oklab/.test(st.boxShadow)) c.style.boxShadow = 'none';
+    if (/color\(|color-mix|oklch|oklab/.test(st.textShadow)) c.style.textShadow = 'none';
+  });
+}
 async function buildPagePdf() {
   const page = document.querySelector('.main .page');
   if (!page) throw new Error('Nothing to export on this screen.');
@@ -54,7 +78,7 @@ async function buildPagePdf() {
   const scale = 2;
   const canvas = await window.html2canvas(page, {
     scale, backgroundColor: getComputedStyle(document.body).backgroundColor || '#F4F5F8', useCORS: true, logging: false,
-    onclone: doc => prepareCloneForPdf(doc, page),
+    onclone: doc => { prepareCloneForPdf(doc, page); plainColorsForPdf(doc); },
   });
   // Where a page may break: under a card or a block, never through one.
   const top = page.getBoundingClientRect().top;

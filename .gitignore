@@ -19,3 +19,8 @@ node_modules
 test-results/
 playwright-report/
 .lighthouseci/
+
+# iCloud conflict copies ("name 2.js"): never part of the app
+* 2.js
+* 2.md
+* 2.yml
