@@ -72,7 +72,12 @@
   --accent-soft: var(--fx-fill-2);
   --light-accent-1: var(--fx-ink);
   --light-accent-2: var(--fx-faint);
-  --ov-c1: var(--fx-ink); --ov-c2: #8E8E93; --ov-c3: #C7C7CC;
+  /* Chart colours (app.js chartColor): the app stays black and white, its charts don't. Eight hues
+     in a fixed order, checked for colour blindness (adjacent pairs) and contrast on white; no
+     green or red, kept for gains and losses. Dark mode has its own steps of the same hues. */
+  --chart-1: #2a78d6; --chart-2: #eb6834; --chart-3: #00968f; --chart-4: #eda100; --chart-5: #e87ba4; --chart-6: #6250d6; --chart-7: #a8642c; --chart-8: #0e93b5;
+  --chart-other: #8E8E93;
+  --ov-c1: var(--chart-1); --ov-c2: var(--chart-2); --ov-c3: var(--chart-3);
 }
 html[data-mode="dark"] {
   --fx-ink: #F5F5F5;
@@ -109,7 +114,9 @@ html[data-mode="dark"] {
   --on-accent-1: var(--fx-paper);
   --accent-soft: var(--fx-fill-2);
   --light-accent-1: var(--fx-ink);
-  --ov-c1: var(--fx-ink); --ov-c2: #8E8E93; --ov-c3: #48484A;
+  --chart-1: #3987e5; --chart-2: #d95926; --chart-3: #10a39c; --chart-4: #c98500; --chart-5: #d55181; --chart-6: #9085e9; --chart-7: #b8743a; --chart-8: #1fa3c4;
+  --chart-other: #6E6E73;
+  --ov-c1: var(--chart-1); --ov-c2: var(--chart-2); --ov-c3: var(--chart-3);
 }
 
 /* ---------- Base ---------- */
@@ -335,6 +342,8 @@ html[data-mode="dark"] .ov-ring-fg.up, html[data-mode="dark"] .ov-ring-fg.down {
 .pc-chart.typed .pc-slice, .pc-chart.typed .pc-slice.on { fill: var(--c, var(--fx-faint)); fill-opacity: 1; }
 .pc-chart.typed.has-sel .pc-slice { fill: var(--c, var(--fx-faint)); fill-opacity: .2; }
 .pc-chart.typed.has-sel .pc-slice.on { fill-opacity: 1; }
+/* A position's colour on the ring, beside its logo in the list. */
+.pc-key { flex: none; width: 4px; height: 26px; border-radius: 2px; margin-right: -4px; }
 
 /* Portfolio list: name and share on the left, value and gain on the right; nothing spills out */
 .pc-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-auto-flow: column; gap: 12px; padding: 10px; border-radius: 10px; }

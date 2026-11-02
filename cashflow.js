@@ -38,7 +38,7 @@ function cashflowModel() {
     const useSub = subs && sub;
     const key = (useSub ? 'sub:' + sub.id : 'cat:' + (cat ? cat.id : '_none'));
     const label = useSub ? `${cat.name} · ${sub.name}` : (cat ? cat.name : 'Uncategorized');
-    const n = node(kind === 'income' ? left : right, kind + ':' + key, label, (useSub ? sub.icon : cat && cat.icon) || '', hashColor(cat ? cat.name : 'Uncategorized'));
+    const n = node(kind === 'income' ? left : right, kind + ':' + key, label, (useSub ? sub.icon : cat && cat.icon) || '', categoryChartColor(kind, cat ? cat.id : null));
     n.value += eur; n.count++;
     n.catId = cat ? cat.id : '_none';
     const sk = sub ? sub.id : '_none';
@@ -124,7 +124,7 @@ function cashflowDonutHtml(M) {
   const spendNodes = M.R.filter(n => !n.special);
   let segs, title, total, count;
   if (node && !node.special) {
-    segs = Object.values(node.subs).sort((a, b) => b.value - a.value).map(s => ({ label: s.label, value: s.value, color: hashColor(s.label + node.label), icon: s.icon, count: s.count }));
+    segs = Object.values(node.subs).sort((a, b) => b.value - a.value).map((s, i) => ({ label: s.label, value: s.value, color: chartColor(i), icon: s.icon, count: s.count }));
     title = node.label; total = node.value; count = node.count;
   } else {
     segs = spendNodes.map(n => ({ label: n.label, value: n.value, color: n.color, icon: n.icon, count: n.count }));

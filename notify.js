@@ -221,10 +221,10 @@ function weekSummaryData(start) {
   const byCat = {};
   txs.filter(t => t.type === 'expense').forEach(t => {
     const c = categoryById('expense', t.categoryId), k = c ? c.id : '_none';
-    byCat[k] = byCat[k] || { label: c ? c.name : 'Uncategorized', icon: c ? c.icon : '', value: 0 };
+    byCat[k] = byCat[k] || { id: c ? c.id : null, label: c ? c.name : 'Uncategorized', icon: c ? c.icon : '', value: 0 };
     byCat[k].value += toEUR(t.amount, t.currency);
   });
-  const top = Object.values(byCat).map(x => Object.assign(x, { color: hashColor(x.label) })).sort((a, b) => b.value - a.value).slice(0, 3);
+  const top = Object.values(byCat).map(x => Object.assign(x, { color: categoryChartColor('expense', x.id) })).sort((a, b) => b.value - a.value).slice(0, 3);
   const biggest = txs.filter(t => t.type === 'expense').sort((a, b) => toEUR(b.amount, b.currency) - toEUR(a.amount, a.currency))[0] || null;
   // Net worth: the last saved day before the week against the last saved day of it.
   const hist = (data.history || []).filter(h => typeof h.netWorth === 'number');

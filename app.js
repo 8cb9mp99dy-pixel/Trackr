@@ -31,13 +31,48 @@ const ASSET_TYPE_COLORS = { Stocks: '#6C63FF', ETFs: '#4FA6D9', Crypto: '#E8963C
 function assetTypeColor(type) {
   return (data.settings.assetTypeColors && data.settings.assetTypeColors[type]) || ASSET_TYPE_COLORS[type] || '#8A8DA0';
 }
-/* Black and white: the i-th of n slices of a chart is a grey, darkest first (mixed with the
-   paper, so it's solid in both modes). A colour you picked for a type (assetTypeColors) stays. */
-function fxShade(i, n) {
-  const k = n > 1 ? Math.min(1, i / (n - 1)) : 0;
-  return `color-mix(in srgb, var(--fx-ink) ${Math.round(88 - k * 66)}%, var(--fx-paper))`;
+/* The i-th slice of a chart (biggest first): one of the chart colours below. */
+function fxShade(i) { return chartColor(i); }
+/* Charts keep colours in this black-and-white app (your choice, 2 Nov 2026): the i-th series is
+   one of eight hues, always in the same order (futuristic.css --chart-1…8, a light and a dark
+   step of each, checked for colour blindness and contrast). Never cycled: a 9th series and
+   beyond is grey (--chart-other), the "Other" of the chart. */
+const CHART_SLOTS = 8;
+function chartColor(i) { return i >= 0 && i < CHART_SLOTS ? `var(--chart-${i + 1})` : 'var(--chart-other)'; }
+/* A category keeps one colour on every chart and every month: the eight colours go to your
+   eight biggest categories over all time (expenses and incomes each); smaller ones are grey. */
+let categorySlots = null;
+function categoryChartColor(kind, catId) {
+  const txs = data.budgetTransactions || [], key = txs.length + '|' + (data.updatedAt || '');
+  if (!categorySlots || categorySlots.key !== key) {
+    const tot = { expense: {}, income: {} };
+    txs.forEach(t => { if (tot[t.type]) { const k = t.categoryId || '_none'; tot[t.type][k] = (tot[t.type][k] || 0) + toEUR(+t.amount || 0, t.currency); } });
+    const rank = m => Object.fromEntries(Object.entries(m).sort((a, b) => b[1] - a[1]).map(([id], i) => [id, i]));
+    categorySlots = { key, expense: rank(tot.expense), income: rank(tot.income) };
+  }
+  const i = (categorySlots[kind] || {})[catId || '_none'];
+  return chartColor(i == null ? CHART_SLOTS : i);
 }
-function chartShade(type, i, n) { return (data.settings.assetTypeColors && data.settings.assetTypeColors[type]) || fxShade(i, n); }
+/* A type keeps its colour on every chart, whatever its size: the one you picked, else its own
+   chart colour (the usual types have one each); a type of your own takes its place by size. */
+const CHART_TYPE_SLOTS = { Cash: 0, Stocks: 1, ETFs: 2, Crypto: 3, Gold: 4, 'Real Estate': 5, 'Private Equity': 6, Bonds: 7, Other: CHART_SLOTS };
+function chartShade(type, i, n) {
+  const own = data.settings.assetTypeColors && data.settings.assetTypeColors[type];
+  return own || (type in CHART_TYPE_SLOTS ? chartColor(CHART_TYPE_SLOTS[type]) : fxShade(i, n));
+}
+/* The colours of the types on one chart, biggest first: a usual type keeps its own, a type of
+   your own takes the first colour no other type on the chart has. { type: colour } */
+function chartTypeColors(types) {
+  const own = data.settings.assetTypeColors || {}, out = {}, taken = new Set();
+  types.forEach(t => { if (!own[t] && t in CHART_TYPE_SLOTS) taken.add(CHART_TYPE_SLOTS[t]); });
+  let next = 0;
+  types.forEach(t => {
+    if (own[t]) out[t] = own[t];
+    else if (t in CHART_TYPE_SLOTS) out[t] = chartColor(CHART_TYPE_SLOTS[t]);
+    else { while (taken.has(next)) next++; out[t] = chartColor(next); taken.add(next); }
+  });
+  return out;
+}
 /* ---- Investment type (your own grouping) and 5-year average return ----
    Separate from the asset category (Stocks / ETFs / Gold… which decides the tab it shows in):
    what the investment really is — World equities, Bonds, Gold, Energy… — used by "Invested by
@@ -2131,9 +2166,11 @@ function svgDonut(segments, opts) {
   // own start (dashoffset dash → 0, with a gap longer than the ring so nothing repeats), starting
   // exactly when the previous one finishes.
   const sweepMs = opts.sweepMs || 900;
+  // A 2px gap of the card's colour between slices, so two colours never touch.
+  const sep = segments.filter(s => s.value > 0).length > 1 ? 2 : 0;
   const arcs = segments.filter(s => s.value > 0).map(seg => {
     const frac = seg.value / total;
-    const dash = frac * circumference;
+    const dash = Math.max(0.5, frac * circumference - sep);
     const gap = circumference - dash;
     const rotation = (offset / total) * 360 - 90;
     const startFrac = offset / total;
@@ -3524,7 +3561,7 @@ function budgetTotalsSectionHtml(kind) {
               <span class="totals-icon">${c.icon || ''}</span>
               <div style="min-width:0;flex:1;">
                 <div class="row-flex" style="gap:8px;"><span class="totals-name">${escHtml(c.name)}</span><strong>${fmtMoney(c.total)}</strong></div>
-                <div class="totals-bar"><span style="width:${pct.toFixed(1)}%;background:${hashColor(c.name)};"></span></div>
+                <div class="totals-bar"><span style="width:${pct.toFixed(1)}%;background:${categoryChartColor(kind, c.id === '_none' ? null : c.id)};"></span></div>
                 <div class="totals-sub">${pct.toFixed(0)}% · ${c.count} transaction${c.count === 1 ? '' : 's'}${d.range.months > 1 ? ` · ${fmtMoney(c.total / d.range.months)}/month` : ''} <span style="opacity:.7;">${open[key] ? '▴' : '▾'}</span></div>
                 ${!isInc && typeof categoryTargetNote === 'function' ? categoryTargetNote(c.id, c.total, d.range.months) : ''}
               </div>
@@ -4281,10 +4318,10 @@ function categorySpendingSegments(monthDate, kind) {
   monthTransactions(monthDate).filter(t => t.type === kind).forEach(t => {
     const cat = categoryById(kind, t.categoryId);
     const key = cat ? cat.id : 'uncategorized';
-    if (!byCategory[key]) byCategory[key] = { label: cat ? cat.name : 'Uncategorized', icon: cat ? cat.icon : '❓', value: 0 };
+    if (!byCategory[key]) byCategory[key] = { id: cat ? cat.id : null, label: cat ? cat.name : 'Uncategorized', icon: cat ? cat.icon : '❓', value: 0 };
     byCategory[key].value += toEUR(t.amount, t.currency);
   });
-  return Object.values(byCategory).map(x => ({ ...x, color: hashColor(x.label) })).sort((a, b) => b.value - a.value);
+  return Object.values(byCategory).map(x => ({ ...x, color: categoryChartColor(kind, x.id) })).sort((a, b) => b.value - a.value);
 }
 /* Real month-by-month income/expense bars (item 4's "cashflow" chart) — bounded the same way
    the timeline is, never showing months before real data could exist. */

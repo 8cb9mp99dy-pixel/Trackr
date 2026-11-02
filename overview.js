@@ -168,8 +168,8 @@ function overviewBrokersCardHtml() {
    own), Investments (only what's invested) — same donut, legend and colours as Wealth, whose page
    adds grouping and the target comparison on top. Hovering or tapping a line highlights it. */
 function allocationCardHtml(opts) {
-  const segs = opts.segs.filter(s => s.value > 0).sort((a, b) => b.value - a.value)
-    .map((s, i, all) => Object.assign({}, s, { color: chartShade(s.label, i, all.length) }));
+  const sorted = opts.segs.filter(s => s.value > 0).sort((a, b) => b.value - a.value), cols = chartTypeColors(sorted.map(s => s.label));
+  const segs = sorted.map(s => Object.assign({}, s, { color: cols[s.label] }));
   const total = segs.reduce((s, x) => s + x.value, 0);
   const focus = ui.wealthFocus != null ? segs[ui.wealthFocus] : null;
   return `

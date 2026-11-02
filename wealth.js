@@ -128,14 +128,12 @@ function groupRows(rows, by) {
     return g;
   });
 }
-/* A type's colour where there's no ranking to go by: the one you picked, else one of five greys
-   (always the same for a name). Charts use chartShade() instead: greys by size. */
+/* A type's colour where there's no ranking to go by: the one you picked, else its chart colour
+   (chartShade), else one of the first five (always the same for a name). */
 function typeColor(type) {
-  const own = data.settings.assetTypeColors && data.settings.assetTypeColors[type];
-  if (own) return own;
   let h = 0;
   for (const ch of String(type)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return fxShade(h % 5, 5);
+  return chartShade(type, h % 5, 5);
 }
 function typeDotHtml(type) { return `<span style="width:26px;height:26px;border-radius:8px;background:color-mix(in srgb, ${typeColor(type)} 14%, transparent);display:inline-flex;align-items:center;justify-content:center;flex:none;"><span style="width:10px;height:10px;border-radius:3px;background:${typeColor(type)};"></span></span>`; }
 
@@ -189,7 +187,8 @@ function wealthAllocationCardHtml(rows, tab) {
   const shown = rows.filter(r => !r.loan || tab === 'assets');
   const groups = groupRows(shown.filter(r => r.value > 0), by === 'asset' ? 'asset' : by).sort((a, b) => b.value - a.value);
   const total = groups.reduce((s, g) => s + g.value, 0);
-  const segs = groups.map((g, i) => ({ label: g.name, value: g.value, color: by === 'type' ? chartShade(g.name, i, groups.length) : fxShade(i, groups.length) }));
+  const typeCols = by === 'type' ? chartTypeColors(groups.map(g => g.name)) : null;
+  const segs = groups.map((g, i) => ({ label: g.name, value: g.value, color: typeCols ? typeCols[g.name] : fxShade(i, groups.length) }));
   const focus = ui.wealthFocus != null ? segs[ui.wealthFocus] : null;
   const center = focus ? `<div class="donut-center"><b>${fmtMoney(focus.value)}</b><span>${escHtml(focus.label)} · ${(focus.value / (total || 1) * 100).toFixed(1)}%</span></div>` : `<div class="donut-center"><b>${fmtMoney(total)}</b><span>Total</span></div>`;
   return `
@@ -245,6 +244,7 @@ function wealthCompareHtml(rows) {
   const total = Object.values(byType).reduce((s, v) => s + v, 0) || 1;
   const t = data.targetAllocation || {};
   const types = Array.from(new Set(Object.keys(byType).concat(Object.keys(t)))).sort((a, b) => (byType[b] || 0) - (byType[a] || 0));
+  const typeCols = chartTypeColors(types);
   const targetSum = types.reduce((s, k) => s + (+t[k] || 0), 0);
   return `
     <div class="compare-box">
@@ -253,7 +253,7 @@ function wealthCompareHtml(rows) {
         const now = (byType[k] || 0) / total * 100, tgt = t[k] != null && t[k] !== '' ? +t[k] : null;
         const gapEur = tgt != null ? (tgt / 100 * total) - (byType[k] || 0) : null;
         return `<div class="cmp-row">
-          <span class="alloc-name"><span class="donut-swatch" style="background:${chartShade(k, types.indexOf(k), types.length)};"></span>${escHtml(k)}</span>
+          <span class="alloc-name"><span class="donut-swatch" style="background:${typeCols[k]};"></span>${escHtml(k)}</span>
           <span>${now.toFixed(1)}%</span>
           <span><input class="cmp-input" type="number" min="0" max="100" step="1" inputmode="decimal" value="${tgt != null ? tgt : ''}" placeholder="—" onchange="setTargetAllocation('${escHtml(k).replace(/'/g, "\\'")}', this.value)" aria-label="Target % for ${escHtml(k)}">%</span>
           <span class="${gapEur == null ? '' : gapEur >= 0 ? 'positive' : 'negative'}" style="font-size:12.5px;">${gapEur == null ? '—' : `${gapEur >= 0 ? '+' : '−'}${fmtMoney(Math.abs(gapEur))}`}</span>
