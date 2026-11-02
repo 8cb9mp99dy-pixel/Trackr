@@ -133,6 +133,8 @@ const ICON_PATHS = {
   photo: '<path d="M15 8h.01"/><path d="M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12z"/><path d="M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5"/><path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3"/>',
   copy: '<path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/>',
   chevronDown: '<path d="M6 9l6 6l6 -6"/>',
+  chevronUp: '<path d="M6 15l6 -6l6 6"/>',
+  grip: '<circle cx="9" cy="6" r=".9"/><circle cx="15" cy="6" r=".9"/><circle cx="9" cy="12" r=".9"/><circle cx="15" cy="12" r=".9"/><circle cx="9" cy="18" r=".9"/><circle cx="15" cy="18" r=".9"/>',
   chevronRight: '<path d="M9 6l6 6l-6 6"/>',
   chevronLeft: '<path d="M15 6l-6 6l6 6"/>',
   pie: '<path d="M10 3.2a9 9 0 1 0 10.8 10.8a1 1 0 0 0 -1 -1h-6.8a2 2 0 0 1 -2 -2v-7a.9 .9 0 0 0 -1 -.8"/><path d="M15 3.5a9 9 0 0 1 5.5 5.5h-4.5a1 1 0 0 1 -1 -1v-4.5"/>',
@@ -428,7 +430,9 @@ function defaultData() {
       showCents: true,
       showPerformanceIndicators: true,
       compactMode: false,
-      budgetLimitsBeta: false, // Settings → Display → "Category budgets (beta)"
+      budgetLimitsBeta: false, // the old switch, kept: categoryBudgets replaced it
+      categoryBudgets: true, // Budget → Budgets: a monthly limit per category (Settings → Display)
+      budgetLayout: { sections: [], charts: [] }, // budget-live.js: your order of the Budget page
       newNav: false, // the beta's switch, no longer read (nav.js)
       showPocketMoves: false, // Budget: list moves between the pockets of one account (never in the totals)
       mainAccountId: null, // the account new incomes / expenses use by default (Accounts → an account → Main account)
@@ -2178,7 +2182,8 @@ function svgDonut(segments, opts) {
     const anim = opts.animate
       ? ` class="donut-seg-anim" style="--seg-off:${dash};animation-duration:${Math.max(40, frac * sweepMs)}ms;animation-delay:${startFrac * sweepMs}ms;"`
       : '';
-    return `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${stroke}"
+    const cat = 'id' in seg ? ` data-cat="${escHtml(seg.id || '')}"` : '';
+    return `<circle${cat} cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${stroke}"
       stroke-dasharray="${opts.animate ? `${dash} ${circumference}` : `${dash} ${gap}`}" transform="rotate(${rotation} ${c} ${c})" stroke-linecap="butt"${anim}/>`;
   }).join('');
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"${opts.animate ? ' class="donut-anim"' : ''}>${arcs}</svg>`;
@@ -2340,6 +2345,7 @@ function render() {
     if (typeof navAfterRender === 'function') navAfterRender(app);
     if (typeof tapAfterRender === 'function') tapAfterRender(app);
     if (typeof cardsAfterRender === 'function') cardsAfterRender(app);
+    if (typeof budgetLiveAfterRender === 'function') budgetLiveAfterRender(app);
   } catch (e) {
     console.error('Render failed', e);
     renderCrashScreen(app, e);
@@ -3156,7 +3162,9 @@ function budgetTransactionsTab() {
   const showPocketMoves = !!data.settings.showPocketMoves;
   const txs = hideTransfers ? allTxs.filter(t => t.type !== 'transfer') : showPocketMoves ? allTxs : allTxs.filter(t => !isPocketMove(t));
   const income = monthIncome(m), expenses = monthExpenses(m), balance = income - expenses;
-  const dayGroups = groupTransactionsByDay(txs);
+  // A slice of a category chart picked: only that category (budget-live.js).
+  const shown = typeof budgetFilterTxs === 'function' ? budgetFilterTxs(txs) : txs;
+  const dayGroups = groupTransactionsByDay(shown);
   const picking = typeof bulkSelecting === 'function' && bulkSelecting(); // bulk.js: tick many, change them at once
   const trend = monthSpendTrend(m);
   // Read before investedCardHtml() consumes it: the category donuts animate on the same
@@ -3170,58 +3178,66 @@ function budgetTransactionsTab() {
   const monthName = m.toLocaleDateString('en-GB', { month: 'long' });
   const invested = monthInvested(m).net;
   const chartsOpen = budgetChartsOpen();
-  return `
-    ${budgetTimelineHtml(m)}
-
+  // The parts of the tab, drawn in your order (Arrange, budget-live.js).
+  const charts = {
+    category: categoryFoldHtml(m, expenseSegments, incomeSegments, animateCharts),
+    invested: investedCardHtmlStr,
+    trend: `<div class="card" style="margin-bottom:20px;">
+        <div class="eyebrow">Spending trend</div>
+        <div style="font-size:12px;opacity:.6;">${fmtMoney(trend.total)} ${trend.isCurrentMonth ? 'so far' : 'spent'}${trend.compare.length ? ` · last month ${fmtMoney(trend.compareAtSameDay)}${trend.isCurrentMonth ? ' by this day' : ''}` : ''}</div>
+        ${trendChartOrPlaceholder(trend.points, 120, { xMin: 1, xMax: trend.daysInMonth, zeroBase: true, compare: trend.compare, compareLabel: 'Last month', valueSuffix: ' spent', endLabel: trend.endLabel }, 'No spending logged yet this month.')}
+      </div>`,
+    cashflow: `<div class="card" style="margin-bottom:20px;">
+        <div class="eyebrow" style="margin-bottom:14px;">Income vs expenses</div>
+        ${cashflowBarsHtml(m)}
+      </div>`,
+  };
+  const inOrder = (parts, kind) => (typeof budgetLayoutHtml === 'function' ? budgetLayoutHtml(parts, kind) : Object.values(parts).join(''));
+  const filtered = !!ui.txCatFilter;
+  const parts = {
+    months: budgetTimelineHtml(m),
+    summary: `
     <div class="card bt-summary">
       <div class="drill" onclick="drillMonth('in')"><div class="eyebrow">In</div><b class="positive">${fmtMoney(income)}</b></div>
       <div class="drill" onclick="drillMonth('out')"><div class="eyebrow">Out</div><b class="negative">${fmtMoney(expenses)}</b></div>
       <div class="drill" onclick="drillMonth('net')"><div class="eyebrow">Balance</div><b class="${balance >= 0 ? 'positive' : 'negative'}">${fmtMoney(balance)}</b></div>
       <div class="drill" onclick="drillMonth('invested')"><div class="eyebrow">Invested</div><b style="color:var(--accent-1);">${fmtMoney(invested)}</b></div>
-    </div>
-    ${budgetsGlanceHtml(m)}
-    ${toReviewBannerHtml()}
-
+    </div>`,
+    budgets: budgetsGlanceHtml(m),
+    review: toReviewBannerHtml(),
+    actions: `
     <div class="bt-actions">
       <button class="btn primary" onclick="openTxForm()">${ic('plus', 15)} Add transaction</button>
       <button class="btn" onclick="setBudgetTab('import')" title="Add many income &amp; expenses at once from an Excel or CSV file">Import</button>
       <button class="btn" onclick="exportBudgetTransactionsExcel()" title="Every logged transaction — date, type, category, sub-category, amount, and more">Export</button>
-    </div>
-
+      ${typeof openBudgetArrange === 'function' ? `<button class="btn" onclick="openBudgetArrange()" title="Put the parts of this page in your order">${ic('grip', 15)} Layout</button>` : ''}
+    </div>`,
+    charts: `
     <div class="card bt-charts ${chartsOpen ? 'open' : ''}">
       <button class="bt-charts-head" onclick="toggleBudgetCharts()" aria-expanded="${chartsOpen}">
-        <span style="min-width:0;"><span class="eyebrow" style="margin:0;">Charts for ${escHtml(monthName)}</span><span class="bt-charts-sub">By category, spending trend, invested, income vs expenses</span></span>
+        <span style="min-width:0;"><span class="eyebrow" style="margin:0;">Charts for ${escHtml(monthName)}</span><span class="bt-charts-sub">By category, spending trend, invested, income vs expenses · tap a category or a month</span></span>
         <span aria-hidden="true">${chartsOpen ? '⌃' : '⌄'}</span>
       </button>
-      ${chartsOpen ? `<div class="bt-charts-body">
-        ${categoryFoldHtml(m, expenseSegments, incomeSegments, animateCharts)}
-        ${investedCardHtmlStr}
-        <div class="card" style="margin-bottom:20px;">
-        <div class="eyebrow">Spending trend</div>
-        <div style="font-size:12px;opacity:.6;">${fmtMoney(trend.total)} ${trend.isCurrentMonth ? 'so far' : 'spent'}${trend.compare.length ? ` · last month ${fmtMoney(trend.compareAtSameDay)}${trend.isCurrentMonth ? ' by this day' : ''}` : ''}</div>
-      </div>
-      ${trendChartOrPlaceholder(trend.points, 120, { xMin: 1, xMax: trend.daysInMonth, zeroBase: true, compare: trend.compare, compareLabel: 'Last month', valueSuffix: ' spent', endLabel: trend.endLabel }, 'No spending logged yet this month.')}
-        </div>
-        <div class="card">
-          <div class="eyebrow" style="margin-bottom:14px;">Income vs expenses</div>
-          ${cashflowBarsHtml(m)}
-        </div>
-      </div>` : ''}
-    </div>
-
+      ${chartsOpen ? `<div class="bt-charts-body">${inOrder(charts, 'charts')}</div>` : ''}
+    </div>`,
+    list: `
     <div class="tx-list-tools">
-      <div class="eyebrow" style="margin:0;">${txs.length} transaction${txs.length === 1 ? '' : 's'}${hideTransfers && transferCount ? ` · ${transferCount} transfer${transferCount === 1 ? '' : 's'} hidden` : !hideTransfers && !showPocketMoves && pocketMoveCount ? ` · ${pocketMoveCount} pocket move${pocketMoveCount === 1 ? '' : 's'} hidden` : ''}</div>
+      <div class="eyebrow" style="margin:0;">${shown.length} transaction${shown.length === 1 ? '' : 's'}${hideTransfers && transferCount ? ` · ${transferCount} transfer${transferCount === 1 ? '' : 's'} hidden` : !hideTransfers && !showPocketMoves && pocketMoveCount ? ` · ${pocketMoveCount} pocket move${pocketMoveCount === 1 ? '' : 's'} hidden` : ''}</div>
       <div class="row-flex" style="gap:14px;">
         <button class="btn small" onclick="bulkToggleMode()">${picking ? 'Done' : 'Select'}</button>
         ${pocketMoveCount && !hideTransfers ? `<label class="switch-row"><span>Show pocket moves</span><button class="toggle ${showPocketMoves ? 'on' : ''}" onclick="togglePocketMoves()" aria-label="Show pocket moves"></button></label>` : ''}
         <label class="switch-row"><span>Show transfers</span><button class="toggle ${hideTransfers ? '' : 'on'}" onclick="toggleHideTransfers()" aria-label="Show transfers"></button></label>
       </div>
     </div>
-    ${dayGroups.length ? dayGroups.map(g => dayGroupHtml(g, picking)).join('') : hideTransfers && transferCount ? `
+    ${filtered && typeof budgetFilterChipHtml === 'function' ? budgetFilterChipHtml(shown.length) : ''}
+    ${dayGroups.length ? dayGroups.map(g => dayGroupHtml(g, picking)).join('') : filtered ? `
+      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Nothing in this category this month</div><div class="sub"><button class="link-btn" onclick="budgetFilterCat(ui.txCatFilter.kind, ui.txCatFilter.id)">Show every category</button></div></div></div>` : hideTransfers && transferCount ? `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Only transfers this month</div><div class="sub">${transferCount} transfer${transferCount === 1 ? ' is' : 's are'} hidden. <button class="link-btn" onclick="toggleHideTransfers()">Show them</button></div></div></div>` : pocketMoveCount ? `
       <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="title">Only pocket moves this month</div><div class="sub">${pocketMoveCount} move${pocketMoveCount === 1 ? ' is' : 's are'} hidden. <button class="link-btn" onclick="togglePocketMoves()">Show them</button></div></div></div>` : `
-      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}
-    ${picking ? bulkBarHtml(txs) : ''}`;
+      <div class="card" style="margin-bottom:20px;"><div class="empty-state"><div class="emoji">📭</div><div class="title">No transactions yet for this month</div><div class="sub">Start tracking your finances by adding your first transaction.</div></div></div>`}`,
+  };
+  return `${inOrder(parts, 'sections')}
+    ${picking ? bulkBarHtml(shown) : ''}`;
 }
 /* The month's charts sit in one fold under the summary; it remembers whether you left it open. */
 const BUDGET_CHARTS_KEY = 'trackr-budget-charts';
@@ -3308,11 +3324,11 @@ function toReviewBannerHtml() {
    A monthly limit per expense category (data.budgetLimits = { categoryId: euros }). The Budget
    page shows how much of each is used, the pace for the rest of the month, and warns when a new
    expense takes a category past 80 % or 100 %. */
-/* Budget → Budgets (monthly limits per category) is a beta, off unless you switch it on in
-   Settings → Display → "Category budgets (beta)". On, it brings back the tab and everything that
+/* Budget → Budgets (monthly limits per category) is on unless you switch it off in
+   Settings → Display → "Category budgets" (it was a beta until 2 Nov 2026). On, it shows the tab and everything that
    uses the limits (the summary on the Transactions tab, "left under the target" in Totals, the
    over-budget alerts, the recap's budget lines). The limits you set stay saved either way. */
-function budgetLimitsOn() { return !!(data && data.settings && data.settings.budgetLimitsBeta); }
+function budgetLimitsOn() { return !!(data && data.settings) && data.settings.categoryBudgets !== false; }
 function budgetLimits() { if (!data.budgetLimits || typeof data.budgetLimits !== 'object') data.budgetLimits = {}; return data.budgetLimits; }
 function monthSpentByCategory(monthDate) {
   const out = {};
@@ -3364,7 +3380,7 @@ function budgetRowHtml(c, st) {
     <div class="bl-row">
       <span class="totals-icon">${c.icon || ''}</span>
       <div style="flex:1;min-width:0;">
-        <div class="row-flex" style="gap:8px;"><span class="totals-name">${escHtml(c.name)}</span><span style="font-size:13px;"><strong>${fmtMoney(st.spent)}</strong> <span style="opacity:.65;">of</span> <input class="bl-input" inputmode="decimal" value="${st.limit}" onchange="setBudgetLimit('${c.id}',this.value)" aria-label="Monthly limit for ${escHtml(c.name)}"></span></div>
+        <div class="row-flex" style="gap:8px;"><span class="totals-name ${typeof budgetFilterCat === 'function' ? 'bl-see' : ''}" ${typeof budgetFilterCat === 'function' ? `onclick="budgetFilterCat('expense','${c.id}')" title="See its transactions"` : ''}>${escHtml(c.name)}</span><span style="font-size:13px;"><strong>${fmtMoney(st.spent)}</strong> <span style="opacity:.65;">of</span> <input class="bl-input" inputmode="decimal" value="${st.limit}" onchange="setBudgetLimit('${c.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur();else if(event.key==='Escape'){this.value=this.defaultValue;this.blur();}" aria-label="Monthly limit for ${escHtml(c.name)}"></span></div>
         <div class="totals-bar" style="height:7px;"><span style="width:${pctW.toFixed(1)}%;background:${budgetBarColor(st.level)};"></span></div>
         <div class="totals-sub">${Math.round(st.pct)}% used · ${status}${pace}</div>
       </div>
@@ -3600,8 +3616,8 @@ const CAT_FOLD_KEY = 'trackr-cat-fold';
 function catFoldOpen() { try { return localStorage.getItem(CAT_FOLD_KEY) === '1'; } catch (e) { return false; } }
 function categoryFoldBodyHtml(expenseSegments, incomeSegments, animate) {
   return `<div class="donut-pair">
-      ${categoryDonutCardHtml('Spending', expenseSegments, 'No expenses yet this month.', animate)}
-      ${categoryDonutCardHtml('Income', incomeSegments, 'No income yet this month.', animate)}
+      ${categoryDonutCardHtml('Spending', expenseSegments, 'No expenses yet this month.', animate, 'expense')}
+      ${categoryDonutCardHtml('Income', incomeSegments, 'No income yet this month.', animate, 'income')}
     </div>`;
 }
 function categoryFoldHtml(m, expenseSegments, incomeSegments, animate) {
@@ -3630,16 +3646,21 @@ function toggleCategoryFold() {
   card.classList.toggle('open', open);
   card.querySelector('.cat-fold-head').setAttribute('aria-expanded', String(open));
 }
-function categoryDonutCardHtml(title, segments, emptyText, animate) {
+/* kind: tap a slice or a line and the list below shows that category only (budget-live.js). */
+function categoryDonutCardHtml(title, segments, emptyText, animate, kind) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+  const tap = kind && typeof budgetFilterCat === 'function';
+  const picked = tap && ui.txCatFilter && ui.txCatFilter.kind === kind;
+  const isOn = s => picked && budgetCatFilterOn(kind, s.id);
+  const limit = s => { const st = kind === 'expense' && s.id ? budgetStatus(s.id, ui.budgetMonth) : null; return st ? ` <span class="${st.level === 'over' ? 'negative' : 'dim'}">of ${fmtMoney(st.limit)}</span>` : ''; };
   return `
-    <div class="card donut-card ${animate ? 'donut-card-anim' : ''}">
+    <div class="card donut-card ${animate ? 'donut-card-anim' : ''} ${picked ? 'donut-picked' : ''}">
       <div class="eyebrow" style="margin-bottom:14px;">${title}</div>
       ${segments.length ? `
         <div class="donut-body">
-          ${svgDonut(segments, { size: 140, stroke: 22, animate })}
+          <div class="donut-tap" ${tap ? `onclick="budgetDonutTap(event,'${kind}')" data-plain` : ''}>${svgDonut(picked ? segments.map(s => (isOn(s) ? s : Object.assign({}, s, { color: `color-mix(in srgb, ${s.color} 25%, transparent)` }))) : segments, { size: 140, stroke: 22, animate })}</div>
           <div class="stack-gap-8 donut-legend">
-            ${segments.map((s, i) => `<div class="donut-legend-row" style="animation-delay:${150 + i * 55}ms;" title="${escHtml(s.label)} · ${fmtMoney(s.value)}"><span class="donut-swatch" style="background:${s.color};"></span><span>${escHtml(s.label)} · <strong>${fmtMoney(s.value)}</strong> · ${(s.value / total * 100).toFixed(0)}%</span></div>`).join('')}
+            ${segments.map((s, i) => `<div class="donut-legend-row ${isOn(s) ? 'on' : ''}" style="animation-delay:${150 + i * 55}ms;" title="${escHtml(s.label)} · ${fmtMoney(s.value)}"${tap ? ` onclick="budgetFilterCat('${kind}', ${s.id ? `'${escHtml(s.id)}'` : 'null'})" aria-pressed="${isOn(s)}"` : ''}><span class="donut-swatch" style="background:${s.color};"></span><span>${escHtml(s.label)} · <strong>${fmtMoney(s.value)}</strong>${limit(s)} · ${(s.value / total * 100).toFixed(0)}%</span></div>`).join('')}
           </div>
         </div>` : `<div style="opacity:.5;font-size:13px;">${emptyText}</div>`}
     </div>`;
@@ -3722,10 +3743,10 @@ function investedCardHtml(monthDate) {
           <div id="inv-num" style="font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.15;">${fmtMoney(anim ? 0 : cur.net)}</div>
           <div style="font-size:12px;opacity:.65;margin-top:2px;">${caption}</div>
         </div>
-        <div class="inv-bars" aria-hidden="true">
+        <div class="inv-bars">
           ${series.map((x, i) => {
             const active = x.d.getFullYear() === monthDate.getFullYear() && x.d.getMonth() === monthDate.getMonth();
-            return `<div class="inv-col" title="${monthLabel(x.d)} · ${fmtMoney(x.v)}">
+            return `<div class="inv-col" title="${monthLabel(x.d)} · ${fmtMoney(x.v)}" style="cursor:pointer;" onclick="setBudgetMonthTo(${x.d.getFullYear()},${x.d.getMonth()})">
               <div class="inv-track"><div class="inv-bar" style="height:${x.v ? Math.max(6, x.v / maxV * 100) : 4}%;opacity:${active ? 1 : .28};animation-delay:${i * 70}ms;"></div></div>
               <div class="inv-lbl">${x.d.toLocaleDateString('en-US', { month: 'short' })}</div>
             </div>`;
@@ -3876,7 +3897,7 @@ function dayGroupHtml(group, picking) {
       <div style="font-weight:700;font-size:14px;">${dayLabel(group.date)}</div>
       <div class="${netEUR >= 0 ? 'positive' : 'negative'}" style="font-weight:600;font-size:13px;">${netEUR >= 0 ? '+' : ''}${fmtMoney(netEUR)}</div>
     </div>
-    <div class="card stack-gap-16">
+    <div class="card stack-gap-16 tx-day">
       ${group.txs.map(t => txRowDisplayHtml(t, picking)).join('')}
     </div>`;
 }
@@ -3938,22 +3959,25 @@ function txRowDisplayHtml(t, picking) {
   const tap = picking ? `bulkToggle('${t.id}')` : `openTxForm('${t.id}')`;
   const tick = picking ? bulkTickHtml(t) : '';
   const del = picking ? '' : `<button class="icon-btn-round" style="width:26px;height:26px;background:none;border:none;" aria-label="Delete this transaction" title="Delete" onclick="event.stopPropagation();deleteBudgetTx('${t.id}')">${ic('trash')}</button>`;
+  // Tap the name or the amount to change it right here (budget-live.js); the rest opens the form.
+  const live = !picking && typeof txInline === 'function';
+  const il = (field, html, label) => (live ? `<span class="il" onclick="txInline(event,'${t.id}','${field}')" title="${label}">${html}</span>` : html);
   if (t.type === 'transfer') {
     // Live labels, so a renamed pocket/broker shows its new name; falls back to the saved
     // snapshot if the place has since been deleted.
     const fromLabel = (transferEndpoint(t.from) || {}).label || t.fromLabel || '—';
     const toLabel = (transferEndpoint(t.to) || {}).label || t.toLabel || '—';
     return `
-    <div class="row-flex" style="cursor:pointer;" onclick="${tap}">
+    <div class="row-flex tx-row" style="cursor:pointer;" onclick="${tap}" data-tx="${t.id}" data-tx-kind="transfer">
       <div style="display:flex;align-items:center;gap:12px;">
         ${tick}${txAvatarHtml(t)}
         <div>
-          <div style="font-weight:600;font-size:14px;">${escHtml(t.comment || 'Transfer')}${t.nature === 'Fixed' ? ` <span class="tx-rec" title="${escHtml(recurringTxTitle(t))}">↻</span>` : ''}</div>
+          <div style="font-weight:600;font-size:14px;">${il('comment', escHtml(t.comment || 'Transfer'), 'Change the name')}${t.nature === 'Fixed' ? ` <span class="tx-rec" title="${escHtml(recurringTxTitle(t))}">↻</span>` : ''}</div>
           <div style="font-size:12px;opacity:.65;">${escHtml(fromLabel)} → ${escHtml(toLabel)}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
-        <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);">${fmtMoney(Math.abs(t.amount), t.currency)}</div>
+        <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);">${il('amount', fmtMoney(Math.abs(t.amount), t.currency), 'Change the amount')}</div>
         ${del}
       </div>
     </div>`;
@@ -3967,16 +3991,16 @@ function txRowDisplayHtml(t, picking) {
   const catLabel = subcat ? `${cat.name} · ${subcat.name}` : (cat ? cat.name : '');
   const subtitle = t.comment ? catLabel : (pm ? pm.name : '');
   return `
-    <div class="row-flex" style="cursor:pointer;" onclick="${tap}">
+    <div class="row-flex tx-row" style="cursor:pointer;" onclick="${tap}" data-tx="${t.id}" data-tx-kind="${t.type}">
       <div style="display:flex;align-items:center;gap:12px;">
         ${tick}${txAvatarHtml(t)}
         <div>
-          <div style="font-weight:600;font-size:14px;">${escHtml(label)}${t.nature === 'Fixed' ? ` <span class="tx-rec" title="${escHtml(recurringTxTitle(t))}">↻</span>` : ''}${(t.receipts || []).length ? ` <span class="tx-rec" title="Receipt attached" aria-label="Receipt attached">${ic('file', 12)}</span>` : ''}</div>
+          <div style="font-weight:600;font-size:14px;">${il('comment', escHtml(label), 'Change the name')}${t.nature === 'Fixed' ? ` <span class="tx-rec" title="${escHtml(recurringTxTitle(t))}">↻</span>` : ''}${(t.receipts || []).length ? ` <span class="tx-rec" title="Receipt attached" aria-label="Receipt attached">${ic('file', 12)}</span>` : ''}</div>
           <div style="font-size:12px;opacity:.65;">${escHtml(subtitle || '—')}${t.location ? ' · ' + escHtml(t.location) : ''}${acc ? ' · ' + escHtml(acc.name) : ''}${pk ? ' · ' + escHtml(pk.name) : ''}</div>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
-        <div class="${t.type === 'income' ? 'positive' : 'negative'}" style="font-weight:700;font-size:14.5px;">${t.type === 'income' ? '+' : '-'}${fmtMoney(Math.abs(t.amount), t.currency)}</div>
+        <div class="${t.type === 'income' ? 'positive' : 'negative'}" style="font-weight:700;font-size:14.5px;">${il('amount', `${t.type === 'income' ? '+' : '-'}${fmtMoney(Math.abs(t.amount), t.currency)}`, 'Change the amount')}</div>
         ${del}
       </div>
     </div>`;
@@ -4332,7 +4356,7 @@ function cashflowTrendData(monthDate) {
     if (d >= budgetMinMonth()) months.push(d);
   }
   if (!months.length) months.push(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1));
-  return months.map(d => ({ label: d.toLocaleDateString('en-US', { month: 'short' }), income: monthIncome(d), expenses: monthExpenses(d) }));
+  return months.map(d => ({ y: d.getFullYear(), m: d.getMonth(), label: d.toLocaleDateString('en-US', { month: 'short' }), income: monthIncome(d), expenses: monthExpenses(d) }));
 }
 function cashflowBarsHtml(monthDate) {
   const months = cashflowTrendData(monthDate);
@@ -4340,7 +4364,7 @@ function cashflowBarsHtml(monthDate) {
   return `
     <div style="display:flex;gap:14px;align-items:flex-end;height:110px;margin-bottom:10px;">
       ${months.map(x => `
-        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+        <div class="cf-col ${x.y === monthDate.getFullYear() && x.m === monthDate.getMonth() ? 'on' : ''}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;" onclick="setBudgetMonthTo(${x.y},${x.m})" title="Open ${escHtml(x.label)}">
           <div style="display:flex;gap:3px;align-items:flex-end;height:80px;">
             <div style="width:12px;height:${Math.max(4, (x.income / maxVal) * 80)}px;background:var(--positive);border-radius:3px 3px 0 0;" title="Income ${fmtMoney(x.income)}"></div>
             <div style="width:12px;height:${Math.max(4, (x.expenses / maxVal) * 80)}px;background:var(--negative);border-radius:3px 3px 0 0;" title="Expenses ${fmtMoney(x.expenses)}"></div>
@@ -4525,7 +4549,7 @@ function categoryGroupHtml(kind, title) {
   return `
     <div style="margin-bottom:26px;">
       <div style="font-weight:700;margin-bottom:12px;">${title}</div>
-      <div class="stack-gap-8">
+      <div class="stack-gap-8 cat-sort" data-kind="${kind}">
         ${data.categories[kind].map(c => categoryRowHtml(kind, c)).join('') || '<div style="opacity:.5;font-size:13px;">No categories yet.</div>'}
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;">
@@ -4536,10 +4560,10 @@ function categoryGroupHtml(kind, title) {
 }
 function categoryRowHtml(kind, cat) {
   return `
-    <div class="card-nested">
+    <div class="card-nested" data-id="${escHtml(cat.id)}">
       ${categoryNodeRowHtml(kind, cat.id, null)}
       ${(cat.subcategories || []).length ? `
-        <div style="margin:10px 0 0 30px;display:flex;flex-direction:column;gap:8px;">
+        <div class="sub-sort" data-kind="${kind}" data-cat="${escHtml(cat.id)}" style="margin:10px 0 0 30px;display:flex;flex-direction:column;gap:8px;">
           ${cat.subcategories.map(sc => categoryNodeRowHtml(kind, cat.id, sc.id)).join('')}
         </div>` : ''}
       <div style="margin-left:30px;margin-top:8px;">
@@ -4562,19 +4586,21 @@ function categoryNodeRowHtml(kind, catId, subId) {
   const key = categoryNodeKey(catId, subId);
   const editing = ui.categoryEditOpen === key;
   const pickerOpen = ui.emojiPickerOpen === key;
+  const sid = subId ? `'${subId}'` : 'null', live = typeof catInline === 'function';
   return `
-    <div>
+    <div data-id="${escHtml(subId || catId)}">
       <div class="row-flex">
         <div style="display:flex;align-items:center;gap:10px;">
+          ${live ? `<span class="drag-h ${subId ? 'drag-sub' : 'drag-cat'}" title="Drag to change the order" aria-hidden="true">${ic('grip', 15)}</span>` : ''}
           <span style="cursor:pointer;font-size:${subId ? '16px' : '20px'};" onclick="toggleEmojiPicker('${key}')" title="Change icon">${node.icon || (subId ? '📎' : '📦')}</span>
           ${editing
-            ? `<input id="cat-rename-${key}" value="${escHtml(node.name)}" style="max-width:180px;" onkeydown="if(event.key==='Enter')saveCategoryRename('${kind}','${catId}',${subId ? `'${subId}'` : 'null'})">`
-            : `<span style="font-weight:${subId ? 500 : 600};font-size:${subId ? '12.5px' : '13.5px'};">${escHtml(node.name)}</span>`}
+            ? `<input id="cat-rename-${key}" value="${escHtml(node.name)}" style="max-width:180px;" onkeydown="if(event.key==='Enter')saveCategoryRename('${kind}','${catId}',${subId ? `'${subId}'` : 'null'});else if(event.key==='Escape')toggleCategoryRename('${key}')">`
+            : `<span class="${live ? 'il' : ''}" style="font-weight:${subId ? 500 : 600};font-size:${subId ? '12.5px' : '13.5px'};" ${live ? `onclick="catInline(event,'${kind}','${catId}',${sid})" title="Rename"` : ''}>${escHtml(node.name)}</span>`}
         </div>
         <div style="display:flex;gap:2px;">
           ${editing
             ? `<button class="btn small primary" style="padding:4px 10px;" onclick="saveCategoryRename('${kind}','${catId}',${subId ? `'${subId}'` : 'null'})">Save</button>`
-            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="toggleCategoryRename('${key}')" aria-label="Edit">${ic('edit')}</button>`}
+            : `<button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="${live ? `catInline(event,'${kind}','${catId}',${sid})` : `toggleCategoryRename('${key}')`}" aria-label="Rename">${ic('edit')}</button>`}
           <button class="icon-btn-round" style="width:24px;height:24px;background:none;border:none;" onclick="${subId ? `removeSubcategory('${kind}','${catId}','${subId}')` : `removeCategory('${kind}','${catId}')`}" aria-label="Delete">${ic('trash')}</button>
         </div>
       </div>
@@ -6535,7 +6561,7 @@ function settingsDisplayHtml() {
       ${typeof appearanceSettingHtml === 'function' ? appearanceSettingHtml() : ''}
       ${boolSettingRow('Classic navigation', 'classicNav', 'Every page in the side bar, as before. Off: Home · Money (budget, receipts, freelance) · Wealth (overview, cash, investments, watchlist, debts) · Plan (goals, future, emergency, insights). Same pages, grouped differently.')}
       ${boolSettingRow('Update holdings when I record a trade', 'applyTradesToHoldings', 'After Buy / Sell / Convert (or a plan) on an account page, show how quantities, average price and cash would change, and apply it if you confirm. Never places a real order.')}
-      ${boolSettingRow('Category budgets (beta)', 'budgetLimitsBeta', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}
+      ${boolSettingRow('Category budgets', 'categoryBudgets', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}
       <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.65;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
       <label class="field"><span class="label-text">Twelve Data API key <span style="opacity:.6;">(ticker search &amp; live prices)</span></span>
         <input id="settings-twelvedata-key" value="${escHtml(s.twelveDataApiKey || '')}" placeholder="Paste your free API key from twelvedata.com" onchange="updateSetting('twelveDataApiKey', this.value.trim())">

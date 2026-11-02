@@ -213,6 +213,8 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!track.isConnected) return; // a redraw replaced it while this was waiting
     const middle = track.scrollLeft + track.clientWidth / 2, slots = Array.from(track.children);
     let best = 0, bestD = Infinity;
+    // Just after a redraw the carousel is put back on its card: that scroll isn't you moving.
+    const settling = track.settleUntil > Date.now();
     slots.forEach((s, i) => {
       const d = (s.offsetLeft + s.offsetWidth / 2 - middle) / (s.offsetWidth || 1), t = cardTilt(d);
       if (Math.abs(d) < bestD) { bestD = Math.abs(d); best = i; }
@@ -220,6 +222,7 @@ if (typeof module !== 'undefined' && module.exports) {
       s.firstElementChild.style.transform = `perspective(1100px) rotateY(${t.rotate}deg) scale(${t.scale})`;
       s.firstElementChild.style.opacity = t.opacity;
     });
+    if (settling) best = Math.min(ui.cardIndex || 0, slots.length - 1);
     if (best !== (ui.cardIndex || 0) && ui.cardFlip) {
       ui.cardFlip = null;
       track.querySelectorAll('.cw-inner.flipped').forEach(el => el.classList.remove('flipped'));
@@ -241,12 +244,14 @@ if (typeof module !== 'undefined' && module.exports) {
     const grid = app.querySelector('.cw-arrange');
     if (grid) cardSortable(grid);
     const track = app.querySelector('.cw-track'); if (!track) return;
+    track.settleUntil = Date.now() + 400;
     track.scrollLeft = trackLeft(track, Math.min(ui.cardIndex || 0, track.children.length - 1));
     paint(track);
   };
   window.cardGo = function (delta) {
     const track = document.querySelector('.cw-track'); if (!track) return;
     const i = Math.max(0, Math.min(track.children.length - 1, (ui.cardIndex || 0) + delta));
+    track.settleUntil = 0; // you moved it
     track.scrollTo({ left: trackLeft(track, i), behavior: reduced() ? 'auto' : 'smooth' });
   };
   /* Tap the one in front: it turns over and its details open below. Tap one beside it to bring it

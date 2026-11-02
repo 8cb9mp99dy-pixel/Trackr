@@ -41,7 +41,10 @@ test('the cards sit at the top of Budget; tapping the front one opens its detail
   await page.evaluate(() => cardGo(1));
   await expect(page.locator('.cw-detail')).toBeHidden();
   await expect.poll(() => page.evaluate(() => ui.cardIndex)).toBe(1);
+  // Wait until the carousel has stopped gliding (a slow machine takes a while).
+  await expect.poll(() => page.evaluate(() => new Promise(r => { const t = document.querySelector('.cw-track'), a = t.scrollLeft; setTimeout(() => r(t.scrollLeft === a), 150); }))).toBe(true);
   await page.locator('.cw-card').nth(1).click();
+  await expect(page.locator('.cw-inner.flipped')).toHaveCount(1);
   await expect(page.locator('.cw-detail .cw-d-amount')).toContainText('≈');
   expect(errors).toEqual([]);
 });
