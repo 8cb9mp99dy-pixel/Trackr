@@ -10,7 +10,7 @@
  * Hovering only changes classes and the centre's text — the page isn't redrawn, so it stays
  * smooth. Every amount goes through fmtMoney (the eye hides them); shares are percentages.
  *
- * donutArcs() is pure (Node-tested).
+ * donutArcs() and shortSecurityName() are pure (Node-tested).
  */
 /* values → [{ a0, a1, mid, share }] in degrees, clockwise from 12 o'clock, a small gap between. */
 function donutArcs(values, gapDeg) {
@@ -27,8 +27,29 @@ function donutArcs(values, gapDeg) {
   });
 }
 
+/* A fund's long official name, shorter for the list and the centre: drops the share-class noise
+ * ("UCITS", "(USD)", "Accumulating", "(Acc)", "1C", "Sponsored ADR", "A/S", a ticker in
+ * brackets at the end). The full name stays in the tooltip. Never returns an empty name. */
+function shortSecurityName(name) {
+  const full = String(name || '').trim();
+  const s = full
+    .replace(/\s*\((?:[A-Z0-9]{2,6}(?:\.[A-Z]{1,3})?)\)\s*$/, '')
+    .replace(/\bUCITS\b/gi, '')
+    .replace(/\((?:USD|EUR|GBP|CHF)\)/g, '')
+    .replace(/\(\s*(?:Acc|Accumulating|Dist|Distributing)\s*\)/gi, '')
+    .replace(/\b(?:Accumulating|Distributing)\b/gi, '')
+    .replace(/\bETF\s+(?:USD|EUR|GBP)\b/g, 'ETF')
+    .replace(/\bETF\s+\d[CD]\b/g, 'ETF')
+    .replace(/\s+Sponsored ADR\b/gi, '')
+    .replace(/\s+A\/S\b/g, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return s || full;
+}
+
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { donutArcs };
+  module.exports = { donutArcs, shortSecurityName };
 } else {
   const C = 260, R = 178, RI = 122, LBL = 222;   // viewBox 520 × 520
   const pt = (deg, r) => { const t = (deg - 90) * Math.PI / 180; return [C + r * Math.cos(t), C + r * Math.sin(t)]; };
@@ -90,7 +111,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   function centerHtml(it, total, share) {
     if (!it) return `<span class="pc-c-k">Total value</span><b class="pc-c-v">${fmtMoney(total)}</b>`;
-    return `<span class="pc-c-k">${escHtml(it.name)}</span><b class="pc-c-v">${fmtMoney(it.value)}</b><span class="pc-c-s">${share.toFixed(2)}% · ${gainHtml(it.gain, it.pct)}</span>`;
+    return `<span class="pc-c-k">${escHtml(it.type_ ? it.name : shortSecurityName(it.name))}</span><b class="pc-c-v">${fmtMoney(it.value)}</b><span class="pc-c-s">${share.toFixed(2)}% · ${gainHtml(it.gain, it.pct)}</span>`;
   }
 
   window.portfolioChartHtml = function () {
@@ -129,7 +150,7 @@ if (typeof module !== 'undefined' && module.exports) {
           <div class="pc-list-head"><label class="pc-sort">Sort by <select onchange="ui.pcSort=this.value;render()">${[['size', 'Size'], ['gain', 'Gain'], ['name', 'Name']].map(([k, l]) => `<option value="${k}" ${(ui.pcSort || 'size') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label><span class="dim">${items.length} ${mode === 'types' ? 'type' : 'position'}${items.length === 1 ? '' : 's'}</span></div>
           <div class="pc-rows">${list.map((it, n) => `<div class="pc-row ${it.key === ui.pcSel ? 'on' : ''}" data-k="${escHtml(it.key)}" style="--d:${(0.2 + n * 0.03).toFixed(2)}s" onpointerenter="pcHover('${escHtml(it.key)}')" onclick="pcPick('${escHtml(it.key)}')">
               ${it.type_ ? '' : `<span class="pc-key" style="background:${it.shade};" aria-hidden="true"></span>`}${logoChip(it, 32)}
-              <div class="pc-nm"><div class="pc-n1">${escHtml(it.name)}</div><div class="pc-n2">${(total ? it.value / total * 100 : 0).toFixed(1)}% · ${it.type_ ? `${it.n} position${it.n === 1 ? '' : 's'} · invested ${fmtMoney(it.cost)}${it.ret != null ? ` · 5-yr avg ${it.ret.toFixed(1)}%` : ''}` : `×${fmtQty(it.qty)}`}</div></div>
+              <div class="pc-nm"><div class="pc-n1" title="${escHtml(it.name)}">${escHtml(it.type_ ? it.name : shortSecurityName(it.name))}</div><div class="pc-n2">${(total ? it.value / total * 100 : 0).toFixed(1)}% · ${it.type_ ? `${it.n} position${it.n === 1 ? '' : 's'} · invested ${fmtMoney(it.cost)}${it.ret != null ? ` · 5-yr avg ${it.ret.toFixed(1)}%` : ''}` : `×${fmtQty(it.qty)}`}</div></div>
               <div class="pc-v"><b>${fmtMoney(it.value)}</b><div class="pc-g">${gainHtml(it.gain, it.pct)}</div></div>
               ${it.open && it.key === ui.pcSel ? `<button class="icon-btn-round pc-open" aria-label="Open ${escHtml(it.name)}" onclick="event.stopPropagation();${it.open}">${ic('chevronRight', 15)}</button>` : ''}
             </div>`).join('')}</div>

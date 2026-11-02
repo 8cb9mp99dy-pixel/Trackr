@@ -346,7 +346,11 @@ html[data-mode="dark"] .ov-ring-fg.up, html[data-mode="dark"] .ov-ring-fg.down {
 .pc-key { flex: none; width: 4px; height: 26px; border-radius: 2px; margin-right: -4px; }
 
 /* Portfolio list: name and share on the left, value and gain on the right; nothing spills out */
-.pc-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-auto-flow: column; gap: 12px; padding: 10px; border-radius: 10px; }
+.pc-row { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 10px; }
+.pc-row > :not(.pc-nm) { flex: none; }
+.pc-nm { flex: 1; min-width: 0; text-align: left; }
+.pc-list, .pc-chart { min-width: 0; }   /* a long name never widens the list past the card */
+.pc-sort select { padding: 5px 28px 5px 10px; background-position: right 10px center; }
 .pc-row .pc-dot { width: 14px; height: 14px; margin: 0 9px; border-radius: 4px; }
 .pc-n2 { display: block; margin-top: 2px; font-size: 12px; color: var(--fx-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pc-v { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
@@ -358,6 +362,7 @@ html[data-mode="dark"] .ov-ring-fg.up, html[data-mode="dark"] .ov-ring-fg.down {
   .pc-lbl { display: none; }   /* the list says each share; labels around a small ring only crowd it */
   .pc-chart { max-width: 340px; margin: -34px auto -26px; }   /* the room kept for labels isn't needed here */
   .pc-row { padding: 10px 4px; gap: 10px; }
+  .pc-body { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Wealth list: search on top, then one row of filter chips; hairlines, no grey blocks */

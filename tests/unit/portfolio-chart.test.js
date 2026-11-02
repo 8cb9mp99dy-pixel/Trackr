@@ -17,3 +17,15 @@ test('one slice has no gap; nothing gives nothing', () => {
   assert.deepStrictEqual(donutArcs([0, 0], 1), []);
   assert.deepStrictEqual(donutArcs([], 1), []);
 });
+
+test('long fund names get shorter, never empty', () => {
+  const { shortSecurityName: s } = require('../../portfolio-chart.js');
+  assert.strictEqual(s('Vanguard S&P 500 UCITS ETF (USD) Accumulating (VUAA)'), 'Vanguard S&P 500 ETF');
+  assert.strictEqual(s('Xtrackers MSCI World Energy UCITS ETF 1C'), 'Xtrackers MSCI World Energy ETF');
+  assert.strictEqual(s('iShares Global Water UCITS ETF USD (Acc)'), 'iShares Global Water ETF');
+  assert.strictEqual(s('Novo Nordisk A/S Sponsored ADR'), 'Novo Nordisk');
+  assert.strictEqual(s('S&P 500 EUR (Acc)'), 'S&P 500 EUR');
+  assert.strictEqual(s('Private Equity (Apollo)'), 'Private Equity (Apollo)');
+  assert.strictEqual(s('Bitcoin'), 'Bitcoin');
+  assert.strictEqual(s('(Acc)'), '(Acc)');
+});
