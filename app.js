@@ -2777,12 +2777,13 @@ function pocketRowHtml(acc, p) {
         </div>
       </div>
       <div style="display:flex;gap:2px;">
-        ${p.finishedAt ? `<button class="btn small" onclick="reopenPocket('${acc.id}','${p.id}')">Bring back</button>` : `<button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="finishPocket('${acc.id}','${p.id}')" aria-label="Mark ${escHtml(p.name)} as finished" title="Finished: hide it from this account">${ic('check')}</button>`}
+        ${p.finishedAt ? `<button class="btn small" onclick="${p.closed && typeof reopenClosedPocket === 'function' ? 'reopenClosedPocket' : 'reopenPocket'}('${acc.id}','${p.id}')">Bring back</button>` : `<button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="${typeof openPocketClose === 'function' ? 'openPocketClose' : 'finishPocket'}('${acc.id}','${p.id}')" aria-label="Close ${escHtml(p.name)}" title="Close: say where its money goes, keep its story">${ic('check')}</button>`}
         <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="openPocketForm('${acc.id}','${p.id}')" aria-label="Edit">${ic('edit')}</button>
         <button class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" onclick="deletePocket('${acc.id}','${p.id}')" aria-label="Delete">${ic('trash')}</button>
       </div>
     </div>
     ${pct !== null ? `<div style="height:5px;border-radius:4px;background:var(--dark-border);overflow:hidden;margin-top:9px;"><div style="height:100%;width:${pct}%;background:${p.color};"></div></div>` : ''}
+    ${typeof pocketReachedHtml === 'function' ? pocketReachedHtml(acc, p) : ''}
     ${moves.length ? `<div class="pk-moves">${moves.map(m => `<div><span>${escHtml(shortDay(m.date))} · ${escHtml(m.comment || m.other || 'Move')}</span><b>${m.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(m.amount))}</b></div>`).join('')}</div>` : ''}
   </div>`;
 }
@@ -3042,7 +3043,7 @@ function savePocketForm(accId, pkId) {
     Object.assign(old, { name, amountSaved, targetAmount, icon, color });
     if (int.interest) old.interest = int.interest; else delete old.interest;
   } else {
-    acc.pockets.push(Object.assign({ id: uid('pk'), icon, name, amountSaved, targetAmount, color }, int.interest ? { interest: int.interest } : {}));
+    acc.pockets.push(Object.assign({ id: uid('pk'), icon, name, amountSaved, targetAmount, color, createdAt: new Date().toISOString() }, int.interest ? { interest: int.interest } : {}));
   }
   save(); closeModal();
 }
@@ -3081,6 +3082,7 @@ function renderBudget() {
       ${typeof renderReceipts === 'function' && !(typeof newNavOn === 'function' && newNavOn()) ? `<button class="btn" onclick="goPage('receipts')" title="Receipts and warranties of what you bought">${ic('file', 15)} Receipts</button>` : ''}
     </div>
     ${typeof cardsHtml === 'function' ? cardsHtml() : ''}
+    ${typeof completedGoalsHtml === 'function' ? completedGoalsHtml() : ''}
     <div class="tab-row budget-tabs">
       ${budgetGroups().map(g => `<button class="tab-btn ${group.id === g.id ? 'active' : ''}" onclick="setBudgetGroup('${g.id}')">${g.label}</button>`).join('')}
     </div>

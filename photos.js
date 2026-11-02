@@ -180,7 +180,8 @@ setTimeout(() => { photoBackground().catch(() => {}); }, 4000);
 setInterval(() => { if (!document.hidden) photoBackground().catch(() => {}); }, 5 * 60 * 1000);
 
 /* ---- Where your photos are ---- */
-const photoUsedIds = () => Array.from(new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id)).concat(typeof receiptIds === 'function' ? receiptIds() : [], (data.cards || []).map(c => c.photo).filter(Boolean))));
+const closedPocketPhotos = () => (data.accounts || []).flatMap(a => (a.pockets || []).flatMap(p => [p.closed].concat(p.closedBefore || []).map(c => c && c.photo))).filter(Boolean);
+const photoUsedIds = () => Array.from(new Set((data.goals || []).flatMap(g => (g.photos || []).map(p => p.id)).concat(typeof receiptIds === 'function' ? receiptIds() : [], (data.cards || []).map(c => c.photo).filter(Boolean), closedPocketPhotos())));
 async function photoRefreshStatus(again) {
   ui.photoStatusAt = Date.now();
   if (again) { photoCloud = null; imageCloud = null; await photoSyncPending().catch(() => {}); await imageMoveOld().catch(() => {}); }
