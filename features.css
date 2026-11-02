@@ -661,3 +661,46 @@ html.tx-dragging, html.tx-dragging * { cursor: grabbing !important; }
 .ip-check { display: flex; align-items: center; gap: 8px; font-size: 13px; min-height: 32px; }
 .ip-check input { width: 18px; height: 18px; accent-color: var(--fx-ink, #111); }
 .ip-vatline .ip-to { width: 100%; max-width: none; }
+
+/* ===================== Split donut (split-donut.js) ===================== */
+.sd-wrap { position: relative; width: min(100%, 300px); aspect-ratio: 1; margin: 0 auto 4px; touch-action: none; }
+.sd-wrap.small { width: 132px; flex: none; margin: 0; touch-action: auto; }
+.sd-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.sd-slice path { stroke: var(--fx-paper, #fff); stroke-width: 2; stroke-linejoin: round; }
+.sd-wrap.live .sd-slice { cursor: pointer; transition: transform .2s cubic-bezier(.2,.8,.2,1); }
+.sd-slice.lift-in { animation: sdLift .2s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes sdLift { from { transform: none; } }
+.sd-slice.sel path { stroke-width: 2.5; }
+.sd-emoji { font-size: 15px; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.sd-hatch-bg { fill: color-mix(in srgb, var(--fx-ink, #111) 5%, transparent); }
+.sd-hatch-line { fill: color-mix(in srgb, var(--fx-ink, #111) 22%, transparent); }
+.sd-rest.shake { animation: sdShake .45s cubic-bezier(.36,.07,.19,.97) both; transform-box: fill-box; }
+@keyframes sdShake { 10%, 90% { transform: translateX(-1px); } 20%, 80% { transform: translateX(3px); } 30%, 50%, 70% { transform: translateX(-5px); } 40%, 60% { transform: translateX(5px); } }
+.sd-vat-track { fill: color-mix(in srgb, var(--fx-ink, #111) 7%, transparent); }
+.sd-vat { fill: var(--fx-ink, #111); opacity: .55; }
+.sd-handle { cursor: grab; outline: none; }
+.sd-wrap.dragging .sd-handle { cursor: grabbing; }
+.sd-hit { fill: transparent; }
+.sd-knob { fill: var(--fx-paper, #fff); stroke: var(--fx-ink, #111); stroke-width: 2.5; transition: r .15s; }
+.sd-handle:hover .sd-knob, .sd-handle:focus-visible .sd-knob { r: 11; }
+.sd-handle:focus-visible .sd-knob { stroke-width: 3.5; }
+.sd-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; padding: 0 30%; }
+.sd-center b { font-size: 24px; font-weight: 800; letter-spacing: -.01em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.sd-center span { font-size: 12px; opacity: .6; }
+.sd-center small { font-size: 11px; opacity: .6; margin-top: 4px; line-height: 1.25; }
+.sd-wrap.small .sd-center { padding: 0 26%; }
+.sd-wrap.small .sd-center b { font-size: 13px; }
+.sd-wrap.small .sd-center span { font-size: 10px; }
+.sd-tip { position: absolute; z-index: 3; transform: translate(-50%, calc(-100% - 14px)); display: flex; flex-direction: column; gap: 3px; min-width: 150px; padding: 8px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap; background: var(--fx-paper, #fff); border: 1px solid var(--fx-line, rgba(127,127,127,.25)); box-shadow: 0 6px 20px rgba(0,0,0,.14); pointer-events: none; font-variant-numeric: tabular-nums; }
+.sd-tip[hidden] { display: none; }
+.sd-tip span { display: flex; align-items: center; gap: 6px; }
+.sd-tip i { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.sd-tip i.rest { background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--fx-ink, #111) 25%, transparent) 0 2px, transparent 2px 4px); }
+.sd-hint { text-align: center; font-size: 11.5px; opacity: .55; margin-bottom: 14px; }
+.ip-part { grid-template-columns: 16px minmax(0, 1fr) 92px 44px !important; grid-template-areas: "dot name pct del" ". to amt amt" !important; border-radius: 12px; padding: 6px 6px 10px; transition: background-color .2s; }
+.ip-part.sel { background: color-mix(in srgb, var(--fx-ink, #111) 6%, transparent); }
+.ip-dot { grid-area: dot; width: 12px; height: 12px; border-radius: 4px; }
+.ip-summary-wrap { display: flex; gap: 16px; align-items: center; }
+.ip-summary-wrap .ip-summary { flex: 1; min-width: 0; }
+@media (max-width: 420px) { .ip-summary-wrap { flex-direction: column; align-items: stretch; } .ip-summary-wrap .sd-wrap.small { margin: 0 auto; } }
+@media (prefers-reduced-motion: reduce) { .sd-slice, .sd-slice.lift-in, .sd-rest.shake, .sd-knob { animation: none !important; transition: none !important; } }

@@ -246,12 +246,17 @@ if (typeof window !== 'undefined') {
     const d = D();
     const num = v => Math.max(0, Math.min(100, parseFloat(String(v).replace(',', '.')) || 0));
     if (i == null) d[field] = field === 'vatPct' ? Math.min(50, num(value)) : value;
-    else d.parts[i][field] = field === 'pct' ? num(value) : value;
+    else if (field === 'pct') {
+      // The total never goes past 100 %: a % that would is lowered, and what stays shakes.
+      const c = sdClampPart(d.parts.map(x => +x.pct || 0), i, num(value));
+      d.parts[i].pct = c.value;
+      if (c.clamped) d.shake = Date.now();
+    } else d.parts[i][field] = value;
     render();
   };
   window.ipToggleCat = function (id) { const d = D(); d.cats = d.cats.includes(id) ? d.cats.filter(c => c !== id) : d.cats.concat([id]); render(); };
   window.ipAddPart = function () { D().parts.push({ id: uid('ip'), label: '', pct: 10, to: 'stay' }); render(); };
-  window.ipRemovePart = function (i) { D().parts.splice(i, 1); render(); };
+  window.ipRemovePart = function (i) { const d = D(); d.parts.splice(i, 1); d.sel = null; render(); };
   window.saveIncomePlan = function () {
     const d = D(), p = incomePlan();
     if (!d.cats.length) { alert('Choose at least one kind of income.'); return; }
@@ -286,22 +291,24 @@ if (typeof window !== 'undefined') {
         <button class="btn primary full" style="margin-top:16px;" onclick="ui.modal.payload.step=2;render();" ${d.cats.length ? '' : 'disabled'}>Next</button>`;
     }
     const total = d.parts.reduce((s, x) => s + (+x.pct || 0), 0);
-    const exCat = d.vatOn && d.vatCat && d.cats.includes(d.vatCat) ? d.vatCat : d.cats[0];
-    const exAmt = 1000;
-    const ex = ipExample(d, exCat, exAmt);
+    const { catId: exCat, amount: exAmt, ex } = ipPreview(d);
     const exName = (categoryById('income', exCat) || {}).name || 'income';
-    const partLine = (x, i) => ex.lines.find(l => l.step.id === x.id) || { amount: 0 };
+    const partLine = x => ex.lines.find(l => l.step.id === x.id) || { amount: 0 };
+    window.sdHost = ipHost;
     return `${head}
+      ${splitDonutHtml(ipDonutModel(d, ex))}
+      <div class="sd-hint">Drag a handle between two slices${matchMedia('(pointer: coarse)').matches ? ' (hold still first for 1 % steps)' : ' (Shift for 1 % steps)'}, or tap a slice.</div>
       ${d.vatOn ? ipVatLineHtml(d, ex) : ''}
       <div class="tx-label">${d.vatOn ? 'After VAT, how do you split the rest?' : 'How do you split it?'}</div>
       <div class="ip-parts">
         ${d.parts.map((x, i) => `
-        <div class="ip-part">
+        <div class="ip-part ${d.sel === i ? 'sel' : ''}" data-i="${i}" onfocusin="ipRowFocus(${i})">
+          <span class="ip-dot" style="background:${ipPartColor(x, i)}" aria-hidden="true"></span>
           <input class="ip-name" value="${escHtml(x.label)}" placeholder="${escHtml(ipPlaceName(x.to) || 'e.g. Invest')}" onchange="ipSet('label', this.value, ${i})" aria-label="Name">
           <span class="split-pct"><input type="number" min="0" max="100" step="1" value="${x.pct}" onchange="ipSet('pct', this.value, ${i})" aria-label="Percent">%</span>
           <button class="icon-btn-round ip-del" onclick="ipRemovePart(${i})" aria-label="Remove ${escHtml(ipPartName(x))}">${ic('trash')}</button>
           <select class="mini-select ip-to" onchange="ipSet('to', this.value, ${i})" aria-label="Where ${escHtml(ipPartName(x))} goes">${placeOptions(x.to, true)}</select>
-          <div class="ip-part-amt">${fmtMoney(partLine(x, i).amount)}</div>
+          <div class="ip-part-amt">${fmtMoney(partLine(x).amount)}</div>
         </div>`).join('')}
       </div>
       <button class="btn small" style="margin-top:8px;" onclick="ipAddPart()">+ Add a part</button>
@@ -318,6 +325,77 @@ if (typeof window !== 'undefined') {
   window.ipExample = function (d, catId, amount) {
     const steps = (d.vatOn ? [{ id: 'ip_vat_x', label: 'VAT', pct: d.vatPct, setAside: true, onlyCat: d.vatCat }] : []).concat(d.parts.map(x => ({ id: x.id, label: x.label, pct: x.pct, to: x.to })));
     return incomeSplit(amount, catId, steps, { vatMode: d.vatMode, vatRoundUp: d.vatRoundUp });
+  };
+  /* The amount the editor shows its split for: €1,000 of the first kind of income chosen. */
+  window.ipPreview = function (d) {
+    const catId = d.vatOn && d.vatCat && d.cats.includes(d.vatCat) ? d.vatCat : d.cats[0];
+    const amount = d.amt > 0 ? d.amt : 1000;
+    return { catId, amount, ex: ipExample(d, catId, amount) };
+  };
+  /* A part's colour: its pocket's, else the one you gave it, else the chart colour of its place. */
+  window.ipPartColor = function (x, i) {
+    const ep = parseTransferRef(x.to);
+    if (ep && ep.kind === 'pk') { const a = accountById(ep.accountId), pk = a && (a.pockets || []).find(p => p.id === ep.pocketId); if (pk && pk.color) return pk.color; }
+    return x.color || chartColor(i);
+  };
+  const ipEmoji = x => { const ep = parseTransferRef(x.to); if (!ep || ep.kind !== 'pk') return ''; const a = accountById(ep.accountId), pk = a && (a.pockets || []).find(p => p.id === ep.pocketId); return (pk && pk.icon) || ''; };
+  window.ipDonutModel = function (d, ex) {
+    const pcts = capPercents(d.parts.map(x => x.pct)), used = pcts.reduce((a, b) => a + b, 0);
+    return {
+      key: 'ip', interactive: true, sel: d.sel, lifted: Date.now() - (d.liftAt || 0) < 400, shake: Date.now() - (d.shake || 0) < 700,
+      parts: d.parts.map((x, i) => ({ id: x.id, name: ipPartName(x), pct: pcts[i], amount: (ex.lines.find(l => l.step.id === x.id) || { amount: 0 }).amount, color: ipPartColor(x, i), emoji: ipEmoji(x) })),
+      rest: { pct: 100 - used, amount: ex.rest },
+      vat: d.vatOn && ex.vat > 0 ? { amount: ex.vat, share: ex.received ? ex.vat / ex.received : 0 } : null,
+      center: { amount: ex.base, label: 'to split', sub: d.vatOn && ex.vat > 0 ? `VAT set aside: ${fmtMoney(ex.vat)}` : '' },
+    };
+  };
+  /* While a handle moves, only the donut and the numbers are redrawn (the window stays put). */
+  function ipLive() {
+    const d = D(), { ex } = ipPreview(d), total = d.parts.reduce((s, x) => s + (+x.pct || 0), 0);
+    splitDonutPaint(ipDonutModel(d, ex));
+    document.querySelectorAll('.ip-part[data-i]').forEach(row => {
+      const x = d.parts[+row.dataset.i]; if (!x) return;
+      const inp = row.querySelector('input[aria-label="Percent"]'); if (inp) inp.value = x.pct;
+      const amt = row.querySelector('.ip-part-amt'); if (amt) amt.textContent = fmtMoney((ex.lines.find(l => l.step.id === x.id) || { amount: 0 }).amount);
+    });
+    const left = document.querySelector('.ip-left'); if (left) left.textContent = `${Math.round((100 - total) * 100) / 100}% left stays in the account.`;
+  }
+  const ipHost = {
+    pcts: () => D().parts.map(x => +x.pct || 0),
+    set(pcts, phase) {
+      if (phase === 'start') return;
+      const d = D();
+      pcts.forEach((p, i) => { if (d.parts[i]) d.parts[i].pct = p; });
+      if (phase === 'move') { ipLive(); return; }
+      const h = document.activeElement && document.activeElement.closest && document.activeElement.closest('.sd-handle');
+      render();
+      if (h) { const again = document.querySelector(`.sd-handle[data-k="${h.dataset.k}"]`); if (again) again.focus(); }
+    },
+    select(i) {
+      const d = D();
+      d.sel = d.sel === i ? null : i; d.liftAt = Date.now();
+      render();
+      if (d.sel != null) { const inp = document.querySelector(`.ip-part[data-i="${i}"] input[aria-label="Percent"]`); if (inp) inp.focus({ preventScroll: false }); }
+    },
+    tip(pcts, k) {
+      const d = D(), saved = d.parts.map(x => x.pct);
+      pcts.forEach((p, i) => { d.parts[i].pct = p; });
+      const { ex } = ipPreview(d);
+      d.parts.forEach((x, i) => { x.pct = saved[i]; });
+      const amt = x => fmtMoney((ex.lines.find(l => l.step.id === x.id) || { amount: 0 }).amount);
+      const a = d.parts[k], b = d.parts[k + 1];
+      const used = pcts.reduce((s, x) => s + x, 0);
+      return `<span><i style="background:${ipPartColor(a, k)}"></i>${escHtml(ipPartName(a))} <b>${pcts[k]}%</b> ${amt(a)}</span>`
+        + (b ? `<span><i style="background:${ipPartColor(b, k + 1)}"></i>${escHtml(ipPartName(b))} <b>${pcts[k + 1]}%</b> ${amt(b)}</span>` : `<span><i class="rest"></i>Stays <b>${Math.round((100 - used) * 100) / 100}%</b> ${fmtMoney(ex.rest)}</span>`);
+    },
+  };
+  /* Focusing a row lights up its slice (without redrawing the window, so the field keeps focus). */
+  window.ipRowFocus = function (i) {
+    const d = D();
+    if (d.sel === i) return;
+    d.sel = i; d.liftAt = Date.now();
+    splitDonutPaint(ipDonutModel(d, ipPreview(d).ex));
+    document.querySelectorAll('.ip-part[data-i]').forEach(r => r.classList.toggle('sel', +r.dataset.i === i));
   };
   /* VAT: a locked first line, taken before your split and not part of its 100 %. */
   const VAT_RATES = [21, 9, 0];
@@ -337,6 +415,14 @@ if (typeof window !== 'undefined') {
       </div>`;
   };
 
+  /* The plan's pie on the tab (not interactive): the saved parts for €1,000. */
+  function ipTabDonut(p) {
+    const v = vatStep(p), parts = partSteps(p).map(x => ({ id: x.id, label: x.label, pct: x.pct, to: incomeStepTarget(x), color: x.color || '' }));
+    if (!parts.length) return '';
+    const d = { vatOn: !!v, vatPct: v ? v.pct : 0, vatCat: v ? v.onlyCat || '' : '', vatMode: (p.vatModes || {})[(v && v.onlyCat) || '*'] || 'incl', vatRoundUp: p.vatRoundUp !== false, cats: p.triggerCats, parts };
+    const m = ipDonutModel(d, ipPreview(d).ex);
+    return splitDonutHtml(Object.assign(m, { key: 'ip-tab', interactive: false, small: true, sel: null, center: { amount: m.center.amount, label: `of ${fmtMoney(1000)}` } }));
+  }
   window.incomePlanTab = function () {
     const p = incomePlan(), v = vatStep(p), parts = partSteps(p);
     const catNames = p.triggerCats.map(id => (categoryById('income', id) || {}).name).filter(Boolean);
@@ -352,13 +438,13 @@ if (typeof window !== 'undefined') {
           <div style="font-size:12.5px;opacity:.6;">When you get paid, Trackr suggests how to split it.</div></div>
         <label class="switch-row"><button class="toggle ${p.on ? 'on' : ''}" onclick="toggleIncomePlan()" aria-label="Income plan on"></button><span>${p.on ? 'On' : 'Off'}</span></label>
       </div>
-      <div class="ip-summary">
+      <div class="ip-summary-wrap">${ipTabDonut(p)}<div class="ip-summary">
         <div class="ip-sum-row dim">For ${escHtml(catNames.join(', ') || 'no income yet')}</div>
         ${v ? `<div class="ip-sum-row"><b class="ip-pct">${v.pct}%</b><span>VAT${vatCat ? ` on ${escHtml(vatCat)}` : ''}</span><span class="dim">${escHtml(placeText(incomeStepTarget(v)))}</span></div>` : ''}
         ${v && parts.length ? '<div class="ip-sum-row dim" style="padding-left:2px;">Then, of what\'s left:</div>' : ''}
         ${parts.map(x => `<div class="ip-sum-row"><b class="ip-pct">${x.pct}%</b><span>${escHtml(ipPartName(x))}</span><span class="dim">${escHtml(placeText(incomeStepTarget(x)))}</span></div>`).join('')}
         ${total < 100 ? `<div class="ip-sum-row"><b class="ip-pct dim">${100 - total}%</b><span class="dim">Left</span><span class="dim">stays in the account</span></div>` : ''}
-      </div>
+      </div></div>
       ${ex ? `<div class="split-example" style="margin-top:12px;"><div class="eyebrow">Example: ${escHtml((categoryById('income', exCat) || {}).name || '')} of ${fmtMoney(1000)}</div>
         <div style="font-size:13px;">${ex.lines.map(l => `${escHtml(l.vat ? 'VAT' : ipPartName(l.step))} <b>${fmtMoney(l.amount)}</b>`).join(' · ')} · stays <b>${fmtMoney(ex.rest)}</b></div></div>` : ''}
       <button class="btn primary" style="margin-top:14px;" onclick="openIncomePlanEditor()">Edit plan</button>
