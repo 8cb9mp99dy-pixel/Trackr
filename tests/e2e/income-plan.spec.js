@@ -100,7 +100,7 @@ test('VAT line: incl./excl., 9 %, 0 %, round up; unnamed parts take their place 
   await expect(vat).toHaveText('€173.55');
   await page.getByRole('button', { name: 'excl. VAT' }).click();
   await expect(vat).toHaveText('€210.00');
-  await expect(page.locator('.ip-part-amt').first()).toHaveText('€250.00');
+  await expect(page.locator('.ip-imp').first()).toContainText('+€250.00');
   await page.getByRole('button', { name: '9%', exact: true }).click();
   await expect(vat).toHaveText('€90.00');
   await page.getByRole('button', { name: '0%', exact: true }).click();
@@ -108,7 +108,8 @@ test('VAT line: incl./excl., 9 %, 0 %, round up; unnamed parts take their place 
   await page.getByRole('button', { name: '21%', exact: true }).click();
   // A part with no name is saved with its place's name.
   await page.getByRole('button', { name: '+ Add a part' }).click();
-  await page.locator('.ip-part').nth(3).locator('select').selectOption('pk:acc_demo1:pk_demo1');
+  await page.locator('.ip-part').nth(3).locator('.ip-place').click();
+  await page.locator('.ip-pick .ip-opt', { hasText: 'Trip fund' }).click();
   await page.locator('.ip-part').nth(1).locator('input[aria-label="Percent"]').fill('15');
   await page.locator('.ip-part').nth(1).locator('input[aria-label="Percent"]').dispatchEvent('change');
   await page.getByRole('button', { name: 'Save plan' }).click();

@@ -1217,12 +1217,11 @@ html.compact .tab-row { margin-bottom: 12px; }
 .ip-vat-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
 .ip-vat-row .mini-select { max-width: 100%; }
 .ip-parts { display: flex; flex-direction: column; gap: 8px; }
-.ip-part { display: grid; grid-template-columns: minmax(0, 1fr) 92px 44px; grid-template-areas: "name pct del" "to amt amt"; gap: 8px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--dark-border); }
+.ip-part { display: grid; gap: 8px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--dark-border); }
 .ip-part .ip-name { grid-area: name; min-width: 0; }
 .ip-part .split-pct { grid-area: pct; }
 .ip-part .ip-del { grid-area: del; width: 44px; height: 44px; background: none; border: none; }
-.ip-part .ip-to { grid-area: to; width: 100%; max-width: none; white-space: normal; }
-.ip-part .ip-part-amt { grid-area: amt; padding-right: 12px; font-weight: 700; font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.ip-part .ip-to { grid-area: to; min-width: 0; }
 .ip-part:last-child { border-bottom: none; }
 .ip-left { font-size: 12.5px; opacity: .7; margin: 10px 0 12px; }
 .ip-left.negative { opacity: 1; }

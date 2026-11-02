@@ -65,7 +65,17 @@ function incomeSplit(amount, catId, steps, opts) {
     .concat(parts.map((s, i) => ({ step: s, pct: pcts[i], amount: shares[i] })));
   return { gross, base: V.splittable, received: V.received, vat: V.vat, vatExact: V.exact, lines, rest: shares[shares.length - 1] };
 }
-if (typeof module !== 'undefined' && module.exports) module.exports = { incomeSplit, vatSplit, largestRemainder, capPercents };
+/* What a payment does to a pocket's goal: before and after (0–1 of the target), whether this one
+   completes it, and how many more payments like it are needed after this one. */
+function goalImpact(before, add, target) {
+  const b = Math.max(0, +before || 0), a = Math.max(0, +add || 0), t = +target || 0;
+  const after = r2(b + a);
+  if (!(t > 0)) return { after, target: 0 };
+  const already = b >= t - 0.004, completes = !already && after >= t - 0.004;
+  const more = already || completes ? 0 : a > 0 ? Math.ceil((t - after) / a - 1e-9) : null;
+  return { after, target: t, before: b, shareBefore: Math.min(1, b / t), shareAfter: Math.min(1, after / t), already, completes, more };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = { incomeSplit, vatSplit, largestRemainder, capPercents, goalImpact };
 
 if (typeof window !== 'undefined') {
   window.incomePlan = function () {
@@ -153,6 +163,8 @@ if (typeof window !== 'undefined') {
   };
   /* The sheet reads as a short list (part → place → amount). "Change" shows the inputs. */
   const placeText = (ref, from) => (ref === 'stay' || (from && ref === 'acc:' + from) ? 'stays in the account' : !ref ? 'choose where' : shortPlace({ ref, label: (transferEndpoint(ref) || {}).label || 'choose where' }));
+  /* A line that takes a pocket to (or past) its goal with this payment. */
+  const fillsGoal = l => { const P = ipPlaceInfo(l.to); return P.kind === 'pk' && P.target > 0 && goalImpact(P.balance, l.amount, P.target).completes; };
   window.__modalRenderers.incomeSplit = function (p) {
     const t = data.budgetTransactions.find(x => x.id === p.txId);
     if (!t) return '';
@@ -169,7 +181,8 @@ if (typeof window !== 'undefined') {
           <input class="split-amt" type="number" step="0.01" min="0" value="${(+l.amount || 0).toFixed(2)}" onchange="ui.modal.payload.lines[${i}].amount=Math.max(0, parseFloat(this.value)||0);render();" aria-label="Amount for ${escHtml(l.label)}">
         </div>`).join('')
       : p.lines.filter(l => l.on).map(l => `
-        <div class="split-row"><span class="split-row-what">${escHtml(l.label)} <span class="dim">${l.pct}%</span></span><span class="split-row-to ${l.to ? '' : 'negative'}">${escHtml(placeText(l.to, p.from))}</span><b>${fmtMoney(l.amount, t.currency)}</b></div>`).join('');
+        <div class="split-row"><span class="split-row-what">${escHtml(l.label)} <span class="dim">${l.pct}%</span></span><span class="split-row-to ${l.to ? '' : 'negative'}">${escHtml(placeText(l.to, p.from))}</span><b>${fmtMoney(l.amount, t.currency)}</b></div>
+        ${fillsGoal(l) ? `<label class="ip-check split-close"><input type="checkbox" ${l.close ? 'checked' : ''} onchange="ui.modal.payload.lines[${p.lines.indexOf(l)}].close=this.checked"> 🎉 This reaches ${escHtml(ipPlaceInfo(l.to).name)}'s goal. Close the pocket after the transfer?</label>` : ''}`).join('');
     return `
       <div class="modal-head"><div class="modal-title">Split this income</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
       <div class="split-head"><div style="font-weight:700;">${escHtml(t.comment || (cat ? cat.name : 'Income'))} · ${fmtMoney(t.amount, t.currency)}</div>
@@ -206,7 +219,10 @@ if (typeof window !== 'undefined') {
       ids.push(rec.id);
     });
     t.split = { at: new Date().toISOString(), transfers: ids };
+    // Pockets you chose to close once their goal is reached: the closing window opens for the first.
+    const close = lines.find(l => l.close && findPocket(l.to));
     save(); closeModal();
+    if (close && typeof openPocketClose === 'function') { const ep = parseTransferRef(close.to); openPocketClose(ep.accountId, ep.pocketId); }
   };
   window.skipIncomeSplit = function (txId) {
     const t = data.budgetTransactions.find(x => x.id === txId);
@@ -239,6 +255,7 @@ if (typeof window !== 'undefined') {
       vatMode: (p.vatModes || {})[(v && v.onlyCat) || '*'] || 'incl', vatRoundUp: p.vatRoundUp !== false,
       parts: partSteps(p).map(x => ({ id: x.id, label: x.label, pct: x.pct, to: incomeStepTarget(x), color: x.color || '' })),
     } };
+    ipFixColors(ui.modal.payload);
     render();
   };
   const D = () => ui.modal.payload;
@@ -255,13 +272,25 @@ if (typeof window !== 'undefined') {
     render();
   };
   window.ipToggleCat = function (id) { const d = D(); d.cats = d.cats.includes(id) ? d.cats.filter(c => c !== id) : d.cats.concat([id]); render(); };
-  window.ipAddPart = function () { D().parts.push({ id: uid('ip'), label: '', pct: 10, to: 'stay' }); render(); };
+  window.ipAddPart = function () { const d = D(); d.parts.push({ id: uid('ip'), label: '', pct: Math.min(10, sdClampPart(d.parts.map(x => +x.pct || 0).concat([0]), d.parts.length, 10).value), to: 'stay' }); ipFixColors(d); render(); };
+  /* A part that isn't a pocket keeps one colour wherever it moves: the first chart colour no other
+     part uses (a pocket's part takes the pocket's colour). */
+  window.ipFixColors = function (d) {
+    const taken = new Set(d.parts.map(x => x.color).filter(Boolean));
+    d.parts.forEach(x => {
+      if (x.color || findPocket(x.to)) return;
+      const slot = [0, 1, 2, 3, 4, 5, 6, 7].map(n => `var(--chart-${n + 1})`).find(c => !taken.has(c)) || 'var(--chart-other)';
+      x.color = slot; taken.add(slot);
+    });
+  };
   window.ipRemovePart = function (i) { const d = D(); d.parts.splice(i, 1); d.sel = null; render(); };
   window.saveIncomePlan = function () {
     const d = D(), p = incomePlan();
     if (!d.cats.length) { alert('Choose at least one kind of income.'); return; }
+    // No place for VAT yet: a 🧾 VAT pocket is made in the account your income lands in.
+    if (d.vatOn && (!d.vatTo || d.vatTo === 'new:vat' || !transferEndpoint(d.vatTo))) d.vatTo = makePocket(homeAccount(), { icon: '🧾', name: 'VAT', color: POCKET_COLORS[0] }) || '';
     // A part with no name takes its place's name (a pocket's, a broker's…), never "Part".
-    const parts = d.parts.filter(x => (x.label || '').trim() || x.pct > 0).map(x => Object.assign({ id: x.id, label: ipPartName(x), pct: x.pct, setAside: false, onlyCat: '', to: x.to || 'stay' }, x.color ? { color: x.color } : {}));
+    const parts = d.parts.filter(x => (x.label || '').trim() || x.pct > 0).map(x => Object.assign({ id: x.id, label: ipPartName(x), pct: x.pct, setAside: false, onlyCat: '', to: x.to || 'stay' }, x.color && !findPocket(x.to) ? { color: x.color } : {}));
     const vatCat = d.cats.includes(d.vatCat) ? d.vatCat : '';
     p.triggerCats = d.cats.slice();
     p.steps = (d.vatOn ? [{ id: (vatStep(p) || {}).id || 'ip_vat', label: 'VAT', pct: d.vatPct, setAside: true, onlyCat: vatCat, to: d.vatTo || '' }] : []).concat(parts);
@@ -300,15 +329,16 @@ if (typeof window !== 'undefined') {
       <div class="sd-hint">Drag a handle between two slices${matchMedia('(pointer: coarse)').matches ? ' (hold still first for 1 % steps)' : ' (Shift for 1 % steps)'}, or tap a slice.</div>
       ${d.vatOn ? ipVatLineHtml(d, ex) : ''}
       <div class="tx-label">${d.vatOn ? 'After VAT, how do you split the rest?' : 'How do you split it?'}</div>
-      <div class="ip-parts">
+      <div class="ip-parts" data-sortable>
         ${d.parts.map((x, i) => `
         <div class="ip-part ${d.sel === i ? 'sel' : ''}" data-i="${i}" onfocusin="ipRowFocus(${i})">
-          <span class="ip-dot" style="background:${ipPartColor(x, i)}" aria-hidden="true"></span>
+          <span class="ip-grip" style="color:${ipPartColor(x, i)}" title="Drag to reorder" aria-hidden="true">${ic('grip', 18)}</span>
           <input class="ip-name" value="${escHtml(x.label)}" placeholder="${escHtml(ipPlaceName(x.to) || 'e.g. Invest')}" onchange="ipSet('label', this.value, ${i})" aria-label="Name">
           <span class="split-pct"><input type="number" min="0" max="100" step="1" value="${x.pct}" onchange="ipSet('pct', this.value, ${i})" aria-label="Percent">%</span>
           <button class="icon-btn-round ip-del" onclick="ipRemovePart(${i})" aria-label="Remove ${escHtml(ipPartName(x))}">${ic('trash')}</button>
-          <select class="mini-select ip-to" onchange="ipSet('to', this.value, ${i})" aria-label="Where ${escHtml(ipPartName(x))} goes">${placeOptions(x.to, true)}</select>
-          <div class="ip-part-amt">${fmtMoney(partLine(x).amount)}</div>
+          <div class="ip-to">${ipPlaceButton(x.to, ipPartColor(x, i), i, ipPartName(x))}</div>
+          <div class="ip-imp">${ipImpactHtml(x.to, partLine(x).amount)}</div>
+          ${d.pick === i ? `<div class="ip-pickwrap">${ipPickerHtml(i)}</div>` : ''}
         </div>`).join('')}
       </div>
       <button class="btn small" style="margin-top:8px;" onclick="ipAddPart()">+ Add a part</button>
@@ -356,7 +386,8 @@ if (typeof window !== 'undefined') {
     document.querySelectorAll('.ip-part[data-i]').forEach(row => {
       const x = d.parts[+row.dataset.i]; if (!x) return;
       const inp = row.querySelector('input[aria-label="Percent"]'); if (inp) inp.value = x.pct;
-      const amt = row.querySelector('.ip-part-amt'); if (amt) amt.textContent = fmtMoney((ex.lines.find(l => l.step.id === x.id) || { amount: 0 }).amount);
+      const a0 = (ex.lines.find(l => l.step.id === x.id) || { amount: 0 }).amount;
+      const imp = row.querySelector('.ip-imp'); if (imp) imp.innerHTML = ipImpactHtml(x.to, a0);
     });
     const left = document.querySelector('.ip-left'); if (left) left.textContent = `${Math.round((100 - total) * 100) / 100}% left stays in the account.`;
   }
@@ -397,6 +428,142 @@ if (typeof window !== 'undefined') {
     splitDonutPaint(ipDonutModel(d, ipPreview(d).ex));
     document.querySelectorAll('.ip-part[data-i]').forEach(r => r.classList.toggle('sel', +r.dataset.i === i));
   };
+  /* ---- Where a part goes: the place picker ----
+     Pockets first (emoji, colour, balance, goal), then accounts and brokers, then "+ New pocket".
+     A place that isn't a pocket gets a slice colour you choose. */
+  const findPocket = ref => { const ep = parseTransferRef(ref); if (!ep || ep.kind !== 'pk') return null; const a = accountById(ep.accountId), pk = a && (a.pockets || []).find(p => p.id === ep.pocketId); return pk ? { a, pk } : null; };
+  const initial = n => String(n || '').trim().charAt(0).toUpperCase();
+  window.ipPlaceInfo = function (ref) {
+    if (!ref || ref === 'stay') return { kind: 'stay', name: 'Keep in the account', balance: null };
+    if (ref === 'new:vat') return { kind: 'new', name: 'New VAT pocket', emoji: '🧾', balance: null };
+    const ep = parseTransferRef(ref), P = findPocket(ref);
+    if (P) return { kind: 'pk', name: P.pk.name, sub: P.a.name, emoji: P.pk.icon || '', color: P.pk.color || '', ccy: P.a.currency, balance: +P.pk.amountSaved || 0, target: +P.pk.targetAmount || 0 };
+    const e = transferEndpoint(ref);
+    if (!ep || !e) return { kind: 'missing', name: 'Choose where', balance: null };
+    if (ep.kind === 'acc') { const a = accountById(ep.accountId); return { kind: 'acc', name: a.name, emoji: a.icon || '', ccy: a.currency, balance: +a.balance || 0 }; }
+    if (ep.kind === 'brk') { const b = brokerById(ep.brokerId); return { kind: 'brk', name: b.name, sub: 'cash', emoji: initial(b.name), ccy: brokerCashCurrency(b), balance: brokerCash(b) }; }
+    return { kind: ep.kind, name: ep.exchange || e.label, sub: 'cash', emoji: initial(ep.exchange || e.label), ccy: e.ccy, balance: e.get() };
+  };
+  /* "+€206.50 → ✈️ Trip fund: €450.00 → €656.50", with the goal before / after for a pocket. */
+  window.ipImpactHtml = function (ref, amount, opts) {
+    const P = ipPlaceInfo(ref), add = +amount || 0;
+    if (P.kind === 'stay') return `<div class="ip-impact dim">${fmtMoney(add)} stays in the account it lands in</div>`;
+    if (P.kind === 'missing') return `<div class="ip-impact negative">Choose where it goes</div>`;
+    if (P.kind === 'new') return `<div class="ip-impact">+${fmtMoney(add)} → ${P.emoji} ${escHtml(P.name)} <span class="dim">(made when you save)</span></div>`;
+    const sameCcy = !P.ccy || P.ccy === 'EUR';
+    const line = `<div class="ip-impact">+${fmtMoney(add)} → ${P.emoji ? escHtml(P.emoji) + ' ' : ''}${escHtml(P.name)}${P.balance != null && sameCcy ? `: ${fmtMoney(P.balance)} → <b>${fmtMoney(P.balance + add)}</b>` : ''}</div>`;
+    if (P.kind !== 'pk' || !(P.target > 0) || !sameCcy) return line;
+    const G = goalImpact(P.balance, add, P.target);
+    const note = G.already ? 'Goal already reached' : G.completes ? '<span class="ip-badge">🎉 This payment reaches the goal</span>' + (opts && opts.closeHint ? ' <span class="dim">You can close the pocket after the transfer.</span>' : '')
+      : G.more == null ? '' : `Goal reached after ${G.more} more payment${G.more === 1 ? '' : 's'} like this`;
+    return `${line}
+      <div class="ip-goal" role="img" aria-label="Goal ${fmtMoney(P.target)}: ${Math.round(G.shareBefore * 100)}% now, ${Math.round(G.shareAfter * 100)}% after">
+        <span class="ip-goal-bar"><i class="was" style="width:${(G.shareBefore * 100).toFixed(1)}%;background:${P.color || 'var(--fx-ink)'}"></i><i class="add" style="left:${(G.shareBefore * 100).toFixed(1)}%;width:${((G.shareAfter - G.shareBefore) * 100).toFixed(1)}%;background:${P.color || 'var(--fx-ink)'}"></i></span>
+        <span class="ip-goal-txt">${Math.round(G.shareBefore * 100)}% → ${Math.round(G.shareAfter * 100)}% of ${fmtMoney(P.target)} · ${note}</span>
+      </div>`;
+  };
+  window.ipPlaceButton = function (ref, color, i, label) {
+    const P = ipPlaceInfo(ref), d = D();
+    return `<button type="button" class="ip-place ${P.kind === 'missing' ? 'missing' : ''}" onclick="ipPick(${JSON.stringify(i).replace(/"/g, '&quot;')})" aria-expanded="${d.pick === i}" aria-label="Where ${escHtml(label)} goes: ${escHtml(P.name)}">
+        <span class="ip-place-ic" style="${P.kind === 'stay' || !color ? '' : `background:${color}`}">${P.emoji ? escHtml(P.emoji) : ''}</span>
+        <span class="ip-place-name">${escHtml(P.name)}${P.sub ? ` <span class="dim">· ${escHtml(P.sub)}</span>` : ''}</span>
+        ${P.balance != null ? `<span class="ip-place-bal">${fmtMoney(P.balance, P.ccy)}</span>` : ''}${ic('chevronDown', 14)}
+      </button>`;
+  };
+  const SLICE_COLORS = [0, 1, 2, 3, 4, 5, 6, 7].map(n => `var(--chart-${n + 1})`);
+  window.ipPickerHtml = function (i) {
+    const d = D(), isVat = i === 'vat', cur = isVat ? d.vatTo : d.parts[i].to;
+    const opt = (ref, ic0, color, name, sub, right) => `<button type="button" class="ip-opt ${ref === cur ? 'on' : ''}" onclick="ipChoose(${JSON.stringify(i).replace(/"/g, '&quot;')}, '${escHtml(ref)}')">
+        <span class="ip-place-ic" style="${color ? `background:${color}` : ''}">${ic0 ? escHtml(ic0) : ''}</span>
+        <span class="ip-opt-name">${escHtml(name)}${sub ? `<small>${sub}</small>` : ''}</span><span class="ip-opt-right">${right || ''}</span></button>`;
+    const pockets = data.accounts.flatMap(a => (a.pockets || []).filter(p => !p.finishedAt || `pk:${a.id}:${p.id}` === cur).map(p => {
+      const t = +p.targetAmount || 0, sh = t > 0 ? Math.min(1, (+p.amountSaved || 0) / t) : 0;
+      return opt(`pk:${a.id}:${p.id}`, p.icon || '', p.color || '', p.name, `${escHtml(a.name)}${t > 0 ? ` · goal ${fmtMoney(t, a.currency)} <span class="ip-mini"><i style="width:${(sh * 100).toFixed(0)}%;background:${p.color || 'var(--fx-ink)'}"></i></span>` : ''}`, fmtMoney(+p.amountSaved || 0, a.currency));
+    })).join('');
+    const others = (isVat ? '' : opt('stay', '', '', 'Keep in the account', 'it stays where the payment lands', ''))
+      + data.accounts.filter(a => !(typeof isCashWallet === 'function' && isCashWallet(a))).map(a => opt('acc:' + a.id, a.icon || '🏦', '', a.name, mainBalanceName(a), fmtMoney(+a.balance || 0, a.currency))).join('')
+      + data.brokers.map(b => opt('brk:' + b.id, initial(b.name), '', b.name, 'broker · cash', fmtMoney(brokerCash(b), brokerCashCurrency(b)))).join('')
+      + cryptoBrokerNames().map(n => opt('cx:' + n, initial(n), '', n, 'exchange · cash', '')).join('');
+    const np = d.np && d.np.for === i ? d.np : null;
+    const notPocket = !isVat && !findPocket(cur) && cur !== 'stay';
+    return `<div class="ip-pick" role="group" aria-label="Where it goes">
+        ${pockets ? `<div class="ip-pick-h">Pockets</div>${pockets}` : ''}
+        <div class="ip-pick-h">Accounts & brokers</div>${others}
+        ${np ? `<div class="ip-np">
+            <div class="ip-pick-h">New pocket</div>
+            <div class="ip-np-row"><input class="ip-np-ic" maxlength="4" value="${escHtml(np.icon)}" aria-label="Emoji" oninput="ui.modal.payload.np.icon=this.value"><input class="ip-np-name" value="${escHtml(np.name)}" placeholder="Name, e.g. Holidays" aria-label="Pocket name" oninput="ui.modal.payload.np.name=this.value"></div>
+            <div class="ip-np-colors" role="group" aria-label="Colour">${POCKET_COLORS.map(c => `<button type="button" class="swatch-dot ${np.color === c ? 'selected' : ''}" style="background:${c}" aria-label="Colour ${c}" aria-pressed="${np.color === c}" onclick="ui.modal.payload.np.color='${c}';render();"></button>`).join('')}</div>
+            <div class="ip-np-row"><label class="ip-np-goal">Goal <input inputmode="decimal" value="${escHtml(np.target)}" placeholder="optional" aria-label="Goal amount" oninput="ui.modal.payload.np.target=this.value"></label>
+              <select class="mini-select" aria-label="In which account" onchange="ui.modal.payload.np.acc=this.value">${data.accounts.filter(a => !(typeof isCashWallet === 'function' && isCashWallet(a))).map(a => `<option value="${a.id}" ${np.acc === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}</select></div>
+            <div class="ip-np-row"><button type="button" class="btn small" onclick="ui.modal.payload.np=null;render();">Cancel</button><button type="button" class="btn small primary" onclick="ipCreatePocket()">Create pocket</button></div>
+            <div class="dim" style="font-size:11.5px;">The pocket is made right away, with nothing in it.</div>
+          </div>` : `<button type="button" class="ip-opt ip-opt-new" onclick="ipNewPocket(${JSON.stringify(i).replace(/"/g, '&quot;')})"><span class="ip-place-ic">${ic('plus', 14)}</span><span class="ip-opt-name">New pocket</span></button>`}
+        ${notPocket ? `<div class="ip-pick-h">Slice colour</div><div class="ip-np-colors" role="group" aria-label="Slice colour">${SLICE_COLORS.map((c, n) => `<button type="button" class="swatch-dot ${ipPartColor(d.parts[i], i) === c ? 'selected' : ''}" style="background:${c}" aria-label="Colour ${n + 1}" onclick="ipSetColor(${i}, '${c}')"></button>`).join('')}</div>` : ''}
+      </div>`;
+  };
+  window.ipPick = function (i) { const d = D(); d.pick = d.pick === i ? null : i; d.np = null; render(); };
+  window.ipChoose = function (i, ref) {
+    const d = D();
+    if (i === 'vat') d.vatTo = ref; else d.parts[i].to = ref;
+    ipFixColors(d);
+    d.pick = null; render();
+  };
+  window.ipSetColor = function (i, c) { D().parts[i].color = c; render(); };
+  /* The account a new pocket goes in: where your latest income of this kind landed, else the first. */
+  const homeAccount = () => {
+    const d = D(), t = data.budgetTransactions.filter(x => x.type === 'income' && d.cats.includes(x.categoryId) && x.accountId).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const ok = a => a && !(typeof isCashWallet === 'function' && isCashWallet(a));
+    return (t && ok(accountById(t.accountId)) && t.accountId) || ((data.accounts.find(ok) || {}).id) || '';
+  };
+  window.ipNewPocket = function (i) {
+    const d = D(), used = new Set(data.accounts.flatMap(a => (a.pockets || []).map(p => p.color)));
+    d.np = { for: i, name: i === 'vat' ? 'VAT' : '', icon: i === 'vat' ? '🧾' : '🎯', color: POCKET_COLORS.find(c => !used.has(c)) || POCKET_COLORS[0], target: '', acc: homeAccount() };
+    render();
+  };
+  function makePocket(accId, o) {
+    const a = accountById(accId);
+    if (!a) return '';
+    if (!Array.isArray(a.pockets)) a.pockets = [];
+    const pk = { id: uid('pk'), icon: o.icon || '🎯', name: o.name, amountSaved: 0, targetAmount: Math.max(0, parseFloat(String(o.target || '').replace(',', '.')) || 0), color: o.color || POCKET_COLORS[0], createdAt: new Date().toISOString() };
+    a.pockets.push(pk);
+    return `pk:${a.id}:${pk.id}`;
+  }
+  window.ipCreatePocket = function () {
+    const d = D(), np = d.np;
+    if (!np || !String(np.name || '').trim()) { alert('Give the pocket a name.'); return; }
+    const ref = makePocket(np.acc, { icon: String(np.icon || '').trim(), name: String(np.name).trim(), target: np.target, color: np.color });
+    if (!ref) return;
+    save();
+    if (np.for === 'vat') d.vatTo = ref; else d.parts[np.for].to = ref;
+    d.np = null; d.pick = null;
+    render();
+  };
+  /* VAT moved into its place this quarter (any transfer into it), for the quarterly return. */
+  window.ipVatQuarter = function (ref) {
+    if (!ref || typeof vatQuarterRange !== 'function') return null;
+    const t = todayYmd(), Q = vatQuarterRange(+t.slice(0, 4), Math.floor((+t.slice(5, 7) - 1) / 3) + 1);
+    const sum = data.budgetTransactions.filter(x => x.type === 'transfer' && x.to === ref && x.date >= Q.from && x.date <= Q.to).reduce((s, x) => s + toEUR(+x.amount || 0, x.currency), 0);
+    return { key: Q.key.replace('-', ' '), sum: Math.round(sum * 100) / 100 };
+  };
+  /* Rows drag into order (SortableJS); the slices follow. */
+  window.incomePlanAfterRender = function () {
+    const list = document.querySelector('.ip-parts[data-sortable]');
+    if (!list || list.dataset.bound || typeof loadSortable !== 'function') return;
+    list.dataset.bound = '1';
+    loadSortable().then(Sortable => {
+      if (!document.body.contains(list)) return;
+      Sortable.create(list, {
+        handle: '.ip-grip', animation: 160, forceFallback: true, fallbackOnBody: true, delayOnTouchOnly: true, delay: 120,
+        onEnd: ev => {
+          if (ev.oldIndex === ev.newIndex) return;
+          const d = D(), [x] = d.parts.splice(ev.oldIndex, 1);
+          d.parts.splice(ev.newIndex, 0, x);
+          d.sel = null; d.pick = null;
+          render();
+        },
+      });
+    }).catch(() => {});
+  };
   /* VAT: a locked first line, taken before your split and not part of its 100 %. */
   const VAT_RATES = [21, 9, 0];
   window.ipVatLineHtml = function (d, ex) {
@@ -411,7 +578,10 @@ if (typeof window !== 'undefined') {
         </div>
         <div class="ip-vat-note">${d.vatMode === 'excl' ? 'Amount entered is before VAT (planning from an invoice): VAT comes on top.' : 'Amount entered is what lands in the bank, VAT included.'} A payment you receive is always split as VAT included.</div>
         <label class="ip-check"><input type="checkbox" ${d.vatRoundUp !== false ? 'checked' : ''} onchange="ipSet('vatRoundUp', this.checked)"> Round VAT up to the euro${ex.vatExact != null && ex.vatExact !== ex.vat ? ` <span class="dim">(${fmtMoney(ex.vatExact)} exactly)</span>` : ''}</label>
-        <select class="mini-select ip-to" onchange="ipSet('vatTo', this.value)" aria-label="Where VAT goes">${placeOptions(d.vatTo, false)}</select>
+        ${ipPlaceButton(d.vatTo || 'new:vat', ipPlaceInfo(d.vatTo || 'new:vat').color || '', 'vat', 'VAT')}
+        ${d.pick === 'vat' ? ipPickerHtml('vat') : ''}
+        ${ipImpactHtml(d.vatTo || 'new:vat', ex.vat)}
+        ${(() => { const q = ipVatQuarter(d.vatTo); return q ? `<div class="ip-vat-q">VAT set aside this quarter (${escHtml(q.key)}): <b>${fmtMoney(q.sum)}</b></div>` : ''; })()}
       </div>`;
   };
 

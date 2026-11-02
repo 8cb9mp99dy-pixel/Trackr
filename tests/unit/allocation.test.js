@@ -70,3 +70,14 @@ test('steps at 0 % and empty plans give nothing', () => {
   assert.strictEqual(incomeSplit(500, 'x', [{ id: 'a', pct: 0 }]).lines.length, 0);
   assert.strictEqual(incomeSplit(500, 'x', []).rest, 500);
 });
+
+test('goal impact: before / after, the payment that reaches it, how many more', () => {
+  const { goalImpact } = require('../../allocation.js');
+  assert.deepStrictEqual(goalImpact(420, 206.5, 800), { after: 626.5, target: 800, before: 420, shareBefore: 0.525, shareAfter: 0.783125, already: false, completes: false, more: 1 });
+  assert.strictEqual(goalImpact(700, 100, 800).completes, true);
+  assert.strictEqual(goalImpact(700, 100, 800).more, 0);
+  assert.strictEqual(goalImpact(900, 50, 800).already, true);
+  assert.strictEqual(goalImpact(0, 100, 1000).more, 9);   // 100 now, 9 more to reach 1,000
+  assert.strictEqual(goalImpact(0, 0, 1000).more, null);
+  assert.deepStrictEqual(goalImpact(10, 5, 0), { after: 15, target: 0 });
+});

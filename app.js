@@ -2358,6 +2358,7 @@ function render() {
     if (typeof cardsAfterRender === 'function') cardsAfterRender(app);
     if (typeof budgetLiveAfterRender === 'function') budgetLiveAfterRender(app);
     if (typeof splitDonutAfterRender === 'function') splitDonutAfterRender();
+    if (typeof incomePlanAfterRender === 'function') incomePlanAfterRender();
   } catch (e) {
     console.error('Render failed', e);
     renderCrashScreen(app, e);
