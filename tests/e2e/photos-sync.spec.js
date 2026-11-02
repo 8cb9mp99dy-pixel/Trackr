@@ -85,7 +85,7 @@ test('photos added before the table existed are sent once it does, and Settings 
   sb.table = true;
   await page.locator('#photo-status').getByRole('button', { name: 'Check again' }).click();
   await expect(page.locator('#photo-status')).toContainText('1 photo saved in your Supabase');
-  expect(sb.images[id]).toMatch(/^data:image\/jpeg/);
+  expect(sb.images[id]).toMatch(/^data:image\/(webp|jpeg)/);
   expect(errors).toEqual([]);
 });
 

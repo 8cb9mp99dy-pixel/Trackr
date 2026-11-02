@@ -107,7 +107,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const params = {
         model: c.model, max_tokens: 4000, output_config: { effort: 'low', format: { type: 'json_schema', schema: snapSchema(cats.map(x => x.id)) } },
         messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: preview.split(',')[1] } },
+          { type: 'image', source: { type: 'base64', media_type: preview.slice(5, preview.indexOf(';')), data: preview.split(',')[1] } },
           { type: 'text', text: `Read this receipt for a personal budget app. Today is ${todayYmd()}. Give the shop, the purchase date, the total paid and its currency, the main items, and the best matching category and sub-category from this list (ids before the colon; leave empty if none fits):\n${catList}` },
         ] }],
       };

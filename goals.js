@@ -257,7 +257,7 @@ window.__modalRenderers.goalView = function (p) {
   return `
     <div class="gv">
       <div class="gv-gallery" style="--gs-c:${goalColor(g)};">
-        ${photos.length ? photos.map((ph, i) => { const u = photoUrl(ph.id); return u ? `<img class="gv-slide ${i === (p.slide || 0) ? 'on' : ''}" src="${u}" alt="">` : `<div class="gv-slide gv-missing ${i === (p.slide || 0) ? 'on' : ''}">${ic('photo', 26)}<span>Loading the photo…</span></div>`; }).join('')
+        ${photos.length ? photos.map((ph, i) => { const u = photoUrl(ph.id); return u ? `<img class="gv-slide ${i === (p.slide || 0) ? 'on' : ''}" src="${u}" alt="">` : `<div class="gv-slide gv-missing ${i === (p.slide || 0) ? 'on' : ''}">${ic('photo', 26)}<span>${photoBroken(ph.id) ? "Couldn't load the photo. It's tried again in a minute." : 'Loading the photo…'}</span></div>`; }).join('')
           : `<div class="gv-slide on gv-hero"><span>${escHtml(g.icon || '🎯')}</span></div>`}
         ${photos.length > 1 ? `<button class="gv-arrow l" onclick="event.stopPropagation();goalGalleryGo(-1)" aria-label="Previous photo">${ic('chevronLeft', 20)}</button><button class="gv-arrow r" onclick="event.stopPropagation();goalGalleryGo(1)" aria-label="Next photo">${ic('chevronRight', 20)}</button>
           <div class="gv-dots">${photos.map((_, i) => `<span class="gv-dot ${i === (p.slide || 0) ? 'on' : ''}" data-i="${i}" onclick="goalGalleryGo(0,false,${i})"></span>`).join('')}</div>` : ''}

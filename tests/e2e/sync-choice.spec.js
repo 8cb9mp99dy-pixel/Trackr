@@ -65,3 +65,25 @@ test("Keeping this device's data saves the cloud's version first", async ({ page
   expect(JSON.parse(copy.json).budgetTransactions.some(t => t.id === 'only-in-cloud')).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('a copy with far fewer transactions than the cloud is never sent without asking', async ({ page }) => {
+  const errors = await openApp(page);
+  const URL = 'https://demo-test.supabase.co';
+  let sent = 0;
+  const cloud = await page.evaluate(() => JSON.parse(JSON.stringify(data)));
+  await page.route(URL + '/rest/v1/rpc/*', route => {
+    const fn = route.request().url().split('/rpc/')[1];
+    if (fn === 'set_trackr_data') sent++;
+    const body = fn === 'get_trackr_data' ? { data: cloud, updated_at: 'v1' } : { ok: true, updated_at: 'v2' };
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await page.evaluate(u => {
+    saveSupabaseSyncConfig({ url: u, anonKey: 'test', secret: 'test', lastSeenUpdatedAt: 'v1', pending: true });
+    data.budgetTransactions = data.budgetTransactions.slice(0, 3);
+    return syncNow();
+  }, URL);
+  expect(sent).toBe(0);
+  await expect(page.locator('.sync-banner')).toContainText('would remove most of what the cloud holds');
+  await expect(page.locator('.sync-banner')).toContainText('3 transactions, 0 only here');
+  expect(errors).toEqual([]);
+});

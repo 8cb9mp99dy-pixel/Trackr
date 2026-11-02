@@ -73,5 +73,5 @@ test('restoring never replaces a full-size photo the device already has', async 
   const [download] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => exportFullBackup())]);
   const text = fs2.readFileSync(await download.path(), 'utf8');
   await page.evaluate(async t => { await handleImportBackupFile(new File([t], 'b.json', { type: 'application/json' })); }, text);
-  expect(await page.evaluate(async pid => (await photoGet(pid)).w, id)).toBe(1600);
+  expect(await page.evaluate(async pid => (await photoGet(pid)).w, id)).toBe(1200);
 });

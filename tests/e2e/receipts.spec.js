@@ -15,7 +15,7 @@ test('attach a photo and a PDF, set a warranty, find it in Receipts', async ({ p
   await expect(page.locator('.modal')).toContainText('Trackr reminds you a month before');
   await page.locator('.modal').getByRole('button', { name: 'Save' }).click();
   const t = await page.evaluate(() => data.budgetTransactions.find(x => x.id === 'tx_62'));
-  expect(t.receipts.map(r => r.mime)).toEqual(['image/jpeg', 'application/pdf']);
+  expect(t.receipts.map(r => r.mime)).toEqual(['image/webp', 'application/pdf']);
   expect(t.warrantyUntil).toBe('2028-08-09');
   // The files are on this device, kept by the clean-up, and carried by backups.
   const ids = t.receipts.map(r => r.id);

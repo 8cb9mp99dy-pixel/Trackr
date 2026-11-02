@@ -49,7 +49,7 @@ if (typeof module !== 'undefined' && module.exports) {
           rec = { id: uid('rc'), data: await readDataUrl(f), mime: 'application/pdf', synced: false, addedAt: new Date().toISOString() };
         } else {
           const r = await resizePhoto(f);
-          rec = { id: uid('rc'), data: r.data, w: r.w, h: r.h, mime: 'image/jpeg', synced: false, addedAt: new Date().toISOString() };
+          rec = { id: uid('rc'), data: r.data, w: r.w, h: r.h, mime: r.mime, synced: false, addedAt: new Date().toISOString() };
         }
         await photoPut(rec);
         photoUpload(rec);
@@ -101,7 +101,7 @@ if (typeof module !== 'undefined' && module.exports) {
   window.receiptThumbHtml = function (r) {
     if (isPdf(r)) return `<button type="button" class="rc-pdf" title="${escHtml(r.name || 'PDF')}" onclick="openReceipt('${escHtml(r.id)}')">${ic('file', 20)}<span>PDF</span></button>`;
     const u = photoUrl(r.id);
-    return `<button type="button" class="rc-img" data-photo="${escHtml(r.id)}" title="${escHtml(r.name || 'Receipt')}" onclick="openReceipt('${escHtml(r.id)}')">${u ? `<img src="${u}" alt="Receipt">` : u === '' ? '<span class="dim">Not on this device</span>' : '<span class="dim">…</span>'}</button>`;
+    return `<button type="button" class="rc-img" data-photo="${escHtml(r.id)}" title="${escHtml(r.name || 'Receipt')}" onclick="openReceipt('${escHtml(r.id)}')">${u ? `<img src="${u}" alt="Receipt">` : u === '' ? '<span class="dim">Not on this device</span>' : photoBroken(r.id) ? '<span class="dim">Couldn\'t load</span>' : '<span class="dim">…</span>'}</button>`;
   };
   function receiptOwner(id) { return (data.budgetTransactions || []).find(t => (t.receipts || []).some(r => r.id === id)) || null; }
   window.openReceipt = function (id) {

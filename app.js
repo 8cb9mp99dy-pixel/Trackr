@@ -463,6 +463,7 @@ function defaultData() {
     yearlyBills: [], // irregular bills set aside for every month (setaside.js)
     cards: [], // the bank cards on the Accounts page: a picture and a link, no card data (cards.js)
     photoThumbs: {}, // photo id → a very small copy of a goal's cover, for your other devices (photos.js)
+    images: {},      // photo id → { path, w, h, type, createdAt } in the private image storage (images.js); never the picture or a link
     inboxRejected: [], // what you rejected on From Claude, kept 30 days to put back (inbox.js)
     trips: [], // trips with dates and a budget (trips.js)
     monthClose: {}, // 'YYYY-MM' → { at, note }: the month-end check (monthclose.js)
@@ -861,7 +862,20 @@ async function syncOnce() {
     return;
   }
   if (remoteChanged) { syncDiverged(row); return; }
+  if (syncLooksPartial(data, row.data)) {
+    syncState.conflict = { serverData: row.data, serverUpdatedAt: row.updated_at, reason: 'shrink' };
+    render();
+    return;
+  }
   await syncPush(base);
+}
+/* Never send a copy that looks cut short: when this device would remove more than half of the
+   cloud's transactions (with at least 20 there), or every account, sync stops and asks first,
+   with the same choice as when two devices disagree. */
+function syncLooksPartial(local, remote) {
+  const count = d => ({ tx: ((d && d.budgetTransactions) || []).length, acc: ((d && d.accounts) || []).length });
+  const here = count(local), there = count(remote);
+  return (there.tx >= 20 && here.tx < there.tx / 2) || (there.acc > 0 && here.acc === 0);
 }
 /* Safe to call from anywhere, as often as you like: only one sync runs at a time, and a call
    made while one is running just queues exactly one more. Never throws unless opts.throwErrors
@@ -7318,7 +7332,9 @@ function syncConflictExplanationHtml() {
   if (!c) return '';
   const intro = c.reason === 'unverified'
     ? 'This device and the cloud (your other device) both hold data, and they are different.'
-    : 'Changes were made here and on your other device before they could sync. Nothing has been overwritten.';
+    : c.reason === 'shrink'
+      ? 'This device was about to send a copy with far fewer transactions or accounts than the cloud holds. Nothing has been sent.'
+      : 'Changes were made here and on your other device before they could sync. Nothing has been overwritten.';
   return `${intro} Pick the one to keep — the other is replaced on both devices.<br>${syncDifferenceHtml()}`;
 }
 /* A short code derived from the project + secret: every device showing the same Sync ID shares
@@ -7338,7 +7354,7 @@ function syncGlobalBannerHtml() {
   if (!cfg || ui.page === 'settings') return '';
   if (syncState.conflict) return `
     <div class="sync-banner">
-      <div><strong>Sync is paused — choose which data to keep.</strong> ${syncState.conflict.reason === 'unverified' ? 'This device and the cloud have different data.' : 'This device and another one were both changed.'} Until you choose, nothing is sent or received.<br>${syncDifferenceHtml()}</div>
+      <div><strong>Sync is paused — choose which data to keep.</strong> ${syncState.conflict.reason === 'unverified' ? 'This device and the cloud have different data.' : syncState.conflict.reason === 'shrink' ? 'This device would remove most of what the cloud holds.' : 'This device and another one were both changed.'} Until you choose, nothing is sent or received.<br>${syncDifferenceHtml()}</div>
       <div class="sync-banner-actions">
         <button class="btn small" onclick="resolveSyncConflictKeepLocal()">Keep this device's data</button>
         <button class="btn small" onclick="resolveSyncConflictUseRemote()">Use the cloud's data</button>
