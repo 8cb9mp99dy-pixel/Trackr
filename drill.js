@@ -115,12 +115,7 @@ if (typeof module !== 'undefined' && module.exports) {
     show(name, list, { sub: 'Last 24 months' });
   };
 
-  /* A trip: everything spent on it, or on one of its days. */
-  window.drillTrip = function (id, date) {
-    const trip = (data.trips || []).find(t => t.id === id); if (!trip) return;
-    const list = tripTransactions(trip, all()).filter(t => !date || t.date === date);
-    show(date ? dayName(date) : trip.name, list, { total: list.reduce((s, t) => s + toEUR(t.amount, t.currency), 0), tone: 'negative', sub: trip.name });
-  };
+
 
   /* Accounts: which accounts or pockets make up the figure. */
   window.drillBalances = function (kind) {

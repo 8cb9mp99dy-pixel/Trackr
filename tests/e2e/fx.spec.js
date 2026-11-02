@@ -20,8 +20,8 @@ test('indicators sit under the active page and tab, and glide to the next one', 
     const a = on.getBoundingClientRect(), b = ind.getBoundingClientRect();
     return Math.abs(a.left - b.left) < 1.5 && Math.abs(a.width - b.width) < 1.5 && Math.abs(a.bottom - b.bottom) < 1.5;
   })).toBe(true);
-  await page.locator('.section-tabs button', { hasText: 'Receipts' }).click();
-  await expect(page.locator('.section-tabs button.on')).toHaveText('Receipts');
+  await page.locator('.section-tabs button', { hasText: 'Freelance' }).click();
+  await expect(page.locator('.section-tabs button.on')).toHaveText('Freelance');
   await expect(page.locator('.section-tabs .fx-ind.on')).toHaveCount(1);
   expect(errors).toEqual([]);
 });

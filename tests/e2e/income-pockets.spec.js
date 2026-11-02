@@ -6,7 +6,7 @@ const { openApp } = require('./helpers');
 
 const open = async page => {
   const errors = await openApp(page);
-  await page.evaluate(() => openIncomePlanEditor(2));
+  await page.evaluate(() => { openIncomePlanEditor(); ui.ipDraft.vatOpen = true; render(); });
   await expect(page.locator('.sd-wrap.live')).toBeVisible();
   return errors;
 };
@@ -32,7 +32,7 @@ test('pick a pocket: its colour on the slice, the payment and the goal under the
   await page.locator('.ip-pick .ip-np-colors .swatch-dot').nth(5).click();
   await expect(page.locator('.sd-slice[data-i="1"] path')).toHaveAttribute('fill', 'var(--chart-6)');
   await expect(row(page, 1).locator('.ip-goal')).toHaveCount(0); // no goal UI for a broker
-  await page.getByRole('button', { name: 'Save plan' }).click();
+  await page.evaluate(() => ipCommit());
   const steps = await page.evaluate(() => data.incomePlan.steps.filter(s => !s.setAside).map(s => [s.to, s.color || '']));
   expect(steps[0]).toEqual(['pk:acc_demo1:pk_demo1', '']);
   expect(steps[1]).toEqual(['brk:brk_demo1', 'var(--chart-6)']);
@@ -50,7 +50,7 @@ test('+ New pocket inline, and a VAT pocket made on save when there is none', as
   await page.getByRole('button', { name: 'Create pocket' }).click();
   await expect(row(page, 2).locator('.ip-place')).toContainText('Holidays');
   await expect(row(page, 2).locator('.ip-goal')).toContainText('of €500.00');
-  await page.getByRole('button', { name: 'Save plan' }).click();
+  await page.evaluate(() => ipCommit());
   const out = await page.evaluate(() => {
     const all = data.accounts.flatMap(a => (a.pockets || []).map(p => ({ ref: `pk:${a.id}:${p.id}`, p })));
     const hol = all.find(x => x.p.name === 'Holidays'), vat = all.find(x => x.p.name === 'VAT');
@@ -68,7 +68,7 @@ test('VAT set aside this quarter, from transfers into the VAT place', async ({ p
     accountById('acc_demo1').pockets.push({ id: 'pk_vat', icon: '🧾', name: 'VAT Storage', amountSaved: 300, targetAmount: 0, color: '#8E6CEF' });
     const tr = (id, date, amount) => ({ id, date, type: 'transfer', categoryId: null, amount, currency: 'EUR', from: 'acc:acc_demo1', to: 'pk:acc_demo1:pk_vat', comment: 'VAT', description: '' });
     data.budgetTransactions.push(tr('tv1', '2026-10-03', 120), tr('tv2', '2026-10-12', 180), tr('tv0', '2026-09-20', 999));
-    save(); openIncomePlanEditor(2);
+    save(); openIncomePlanEditor(); ui.ipDraft.vatOpen = true; render();
   });
   await expect(page.locator('.ip-vat-q')).toContainText('2026 Q4');
   await expect(page.locator('.ip-vat-q')).toContainText('€300.00');
@@ -79,7 +79,7 @@ test('VAT set aside this quarter, from transfers into the VAT place', async ({ p
 test('drag a row by its handle: the parts and the slices change order', async ({ page, isMobile }) => {
   test.skip(isMobile, 'mouse drag; touch uses the same SortableJS set-up as Arrange');
   const errors = await open(page);
-  const names = () => page.evaluate(() => ui.modal.payload.parts.map(x => x.label));
+  const names = () => page.evaluate(() => ui.ipDraft.parts.map(x => x.label));
   expect(await names()).toEqual(['Savings (invest)', 'Pockets', 'Monthly expenses']);
   await page.waitForFunction(() => window.Sortable);
   await row(page, 1).evaluate(el => el.scrollIntoView({ block: 'center' }));

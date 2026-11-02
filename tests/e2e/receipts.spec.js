@@ -1,11 +1,11 @@
-/* Receipts & warranties: a receipt on an expense, the Receipts page, the warranty reminder. */
+/* Receipts & warranties: a receipt on an expense and the warranty reminder. */
 const { test, expect } = require('@playwright/test');
 const { openApp } = require('./helpers');
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 const PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
 
-test('attach a photo and a PDF, set a warranty, find it in Receipts', async ({ page }) => {
+test('attach a photo and a PDF, set a warranty, open it again', async ({ page }) => {
   const errors = await openApp(page);
   await page.evaluate(() => { goPage('budget'); openTxForm('tx_62'); ui.modal.payload._more = true; txGo(3); });
   await page.locator('.rc-add input').setInputFiles([{ name: 'ticket.png', mimeType: 'image/png', buffer: PNG }, { name: 'invoice.pdf', mimeType: 'application/pdf', buffer: PDF }]);
@@ -23,21 +23,10 @@ test('attach a photo and a PDF, set a warranty, find it in Receipts', async ({ p
   expect(await page.evaluate(async ids => (await photoAllKeys()).filter(k => ids.includes(k)).length, ids)).toBe(2);
   const backup = await page.evaluate(async () => (await backupPayload())._photos.map(p => p.mime || 'image'));
   expect(backup).toContain('application/pdf');
-  // Budget → Receipts, searchable.
-  await page.evaluate(() => goPage('receipts'));
-  await expect(page.locator('.page-title')).toHaveText('Receipts');
-  await expect(page.locator('.rc-row')).toHaveCount(1);
-  await expect(page.locator('.rc-row')).toContainText('Warranty until 9 Aug 2028');
-  await page.getByLabel('Search receipts').fill('nothing like this');
-  await expect(page.locator('.rc-row')).toHaveCount(0);
-  await page.getByLabel('Search receipts').fill('airline');
-  await expect(page.locator('.rc-row')).toHaveCount(1);
-  // Opening a receipt shows it.
-  await page.locator('.rc-row .rc-img').first().click();
+  // The Receipts page is gone (2 Nov 2026); the receipt stays on the expense and opens from it.
+  expect(await page.evaluate(() => window.__pageRenderers.receipts)).toBeUndefined();
+  await page.evaluate(() => openReceipt(data.budgetTransactions.find(x => x.id === 'tx_62').receipts[0].id));
   await expect(page.locator('.modal img.rc-view')).toBeVisible();
-  // The eye hides the amounts here too.
-  await page.evaluate(() => { closeModal(); togglePrivacy(); render(); });
-  expect(await page.locator('.page').innerText()).not.toMatch(/€\s?\d/);
   expect(errors).toEqual([]);
 });
 

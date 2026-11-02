@@ -51,24 +51,21 @@ test('an income not split yet waits in Action required; the tab edits the plan',
   expect(await page.evaluate(() => data.budgetTransactions.find(t => t.id === 'tx_sal').split.skipped)).toBe(true);
   await page.evaluate(() => closeModal());
 
-  // The plan tab: a short summary; the editor has two steps.
+  // Its own page in Money: everything on one page, saved by itself.
   await page.evaluate(() => { goPage('budget'); setBudgetTab('plan'); });
-  await expect(page.locator('.ip-summary')).toContainText('VAT on Freelance');
-  await expect(page.locator('.ip-summary')).toContainText('Savings (invest)');
-  await expect(page.locator('.ip-summary')).toContainText('25%');
-  await page.getByRole('button', { name: 'Edit plan' }).click();
-  await expect(page.locator('.ip-vat')).toContainText('Set VAT aside first');
-  await page.getByRole('button', { name: 'Next' }).click();
+  expect(await page.evaluate(() => ui.page)).toBe('income');
+  await expect(page.locator('.section-tabs button.on')).toHaveText('Income plan');
+  await expect(page.locator('.ip-page')).toContainText('Set VAT aside first');
+  await expect(page.locator('.ip-vat-sum')).toContainText('VAT 21%');
   await page.locator('.ip-part').nth(0).locator('input[aria-label="Percent"]').fill('30');
   await page.locator('.ip-part').nth(0).locator('input[aria-label="Percent"]').dispatchEvent('change');
   await expect(page.locator('.ip-left')).toContainText('20% left stays in the account');
   await page.getByRole('button', { name: '+ Add a part' }).click();
   await page.locator('.ip-part').nth(3).locator('input[aria-label="Name"]').fill('Fun');
   await page.locator('.ip-part').nth(3).locator('input[aria-label="Name"]').dispatchEvent('change');
-  await page.getByRole('button', { name: 'Save plan' }).click();
-  const plan = await page.evaluate(() => data.incomePlan.steps.map(s => [s.label, s.pct, !!s.setAside]));
-  expect(plan).toEqual([['VAT', 21, true], ['Savings (invest)', 30, false], ['Pockets', 25, false], ['Monthly expenses', 25, false], ['Fun', 10, false]]);
-  await expect(page.locator('.ip-summary')).toContainText('10%');
+  // No Save button: a moment later it's in the plan.
+  await expect.poll(() => page.evaluate(() => data.incomePlan.steps.map(s => [s.label, s.pct, !!s.setAside]))).toEqual([['VAT', 21, true], ['Savings (invest)', 30, false], ['Pockets', 25, false], ['Monthly expenses', 25, false], ['Fun', 10, false]]);
+  await expect(page.locator('.ip-status')).toContainText('Saved');
   expect(errors).toEqual([]);
 });
 
@@ -93,7 +90,7 @@ test('an unedited first plan moves to the new order; an edited one is kept', asy
 test('VAT line: incl./excl., 9 %, 0 %, round up; unnamed parts take their place name', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const errors = await openApp(page);
-  await page.evaluate(() => openIncomePlanEditor(2));
+  await page.evaluate(() => { openIncomePlanEditor(); ui.ipDraft.vatOpen = true; render(); });
   const vat = page.locator('.ip-vat-amt');
   await expect(vat).toHaveText('€174.00');                       // €1,000 incl. 21 % = €173.55, rounded up
   await page.locator('.ip-check input').uncheck();
@@ -112,7 +109,7 @@ test('VAT line: incl./excl., 9 %, 0 %, round up; unnamed parts take their place 
   await page.locator('.ip-pick .ip-opt', { hasText: 'Trip fund' }).click();
   await page.locator('.ip-part').nth(1).locator('input[aria-label="Percent"]').fill('15');
   await page.locator('.ip-part').nth(1).locator('input[aria-label="Percent"]').dispatchEvent('change');
-  await page.getByRole('button', { name: 'Save plan' }).click();
+  await page.evaluate(() => ipCommit());
   const p = await page.evaluate(() => ({ names: data.incomePlan.steps.map(s => s.label), modes: data.incomePlan.vatModes, round: data.incomePlan.vatRoundUp }));
   expect(p.names[4]).toBe(await page.evaluate(() => accountById('acc_demo1').pockets.find(x => x.id === 'pk_demo1').name));
   expect(p.names).not.toContain('Part');

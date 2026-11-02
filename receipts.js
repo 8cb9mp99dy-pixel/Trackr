@@ -4,8 +4,8 @@
  *
  * On an expense (transaction → More options): attach receipts (a photo or a PDF) and say until
  * when it's under warranty (1, 2 or 3 years from the purchase, or a date). Then:
- *   - Budget → Receipts: every transaction with a receipt or a warranty, searchable (name, shop,
- *     category, note, place), with what's still under warranty first;
+ *   - the receipt stays on the transaction (the Receipts page was removed at the user's request,
+ *     2 Nov 2026);
  *   - a month before a warranty ends: a line in Action required and one notification.
  * Files are kept like goal photos: on this device (photos shrunk to 1600 px, PDFs up to 2.8 MB)
  * and in your Supabase photo table when it's set up, never inside the data itself. The
@@ -134,7 +134,7 @@ if (typeof module !== 'undefined' && module.exports) {
       </div>`;
   };
 
-  /* ---- Budget → Receipts ---- */
+  /* ---- Every transaction with a receipt or a warranty (for the reminders) ---- */
   window.receiptRows = function () {
     const today = todayYmd();
     return (data.budgetTransactions || []).filter(t => (t.receipts && t.receipts.length) || t.warrantyUntil).map(t => {
@@ -142,68 +142,6 @@ if (typeof module !== 'undefined' && module.exports) {
       return { t, cat: c ? c.name : '', w: warrantyState(t.warrantyUntil, today) };
     });
   };
-  function receiptResultsHtml() {
-    const q = String(ui.receiptQuery || '').trim().toLowerCase();
-    const f = ui.receiptFilter || 'all';
-    const all = receiptRows();
-    const rank = r => (r.w ? (r.w.state === 'soon' ? 0 : r.w.state === 'active' ? 1 : 3) : 2);
-    const rows = all.filter(r => {
-      if (f === 'warranty' && !(r.w && r.w.state !== 'ended')) return false;
-      if (f === 'receipt' && !(r.t.receipts && r.t.receipts.length)) return false;
-      if (!q) return true;
-      return [r.t.comment, r.t.description, r.t.location, r.cat, r.t.date, ...(r.t.receipts || []).map(x => x.name)].some(v => String(v || '').toLowerCase().includes(q));
-    }).sort((a, b) => rank(a) - rank(b) || (rank(a) <= 1 ? a.t.warrantyUntil.localeCompare(b.t.warrantyUntil) : b.t.date.localeCompare(a.t.date)));
-    return !all.length ? `<div class="card"><div style="font-weight:700;margin-bottom:6px;">No receipts yet</div><div class="dim">Open an expense, then More options: add a photo or a PDF of the receipt and how long it's under warranty. Trackr reminds you a month before a warranty ends.</div></div>`
-      : !rows.length ? '<div class="card dim">Nothing matches.</div>'
-      : `<div class="card rc-list">${rows.map(receiptRowHtml).join('')}</div>`;
-  }
-  // Typing in the search box only redraws the list (the box keeps its focus).
-  window.receiptSearch = function (v) {
-    ui.receiptQuery = v;
-    const el = document.getElementById('rc-results');
-    if (el) el.innerHTML = receiptResultsHtml();
-  };
-  window.renderReceipts = function () {
-    const f = ui.receiptFilter || 'all';
-    const all = receiptRows();
-    const covered = all.filter(r => r.w && r.w.state !== 'ended');
-    const soon = all.filter(r => r.w && r.w.state === 'soon');
-    const seg = (k, l) => `<button class="seg ${f === k ? 'on' : ''}" onclick="ui.receiptFilter='${k}';render()">${l}</button>`;
-    return `
-    <div class="page surface-light">
-      <div class="page-head"><div><h1 class="page-title">Receipts</h1><div class="page-subtitle">Receipts and warranties of what you bought</div></div>
-        <button class="btn primary" onclick="openTxForm()">${ic('plus', 15)} Add expense</button></div>
-      <div class="card rc-stats">
-        <div class="drill" onclick="ui.receiptFilter='receipt';render()"><div class="eyebrow">With a receipt</div><div class="fl-num">${all.filter(r => r.t.receipts && r.t.receipts.length).length}</div></div>
-        <div class="drill" onclick="ui.receiptFilter='warranty';render()"><div class="eyebrow">Under warranty</div><div class="fl-num">${covered.length}</div><div class="dim">${fmtMoney(covered.reduce((s, r) => s + toEUR(+r.t.amount || 0, r.t.currency), 0))}</div></div>
-        <div class="drill" onclick="ui.receiptFilter='warranty';render()"><div class="eyebrow">Ending soon</div><div class="fl-num ${soon.length ? 'negative' : ''}">${soon.length}</div><div class="dim">${soon.length ? escHtml(soon.map(r => r.t.comment || r.cat).slice(0, 2).join(', ')) : 'within a month'}</div></div>
-      </div>
-      ${all.length ? `<div class="row-flex" style="flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-        <div class="seg-row" style="margin:0;">${seg('all', 'All')}${seg('warranty', 'Under warranty')}${seg('receipt', 'With receipt')}</div>
-        <input class="rc-search" type="search" placeholder="Search name, shop, category…" aria-label="Search receipts" value="${escHtml(ui.receiptQuery || '')}" oninput="receiptSearch(this.value)">
-      </div>` : ''}
-      <div id="rc-results">${receiptResultsHtml()}</div>
-    </div>`;
-  };
-  function receiptRowHtml(r) {
-    const t = r.t, w = r.w;
-    const badge = !w ? '' : w.state === 'ended' ? `<span class="wl-lvl">Warranty ended ${escHtml(longDay(t.warrantyUntil))}</span>`
-      : w.state === 'soon' ? `<span class="wl-lvl hit" title="Until ${escHtml(longDay(t.warrantyUntil))}">Warranty ends in ${w.days} day${w.days === 1 ? '' : 's'}</span>`
-      : `<span class="wl-lvl">Warranty until ${escHtml(longDay(t.warrantyUntil))}</span>`;
-    return `<div class="rc-row">
-      ${txAvatarHtml(t)}
-      <div class="wl-main" role="button" tabindex="0" onclick="openTxForm('${t.id}')" onkeydown="if(event.key==='Enter')openTxForm('${t.id}')">
-        <div class="wl-name">${escHtml(t.comment || r.cat || 'Expense')}</div>
-        <div class="dim">${escHtml([shortDay(t.date), r.cat, t.location].filter(Boolean).join(' · '))}</div>
-        ${badge ? `<div class="wl-lvls">${badge}</div>` : ''}
-      </div>
-      <div class="rc-side">
-        <b>${fmtMoney(t.amount, t.currency)}</b>
-        <div class="rc-mini">${(t.receipts || []).slice(0, 3).map(receiptThumbHtml).join('')}</div>
-      </div>
-    </div>`;
-  }
-
   /* ---- Reminders ---- */
   window.warrantySoonList = function () { return receiptRows().filter(r => r.w && r.w.state === 'soon' && !r.t.warrantyNoted); };
   window.receiptAttention = function () {
@@ -212,7 +150,7 @@ if (typeof module !== 'undefined' && module.exports) {
       detail: `On ${longDay(r.t.warrantyUntil)} (${r.w.days} day${r.w.days === 1 ? '' : 's'}) — anything to repair or return?`,
       actions: [{ label: 'See', onclick: `closeModal();openWarrantyTx('${r.t.id}')`, primary: true }, { label: 'All fine', onclick: `warrantyNoted('${r.t.id}')` }] }));
   };
-  window.openWarrantyTx = function (id) { goPage('receipts'); openTxForm(id); };
+  window.openWarrantyTx = function (id) { goPage('budget'); openTxForm(id); };
   window.warrantyNoted = function (id) {
     const t = (data.budgetTransactions || []).find(x => x.id === id); if (!t) return;
     t.warrantyNoted = true; save(); render();

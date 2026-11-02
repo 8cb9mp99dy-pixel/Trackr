@@ -4,7 +4,7 @@
 const { test, expect } = require('@playwright/test');
 const { openApp, PAGES } = require('./helpers');
 
-const MAP = [['Budget', 'budget', 'Money'], ['Receipts', 'receipts', 'Money'], ['Trips', 'trips', 'Money'], ['IOUs', 'ious', 'Money'], ['Contracts', 'contracts', 'Money'], ['Freelance', 'freelance', 'Money'],
+const MAP = [['Budget', 'budget', 'Money'], ['Income plan', 'income', 'Money'], ['Freelance', 'freelance', 'Money'],
   ['Net worth', 'wealth', 'Wealth'], ['Cash', 'accounts', 'Wealth'], ['Investments', 'investments', 'Wealth'], ['Watchlist', 'watchlist', 'Wealth'], ['Debts', 'wealth', 'Wealth'],
   ['Goals', 'goals', 'Plan'], ['Yearly bills', 'yearly', 'Plan'], ['Emergency', 'goals', 'Plan'], ['Patterns', 'patterns', 'Plan'], ['Insights', 'analysis', 'Plan']];
 
@@ -63,7 +63,7 @@ test('phone: 5 tabs, section tabs in view, every page in More', async ({ page },
 
 test('page ids keep working and the Trading page is gone, data kept', async ({ page }) => {
   const errors = await openApp(page);
-  for (const p of [...PAGES, 'freelance', 'receipts', 'watchlist']) { await page.evaluate(x => goPage(x), p); expect(await page.evaluate(() => ui.page)).toBe(p); }
+  for (const p of [...PAGES, 'freelance', 'watchlist']) { await page.evaluate(x => goPage(x), p); expect(await page.evaluate(() => ui.page)).toBe(p); }
   expect(await page.evaluate(() => [typeof renderTrading, typeof openTradeForm, typeof openTradeImport, Array.isArray(data.trades)])).toEqual(['undefined', 'undefined', 'undefined', true]);
   expect(errors).toEqual([]);
 });
@@ -74,12 +74,11 @@ test('classic navigation: every page in the side bar, no section tabs', async ({
   await page.evaluate(() => { toggleSetting('classicNav'); goPage('budget'); });
   expect(await page.evaluate(() => newNavOn())).toBe(false);
   const labels = await page.locator('.nav-list .nav-item .label').allInnerTexts();
-  expect(labels).toEqual(expect.arrayContaining(['Overview', 'Budget', 'Freelance', 'Investments', 'Accounts', 'Analysis']));
+  expect(labels).toEqual(expect.arrayContaining(['Overview', 'Budget', 'Income plan', 'Freelance', 'Investments', 'Accounts', 'Analysis']));
   await expect(page.locator('.section-tabs')).toHaveCount(0);
   // The pages without their own entry are one button away.
-  await page.locator('.page-head').getByRole('button', { name: 'Receipts' }).click();
-  expect(await page.evaluate(() => ui.page)).toBe('receipts');
-  await expect(page.locator('.nav-item.active .label').first()).toHaveText('Budget');
+  await page.evaluate(() => goPage('income'));
+  await expect(page.locator('.nav-item.active .label').first()).toHaveText('Income plan');
   await page.evaluate(() => goPage('investments'));
   await page.locator('.page-head').getByRole('button', { name: 'Watchlist' }).click();
   expect(await page.evaluate(() => ui.page)).toBe('watchlist');

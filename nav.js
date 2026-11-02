@@ -4,7 +4,8 @@
  * goPage('…') id stays the same — only how they're grouped changes:
  *
  *   Home      Overview
- *   Money     Budget (Transactions · Recurring · Forecast · Totals · Categories · Import) · Receipts · Trips · IOUs · Contracts · Freelance · From Claude (once connected)
+ *   Money     Budget (Transactions · Totals · Recurring · Forecast · Budgets · Categories · Import) · Income plan · Freelance · From Claude (once connected)
+ *             (Receipts, Trips, IOUs and Contracts were removed at the user's request, 2 Nov 2026: don't bring them back)
  *   Wealth    Overview · Cash (the old Accounts page) · Investments (+ each account) · Watchlist · Debts
  *   Plan      Goals · Yearly bills · Emergency · Patterns · Insights (the old Analysis page)
  *   Settings
@@ -20,7 +21,7 @@
  */
 const NEW_NAV = [
   { id: 'dashboard', label: 'Home', icon: 'home', phone: true, pages: ['dashboard'] },
-  { id: 'budget', label: 'Money', icon: 'receipt', phone: true, pages: ['budget', 'receipts', 'trips', 'ious', 'contracts', 'freelance', 'inbox'] },
+  { id: 'budget', label: 'Money', icon: 'receipt', phone: true, pages: ['budget', 'income', 'freelance', 'inbox'] },
   { id: 'wealth', label: 'Wealth', icon: 'pie', phone: true, pages: ['wealth', 'accounts', 'investments', 'investAccount', 'manual-prices', 'positions-import', 'watchlist'] },
   { id: 'goals', label: 'Plan', icon: 'target', phone: true, pages: ['goals', 'yearly', 'patterns', 'analysis'] },
   { id: 'settings', label: 'Settings', icon: 'settings', pages: ['settings'] },
@@ -29,17 +30,14 @@ function newNavOn() { return !(typeof data !== 'undefined' && data && data.setti
 function currentNavItems() { return newNavOn() ? NEW_NAV : NAV_ITEMS; }
 function navItemActive(item) {
   if (newNavOn()) return (item.pages || [item.id]).includes(ui.page);
-  return ui.page === item.id || (item.id === 'investments' && ['investAccount', 'watchlist'].includes(ui.page)) || (item.id === 'budget' && ['receipts', 'trips', 'ious', 'contracts', 'inbox'].includes(ui.page)) || (item.id === 'goals' && ['yearly', 'patterns'].includes(ui.page));
+  return ui.page === item.id || (item.id === 'investments' && ['investAccount', 'watchlist'].includes(ui.page)) || (item.id === 'budget' && ui.page === 'inbox') || (item.id === 'goals' && ['yearly', 'patterns'].includes(ui.page));
 }
 function goWealthSection(tab) { ui.wealthTab = tab === 'liabilities' ? 'liabilities' : 'assets'; goPage('wealth'); }
 function goPlanSection(tab) { ui.goalsTab = tab === 'emergency' ? tab : 'goals'; goPage('goals'); }
 const SECTION_TABS = {
   budget: [
     ['Budget', "goPage('budget')", () => ui.page === 'budget'],
-    ['Receipts', "goPage('receipts')", () => ui.page === 'receipts'],
-    ['Trips', "ui.tripId=null;goPage('trips')", () => ui.page === 'trips'],
-    ['IOUs', "goPage('ious')", () => ui.page === 'ious'],
-    ['Contracts', "goPage('contracts')", () => ui.page === 'contracts'],
+    ['Income plan', "goPage('income')", () => ui.page === 'income'],
     ['Freelance', "goPage('freelance')", () => ui.page === 'freelance'],
     ['From Claude', "goPage('inbox')", () => ui.page === 'inbox', () => typeof inboxTabOn === 'function' && inboxTabOn()],
   ],

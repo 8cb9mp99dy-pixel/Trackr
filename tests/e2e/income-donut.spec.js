@@ -3,10 +3,10 @@
 const { test, expect } = require('@playwright/test');
 const { openApp } = require('./helpers');
 
-const pcts = page => page.evaluate(() => ui.modal.payload.parts.map(x => x.pct));
+const pcts = page => page.evaluate(() => ui.ipDraft.parts.map(x => x.pct));
 const open = async page => {
   const errors = await openApp(page);
-  await page.evaluate(() => openIncomePlanEditor(2));
+  await page.evaluate(() => { openIncomePlanEditor(); ui.ipDraft.vatOpen = true; render(); });
   await expect(page.locator('.sd-wrap.live')).toBeVisible();
   // The window slides in: wait until the donut stops moving before aiming at it.
   let last = null;

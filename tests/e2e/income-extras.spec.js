@@ -3,10 +3,10 @@
 const { test, expect } = require('@playwright/test');
 const { openApp } = require('./helpers');
 
-const pcts = page => page.evaluate(() => ui.modal.payload.parts.map(x => x.pct));
+const pcts = page => page.evaluate(() => ui.ipDraft.parts.map(x => x.pct));
 const open = async page => {
   const errors = await openApp(page);
-  await page.evaluate(() => openIncomePlanEditor(2));
+  await page.evaluate(() => { openIncomePlanEditor(); ui.ipDraft.vatOpen = true; render(); });
   await expect(page.locator('.sd-wrap.live')).toBeVisible();
   return errors;
 };
@@ -23,7 +23,7 @@ test('presets: 50/30/20, even split, save your own, apply it, delete it', async 
   await page.getByRole('button', { name: 'Save current as preset' }).click();
   expect(await page.evaluate(() => data.incomePlan.presets.map(p => [p.name, p.parts.length]))).toEqual([['Quarter each', 4]]);
   await page.getByRole('button', { name: '50/30/20' }).click();   // 4 parts: becomes Needs / Wants / Savings
-  expect(await page.evaluate(() => ui.modal.payload.parts.map(x => [x.label, x.pct]))).toEqual([['Needs', 50], ['Wants', 30], ['Savings', 20]]);
+  expect(await page.evaluate(() => ui.ipDraft.parts.map(x => [x.label, x.pct]))).toEqual([['Needs', 50], ['Wants', 30], ['Savings', 20]]);
   await page.getByRole('button', { name: 'Quarter each', exact: true }).click();
   expect(await pcts(page)).toEqual([25, 25, 25, 25]);
   await page.getByRole('button', { name: 'Delete preset Quarter each' }).click();
@@ -50,14 +50,14 @@ test('acceptance: €1,210 incl. 21 % → VAT €210, €1,000 to split, 25 % = 
   for (const v of [999.99, 1234.57, 77.77]) {
     await tryAmount(page, v);
     const ok = await page.evaluate(() => {
-      const d = ui.modal.payload, { ex } = ipPreview(d);
+      const d = ui.ipDraft, { ex } = ipPreview(d);
       const sum = ex.lines.filter(l => !l.vat).reduce((s, l) => s + Math.round(l.amount * 100), 0) + Math.round(ex.rest * 100);
       return sum === Math.round(ex.base * 100) && Math.round((ex.vat + ex.base) * 100) === Math.round(d.amt * 100);
     });
     expect(ok).toBe(true);
   }
   // The preview never changes the saved plan or any payment.
-  await page.getByRole('button', { name: 'Save plan' }).click();
+  await page.evaluate(() => ipCommit());
   expect(await page.evaluate(() => 'amt' in data.incomePlan)).toBe(false);
   expect(errors).toEqual([]);
 });
@@ -73,7 +73,7 @@ test('the slider previews live; Undo (button and Ctrl/Cmd+Z) walks changes back'
   await page.locator('.ip-part[data-i="2"] input[aria-label="Percent"]').fill('5');
   await page.locator('.ip-part[data-i="2"] input[aria-label="Percent"]').dispatchEvent('change');
   expect(await pcts(page)).toEqual([51, 29, 5]);
-  await page.locator('.modal-title').click();
+  await page.locator('.page-title').click();
   await page.keyboard.press('ControlOrMeta+z');
   expect(await pcts(page)).toEqual([51, 29, 20]);
   await page.keyboard.press('ControlOrMeta+z');
@@ -87,7 +87,7 @@ test('the slider previews live; Undo (button and Ctrl/Cmd+Z) walks changes back'
 test('the plan survives a reload', async ({ page }) => {
   const errors = await open(page);
   await page.getByRole('button', { name: 'Even split' }).click();
-  await page.getByRole('button', { name: 'Save plan' }).click();
+  await page.evaluate(() => ipCommit());
   await page.reload();
   await page.waitForFunction(() => typeof data !== 'undefined' && data && document.querySelector('.main .page'));
   expect(await page.evaluate(() => data.incomePlan.steps.filter(s => !s.setAside).map(s => s.pct))).toEqual([34, 33, 33]);
@@ -103,7 +103,7 @@ test('an old plan (saved before this change) loads and gains the new keys', asyn
     { id: 'ip_inv', label: 'Invest', pct: 25, setAside: false, onlyCat: '', to: 'brk:brk_demo1' },
   ] };
   const errors = await openApp(page, { json: JSON.stringify(doc) });
-  const p = await page.evaluate(() => { openIncomePlanEditor(2); return { plan: data.incomePlan, parts: ui.modal.payload.parts.map(x => [x.label, x.pct, x.to]) }; });
+  const p = await page.evaluate(() => { openIncomePlanEditor(); ui.ipDraft.vatOpen = true; render(); return { plan: data.incomePlan, parts: ui.ipDraft.parts.map(x => [x.label, x.pct, x.to]) }; });
   expect(p.plan.vatModes).toEqual({});
   expect(p.plan.vatRoundUp).toBe(true);
   expect(p.plan.presets).toEqual([]);

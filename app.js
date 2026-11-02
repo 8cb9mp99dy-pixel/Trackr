@@ -177,6 +177,7 @@ const NAV_ITEMS = [
   { id: 'goals', label: 'Goals', icon: 'target' },
   { id: 'analysis', label: 'Analysis', icon: 'compass' },
   { id: 'budget', label: 'Budget', icon: 'receipt', phone: true },
+  { id: 'income', label: 'Income plan', icon: 'swap' },
   { id: 'freelance', label: 'Freelance', icon: 'briefcase' },
   { id: 'investments', label: 'Investments', icon: 'trend', phone: true },
   { id: 'accounts', label: 'Accounts', icon: 'bank' },
@@ -502,14 +503,14 @@ function defaultData() {
     // Freelance (freelance.js): invoices you send, and VAT per quarter.
     invoices: [],
     watchlist: [],
-    ious: [], // money lent / borrowed / split with people (ious.js)
-    contracts: [], // subscriptions and contracts with their notice period (contracts.js)
+    ious: [], // money lent / borrowed / split (the IOUs page was removed, 2 Nov 2026; kept so old data stays)
+    contracts: [], // subscriptions with a notice period (the Contracts page was removed, 2 Nov 2026; kept)
     yearlyBills: [], // irregular bills set aside for every month (setaside.js)
     cards: [], // the bank cards on the Accounts page: a picture and a link, no card data (cards.js)
     photoThumbs: {}, // photo id → a very small copy of a goal's cover, for your other devices (photos.js)
     images: {},      // photo id → { path, w, h, type, createdAt } in the private image storage (images.js); never the picture or a link
     inboxRejected: [], // what you rejected on From Claude, kept 30 days to put back (inbox.js)
-    trips: [], // trips with dates and a budget (trips.js)
+    trips: [], // trips with dates and a budget (the Trips page was removed, 2 Nov 2026; kept)
     monthClose: {}, // 'YYYY-MM' → { at, note }: the month-end check (monthclose.js)
     vat: { rate: 21, pocket: '', freelanceIncludesVat: true, paid: {} },
     // Each crypto asset is tracked in one of two modes:
@@ -2337,14 +2338,67 @@ function syncVisualViewport() {
   root.style.setProperty('--vv-top', vv.offsetTop + 'px');
 }
 if (window.visualViewport) { visualViewport.addEventListener('resize', syncVisualViewport); visualViewport.addEventListener('scroll', syncVisualViewport); syncVisualViewport(); }
+/* A redraw rebuilds the whole screen. So that it never throws you back to the top, it keeps
+   where you were: the page's scroll, the scroll inside a window or a list, and the field you were
+   typing in (with the cursor), as long as you're still on the same page and window. A page change
+   or a newly opened window starts at its top as before. */
+const scrollKeyOf = el => el.tagName + '.' + (String(el.className && el.className.baseVal != null ? el.className.baseVal : el.className).trim().split(/\s+/)[0] || '');
+const focusKeyOf = el => [el.tagName, el.id, el.getAttribute('name'), el.getAttribute('aria-label'), el.getAttribute('placeholder'), el.getAttribute('type')].join('|');
+let renderedWhere = null; // the page and window last drawn: ui.page has already changed when a redraw starts
+function renderKeep(app) {
+  if (!app) return null;
+  const where = renderedWhere;
+  const scrolled = [], seen = {};
+  app.querySelectorAll('*').forEach(el => {
+    if (el.scrollTop === 0 && el.scrollLeft === 0) return;
+    const k = scrollKeyOf(el), n = seen[k] = (seen[k] || 0) + 1;
+    scrolled.push({ k, n, top: el.scrollTop, left: el.scrollLeft });
+  });
+  let focus = null;
+  const act = document.activeElement;
+  if (act && act !== document.body && app.contains(act) && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(act.tagName)) {
+    const k = focusKeyOf(act), same = Array.from(app.querySelectorAll(act.tagName)).filter(x => focusKeyOf(x) === k);
+    let sel = null;
+    try { if (typeof act.selectionStart === 'number') sel = [act.selectionStart, act.selectionEnd]; } catch (e) { /* number inputs have no cursor */ }
+    focus = { tag: act.tagName, k, i: same.indexOf(act), sel };
+  }
+  return { where, x: window.scrollX, y: window.scrollY, scrolled, focus };
+}
+function renderRestore(app, kept) {
+  const now = ui.page + '|' + (ui.modal ? ui.modal.type : '');
+  const was = renderedWhere;
+  renderedWhere = now;
+  if (!app || !kept || !was) return;
+  if (was.split('|')[0] !== ui.page) { window.scrollTo(0, 0); return; } // another page starts at its top
+  if (kept.where !== now) return;
+  if (kept.scrolled.length) {
+    const seen = {};
+    app.querySelectorAll('*').forEach(el => {
+      const k = scrollKeyOf(el); if (!kept.scrolled.some(s => s.k === k)) return;
+      const n = seen[k] = (seen[k] || 0) + 1, s = kept.scrolled.find(x => x.k === k && x.n === n);
+      if (s) { el.scrollTop = s.top; el.scrollLeft = s.left; }
+    });
+  }
+  if (kept.focus && (!document.activeElement || document.activeElement === document.body)) {
+    const f = kept.focus, el = Array.from(app.querySelectorAll(f.tag)).filter(x => focusKeyOf(x) === f.k)[f.i];
+    if (el) {
+      try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
+      if (f.sel) { try { el.setSelectionRange(f.sel[0], f.sel[1]); } catch (e) { /* not a text field */ } }
+    }
+  }
+  if (window.scrollY !== kept.y || window.scrollX !== kept.x) window.scrollTo(kept.x, kept.y);
+}
 function render() {
   if (window.__quietBatch) return;
   ui.renderDeferred = false;
   const app = document.getElementById('app');
   // The live price bar keeps scrolling through redraws: the same bar (same holdings) is put back.
   const keepTicker = app && app.querySelector('.ticker');
+  let kept = null;
+  try { kept = renderKeep(app); } catch (e) { kept = null; }
   try {
     renderApp(app);
+    try { renderRestore(app, kept); } catch (e) { /* keeping the place is a nicety, never a crash */ }
     const newTicker = keepTicker && app.querySelector('.ticker');
     if (newTicker && newTicker.dataset.sig === keepTicker.dataset.sig) newTicker.replaceWith(keepTicker);
     dimBigCents(app);
@@ -2396,12 +2450,11 @@ function renderApp(app) {
     analysis: () => (typeof renderAnalysis === 'function' ? renderAnalysis() : ''),
     freelance: () => (typeof renderFreelance === 'function' ? renderFreelance() : ''),
     watchlist: () => (typeof renderWatchlist === 'function' ? renderWatchlist() : ''),
-    receipts: () => (typeof renderReceipts === 'function' ? renderReceipts() : ''),
     investAccount: () => (typeof renderInvestAccount === 'function' ? renderInvestAccount() : renderInvestments()),
     'manual-prices': renderManualPrices,
     'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
   };
-  // Pages from their own files register in window.__pageRenderers (trips.js, ious.js…).
+  // Pages from their own files register in window.__pageRenderers (allocation.js, inbox.js…).
   const extraPage = window.__pageRenderers && window.__pageRenderers[ui.page];
   const pageHtml = pageRenderers[ui.page] ? pageRenderers[ui.page]() : extraPage ? extraPage() : '';
   // Settings → Display → "New navigation (beta)" groups the same pages differently (nav.js).
@@ -3104,14 +3157,13 @@ function savePocketForm(accId, pkId) {
   save(); closeModal();
 }
 /* ===================== Budget ===================== */
-/* Four sections: Transactions, Totals, Plan (income plan, recurring, forecast, budgets) and
+/* Four sections: Transactions, Totals, Planning (recurring, forecast, budgets) and
    Setup (categories & rules, import). Every old tab id still works with setBudgetTab(). */
 function budgetGroups() {
   return [
     { id: 'transactions', label: 'Transactions', tabs: [{ id: 'transactions', label: 'Transactions' }] },
     { id: 'totals', label: 'Totals', tabs: [{ id: 'totals', label: 'Totals' }] },
     { id: 'planning', label: 'Planning', tabs: [
-      ...(typeof incomePlanTab === 'function' ? [{ id: 'plan', label: 'Income plan' }] : []),
       { id: 'recurring', label: 'Recurring' },
       ...(typeof budgetForecastTab === 'function' ? [{ id: 'forecast', label: 'Forecast' }] : []),
       ...(budgetLimitsOn() ? [{ id: 'budgets', label: 'Budgets' }] : []),
@@ -3135,7 +3187,6 @@ function renderBudget() {
   <div class="page surface-light">
     <div class="page-head">
       <div><h1 class="page-title">Budget</h1><div class="page-subtitle">${data.budgetTransactions.length} transaction${data.budgetTransactions.length !== 1 ? 's' : ''} logged</div></div>
-      ${typeof renderReceipts === 'function' && !(typeof newNavOn === 'function' && newNavOn()) ? `<button class="btn" onclick="goPage('receipts')" title="Receipts and warranties of what you bought">${ic('file', 15)} Receipts</button>` : ''}
     </div>
     ${typeof cardsHtml === 'function' ? cardsHtml() : ''}
     ${typeof completedGoalsHtml === 'function' ? completedGoalsHtml() : ''}
@@ -3147,7 +3198,6 @@ function renderBudget() {
     ${ui.budgetTab === 'recurring' ? budgetRecurringTab() : ''}
     ${ui.budgetTab === 'forecast' && typeof budgetForecastTab === 'function' ? budgetForecastTab() : ''}
     ${ui.budgetTab === 'totals' ? budgetTotalsTab() : ''}
-    ${ui.budgetTab === 'plan' && typeof incomePlanTab === 'function' ? incomePlanTab() : ''}
     ${ui.budgetTab === 'budgets' && budgetLimitsOn() ? budgetLimitsTab() : ''}
     ${ui.budgetTab === 'categories' ? `<div class="card">${categoryEditorHtml()}</div>${typeof rulesCardHtml === 'function' ? rulesCardHtml() : ''}` : ''}
     ${ui.budgetTab === 'import' ? (typeof budgetImportTab === 'function' ? budgetImportTab() : '') : ''}
@@ -3156,6 +3206,7 @@ function renderBudget() {
 function toggleHideTransfers() { data.settings.hideTransfers = !data.settings.hideTransfers; save(); render(); }
 function togglePocketMoves() { data.settings.showPocketMoves = !data.settings.showPocketMoves; save(); render(); }
 function setBudgetTab(t) {
+  if (t === 'plan') { goPage('income'); return; } // the Income plan is its own page (Money → Income plan) since 2 Nov 2026
   ui.budgetTab = t === 'budgets' && !budgetLimitsOn() ? 'transactions' : t;
   ui.txSelect = null;
   ui.budgetLastTab = ui.budgetLastTab || {};

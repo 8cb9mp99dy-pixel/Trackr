@@ -1,4 +1,4 @@
-/* ===================== Budget → Income plan =====================
+/* ===================== Money → Income plan =====================
  * When a salary or a freelance payment comes in, Trackr offers to split it the way you decided:
  * e.g. VAT 21 % to the "VAT Storage" pocket (freelance only), 25 % invested at your broker,
  * 25 % kept for day-to-day spending. Applying it records ordinary transfers from the account
@@ -14,6 +14,11 @@
  * choice is for planning, e.g. from an invoice's amount before it's paid.
  * An income that was split (or skipped) keeps { split: { at, skipped?, transfers: [ids] } }.
  * The first half is pure and tested in Node (tests/unit/allocation.test.js).
+ *
+ * Its own page (Money → Income plan, goPage('income'), 2 Nov 2026): everything on one page, no
+ * steps and no Save button. You edit a copy (ui.ipDraft); a moment after each change it is written
+ * to the plan and saved (ipCommit), with Undo. With no parts yet, a quick setup asks three things
+ * (which payments, VAT or not, where the money goes and how much) and makes the parts.
  */
 
 /* VAT on an amount at rate %. mode 'incl': the amount already holds the VAT (what lands in the
@@ -246,22 +251,27 @@ if (typeof window !== 'undefined') {
     save(); render();
   };
 
-  /* The editor: two short steps on a copy of the plan, saved at the end. */
-  window.openIncomePlanEditor = function (step) {
+  /* The page edits a copy of the plan (ui.ipDraft), written back a moment after each change. */
+  const planSig = p => JSON.stringify([p.triggerCats, p.steps, p.vatModes || {}, p.vatRoundUp !== false]);
+  window.ipDraftNew = function () {
     const p = incomePlan(), v = vatStep(p);
-    ui.modal = { type: 'incomePlanEdit', payload: {
-      step: step || 1, cats: p.triggerCats.slice(),
+    const d = {
+      cats: p.triggerCats.slice(),
       vatOn: !!v, vatPct: v ? v.pct : 21, vatTo: v ? incomeStepTarget(v) : incomeStepTarget({ label: 'VAT', to: '' }), vatCat: v ? (v.onlyCat || '') : 'inc_freelance',
       vatMode: (p.vatModes || {})[(v && v.onlyCat) || '*'] || 'incl', vatRoundUp: p.vatRoundUp !== false,
       parts: partSteps(p).map(x => ({ id: x.id, label: x.label, pct: x.pct, to: incomeStepTarget(x), color: x.color || '' })),
-    } };
-    ipFixColors(ui.modal.payload);
-    render();
+      base: planSig(p), qsTo: [], qsPct: 30,
+    };
+    ipFixColors(d);
+    d.saved = snap(d);
+    return d;
   };
-  const D = () => ui.modal.payload;
+  /* Old entry points (the Budget tab's button, the split sheet…) now open the page. */
+  window.openIncomePlanEditor = function () { ui.ipDraft = null; ui.modal = null; goPage('income'); };
+  const D = () => ui.ipDraft || (ui.ipDraft = ipDraftNew());
   /* ---- Undo inside the window (Cmd/Ctrl+Z, or the Undo button): every change keeps the plan
      as it was just before; nothing here touches your data until Save plan. ---- */
-  const SNAP_KEYS = ['vatOn', 'vatPct', 'vatTo', 'vatCat', 'vatMode', 'vatRoundUp', 'parts'];
+  const SNAP_KEYS = ['cats', 'vatOn', 'vatPct', 'vatTo', 'vatCat', 'vatMode', 'vatRoundUp', 'parts'];
   const snap = d => JSON.stringify(SNAP_KEYS.map(k => d[k]));
   window.ipRemember = function () {
     const d = D(); if (!d) return;
@@ -271,7 +281,7 @@ if (typeof window !== 'undefined') {
     if (d.hist.length > 60) d.hist.shift();
   };
   window.ipUndo = function () {
-    const d = ui.modal && ui.modal.type === 'incomePlanEdit' && ui.modal.payload;
+    const d = ui.ipDraft;
     if (!d || !d.hist || !d.hist.length) return false;
     const now = snap(d);
     let was = d.hist.pop();
@@ -284,7 +294,7 @@ if (typeof window !== 'undefined') {
   };
   document.addEventListener('keydown', ev => {
     if (!(ev.metaKey || ev.ctrlKey) || ev.shiftKey || ev.altKey || String(ev.key).toLowerCase() !== 'z') return;
-    if (!ui.modal || ui.modal.type !== 'incomePlanEdit') return;
+    if (ui.modal || ui.page !== 'income') return;
     // A field you're typing in keeps its own undo until you leave it.
     const el = ev.target;
     if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && /^(text|number|search|)$/.test(el.type || '') && el.value !== el.defaultValue) return;
@@ -303,7 +313,7 @@ if (typeof window !== 'undefined') {
     } else d.parts[i][field] = value;
     render();
   };
-  window.ipToggleCat = function (id) { const d = D(); d.cats = d.cats.includes(id) ? d.cats.filter(c => c !== id) : d.cats.concat([id]); render(); };
+  window.ipToggleCat = function (id) { const d = D(); ipRemember(); d.cats = d.cats.includes(id) ? d.cats.filter(c => c !== id) : d.cats.concat([id]); render(); };
   window.ipAddPart = function () { const d = D(); ipRemember(); d.parts.push({ id: uid('ip'), label: '', pct: Math.min(10, sdClampPart(d.parts.map(x => +x.pct || 0).concat([0]), d.parts.length, 10).value), to: 'stay' }); ipFixColors(d); render(); };
   /* A part that isn't a pocket keeps one colour wherever it moves: the first chart colour no other
      part uses (a pocket's part takes the pocket's colour). */
@@ -316,11 +326,15 @@ if (typeof window !== 'undefined') {
     });
   };
   window.ipRemovePart = function (i) { const d = D(); ipRemember(); d.parts.splice(i, 1); d.sel = null; render(); };
-  window.saveIncomePlan = function () {
-    const d = D(), p = incomePlan();
-    if (!d.cats.length) { alert('Choose at least one kind of income.'); return; }
+  /* Writes the page's copy to the plan and saves. Nothing is written while no payment is chosen
+     or the parts pass 100 %. */
+  window.ipCommit = function () {
+    clearTimeout(ipCommit.t);
+    const d = ui.ipDraft, p = incomePlan();
+    if (!d || !d.cats.length || d.parts.reduce((s, x) => s + (+x.pct || 0), 0) > 100.0001) return false;
+    let redraw = false;
     // No place for VAT yet: a 🧾 VAT pocket is made in the account your income lands in.
-    if (d.vatOn && (!d.vatTo || d.vatTo === 'new:vat' || !transferEndpoint(d.vatTo))) d.vatTo = makePocket(homeAccount(), { icon: '🧾', name: 'VAT', color: POCKET_COLORS[0] }) || '';
+    if (d.vatOn && (!d.vatTo || d.vatTo === 'new:vat' || !transferEndpoint(d.vatTo))) { d.vatTo = makePocket(homeAccount(), { icon: '🧾', name: 'VAT', color: POCKET_COLORS[0] }) || ''; redraw = true; }
     // A part with no name takes its place's name (a pocket's, a broker's…), never "Part".
     const parts = d.parts.filter(x => (x.label || '').trim() || x.pct > 0).map(x => Object.assign({ id: x.id, label: ipPartName(x), pct: x.pct, setAside: false, onlyCat: '', to: x.to || 'stay' }, x.color && !findPocket(x.to) ? { color: x.color } : {}));
     const vatCat = d.cats.includes(d.vatCat) ? d.vatCat : '';
@@ -329,38 +343,103 @@ if (typeof window !== 'undefined') {
     if (!p.vatModes || typeof p.vatModes !== 'object') p.vatModes = {};
     p.vatModes[vatCat || '*'] = d.vatMode === 'excl' ? 'excl' : 'incl';
     p.vatRoundUp = d.vatRoundUp !== false;
-    p.on = true;
-    save(); closeModal();
+    d.saved = snap(d); d.base = planSig(p); d.savedAt = Date.now();
+    save();
+    if (redraw) render();
+    else { const st = document.querySelector('.ip-status'); if (st) st.innerHTML = ipStatusHtml(d); }
+    return true;
   };
-  window.__modalRenderers.incomePlanEdit = function (d) {
-    const cats = data.categories.income || [];
-    const head = `<div class="modal-head"><div class="modal-title">Income plan</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
-      <div class="tx-steps">${[['Which payments', 1], ['Your split', 2]].map(([l, n]) => `<button type="button" class="tx-step ${d.step === n ? 'on' : ''}" onclick="ui.modal.payload.step=${n};render();"><span>${n}</span>${l}</button>`).join('')}</div>`;
-    if (d.step === 1) {
-      return `${head}
-        <div class="tx-label">Which payments do you want to split?</div>
-        <div class="tx-chips">${cats.map(c => `<button type="button" class="tx-chip ${d.cats.includes(c.id) ? 'on' : ''}" onclick="ipToggleCat('${c.id}')">${c.icon || ''} ${escHtml(c.name)}</button>`).join('')}</div>
-        <div class="ip-vat">
-          <label class="switch-row"><button class="toggle ${d.vatOn ? 'on' : ''}" onclick="ipSet('vatOn', ${!d.vatOn})" aria-label="Set VAT aside"></button><span style="font-weight:600;">Set VAT aside first</span></label>
-          ${d.vatOn ? `<div class="ip-vat-row">
-            <span>On</span>
-            <select class="mini-select" onchange="ipSet('vatCat', this.value)" aria-label="Which income pays VAT">
-              ${cats.filter(c => d.cats.includes(c.id)).map(c => `<option value="${c.id}" ${d.vatCat === c.id ? 'selected' : ''}>${escHtml(c.name)}</option>`).join('')}<option value="" ${!d.vatCat ? 'selected' : ''}>every payment</option></select>
-            <span class="dim">· rate and where it goes on the next step</span>
-          </div>` : ''}
+  window.saveIncomePlan = function () { return ipCommit(); };
+  window.ipStatusHtml = function (d) {
+    if (!d.cats.length) return '<span class="negative">Pick at least one kind of payment: nothing is saved until you do.</span>';
+    return snap(d) === d.saved ? `${ic('check', 13)} Saved` : 'Saving…';
+  };
+  /* ---- The page ---- */
+  window.__pageRenderers.income = function () {
+    const p = incomePlan();
+    let d = ui.ipDraft;
+    // Not being edited and changed elsewhere (another device, the split sheet): start again from it.
+    if (d && snap(d) === d.saved && d.base !== planSig(p)) d = ui.ipDraft = null;
+    d = D();
+    const pending = incomePlanPending();
+    return `
+    <div class="page surface-light ip-page">
+      <div class="page-head"><div><h1 class="page-title">Income plan</h1><div class="page-subtitle">When you get paid, Trackr suggests how to split it. Changes save by themselves.</div></div>
+        <label class="switch-row"><button class="toggle ${p.on ? 'on' : ''}" onclick="toggleIncomePlan()" aria-label="Income plan on"></button><span>${p.on ? 'On' : 'Off'}</span></label></div>
+      ${pending.length ? `<div class="card ip-card"><div class="eyebrow" style="margin-bottom:8px;">Waiting to be split</div>
+        ${pending.map(t => `<div class="split-row"><span class="split-row-what">${escHtml(t.comment || 'Income')} <span class="dim">· ${escHtml(shortDay(t.date))}</span></span><b>${fmtMoney(t.amount, t.currency)}</b><span style="display:flex;gap:6px;justify-content:flex-end;"><button class="btn small primary" onclick="openIncomeSplit('${t.id}')">Split</button><button class="btn small" onclick="skipIncomeSplit('${t.id}')">Skip</button></span></div>`).join('')}</div>` : ''}
+      ${d.parts.length ? ipEditorHtml(d) : ipQuickHtml(d)}
+      <div class="ip-status" aria-live="polite">${ipStatusHtml(d)}</div>
+    </div>`;
+  };
+  /* The kinds of income you use (chosen, or received at least once), the rest behind "More kinds". */
+  const catChips = d => {
+    const used = new Set(data.budgetTransactions.filter(t => t.type === 'income').map(t => t.categoryId));
+    const all = data.categories.income || [], mine = all.filter(c => d.cats.includes(c.id) || used.has(c.id));
+    const shown = d.allCats || mine.length < 2 ? all : mine;
+    return shown.map(c => `<button type="button" class="tx-chip ${d.cats.includes(c.id) ? 'on' : ''}" aria-pressed="${d.cats.includes(c.id)}" onclick="ipToggleCat('${c.id}')">${c.icon || ''} ${escHtml(c.name)}</button>`).join('')
+      + (shown.length < all.length ? `<button type="button" class="tx-chip ip-more-cats" onclick="ui.ipDraft.allCats=true;render()">${ic('plus', 12)} More kinds</button>` : '');
+  };
+  /* Quick setup: which payments, VAT or not, where the money goes and how much of each payment. */
+  function ipQuickHtml(d) {
+    const places = data.accounts.flatMap(a => (a.pockets || []).filter(pk => !pk.finishedAt && !/vat|btw|tva|tax/i.test(pk.name)).map(pk => ({ ref: `pk:${a.id}:${pk.id}`, name: pk.name, emoji: pk.icon || '' })))
+      .concat((data.brokers || []).map(b => ({ ref: 'brk:' + b.id, name: b.name, emoji: '' })));
+    const n = d.qsTo.length, each = n ? Math.floor(d.qsPct / n * 10) / 10 : 0;
+    return `
+      <div class="card ip-card ip-quick">
+        <div class="ip-q"><div class="ip-q-n">1</div><div class="ip-q-body"><div class="tx-label">Which payments do you split?</div><div class="tx-chips">${catChips(d)}</div></div></div>
+        <div class="ip-q"><div class="ip-q-n">2</div><div class="ip-q-body"><label class="switch-row"><button class="toggle ${d.vatOn ? 'on' : ''}" onclick="ipSet('vatOn', ${!d.vatOn})" aria-label="Set VAT aside"></button><span><b>Set VAT aside first</b> <span class="dim">(freelance: ${d.vatPct}%, rounded up to the euro)</span></span></label></div></div>
+        <div class="ip-q"><div class="ip-q-n">3</div><div class="ip-q-body"><div class="tx-label">Where should the money go?</div>
+          <div class="tx-chips">${places.map(x => `<button type="button" class="tx-chip ${d.qsTo.includes(x.ref) ? 'on' : ''}" aria-pressed="${d.qsTo.includes(x.ref)}" onclick="ipQuickTo('${x.ref}')">${escHtml(x.emoji)} ${escHtml(x.name)}</button>`).join('') || '<span class="dim">No pockets or brokers yet: the plan starts with one part you can point anywhere.</span>'}</div></div></div>
+        <div class="ip-q"><div class="ip-q-n">4</div><div class="ip-q-body"><div class="tx-label">How much of each payment goes there${d.vatOn ? ' (after VAT)' : ''}?</div>
+          <div class="seg-row" role="group" aria-label="Share of each payment">${[10, 20, 30, 40, 50, 75].map(v => `<button type="button" class="seg ${d.qsPct === v ? 'on' : ''}" aria-pressed="${d.qsPct === v}" onclick="ui.ipDraft.qsPct=${v};render()">${v}%</button>`).join('')}</div>
+          <div class="dim" style="font-size:12.5px;margin-top:6px;">${n > 1 ? `${each}% to each of the ${n} places; ` : ''}the other ${100 - d.qsPct}% stays in the account. You can change every part after.</div></div></div>
+        <div class="row-flex" style="gap:8px;flex-wrap:wrap;justify-content:flex-start;margin-top:6px;">
+          <button class="btn primary" onclick="ipQuickMake()" ${d.cats.length ? '' : 'disabled'}>Make my plan</button>
+          <button class="btn" onclick="ipApplyPreset('p503020')" ${d.cats.length ? '' : 'disabled'}>Start from 50/30/20</button>
         </div>
-        <button class="btn primary full" style="margin-top:16px;" onclick="ui.modal.payload.step=2;render();" ${d.cats.length ? '' : 'disabled'}>Next</button>`;
-    }
+      </div>`;
+  }
+  window.ipQuickTo = function (ref) { const d = D(); d.qsTo = d.qsTo.includes(ref) ? d.qsTo.filter(x => x !== ref) : d.qsTo.concat([ref]); render(); };
+  window.ipQuickMake = function () {
+    const d = D(); if (!d.cats.length) return;
+    ipRemember();
+    const to = d.qsTo.length ? d.qsTo : ['stay'];
+    const shares = largestRemainder(d.qsPct, to.map(() => 1));
+    d.parts = to.map((ref, n) => ({ id: uid('ip'), label: '', pct: Math.round(shares[n] * 100) / 100, to: ref, color: '' }));
+    ipFixColors(d);
+    render();
+  };
+  window.ipStartOver = function () { const d = D(); ipRemember(); d.parts = []; d.qsTo = []; d.sel = null; d.pick = null; render(); };
+  /* The VAT line, folded to one row until you open it. */
+  function ipVatBlock(d, ex) {
+    if (!d.vatOn) return '';
+    if (d.vatOpen) return `${ipVatLineHtml(d, ex)}<button type="button" class="link-btn" onclick="ui.ipDraft.vatOpen=false;render()">Done with VAT</button>`;
+    const P = ipPlaceInfo(d.vatTo || 'new:vat');
+    return `<button type="button" class="ip-vat-sum" onclick="ui.ipDraft.vatOpen=true;render()" aria-label="Change the VAT settings">
+      <span class="ip-lock" aria-hidden="true">${ic('lock', 14)}</span><b>VAT ${d.vatPct}%</b>
+      <span class="dim">${d.vatMode === 'excl' ? 'on top' : 'included'}${d.vatRoundUp !== false ? ' · rounded up' : ''} · to ${escHtml((P.emoji ? P.emoji + ' ' : '') + P.name)}</span>
+      <b class="ip-vat-amt">${fmtMoney(ex.vat)}</b><span class="ip-vat-edit">${ic('edit', 13)}</span></button>`;
+  }
+  window.ipEditorHtml = function (d) {
     const total = d.parts.reduce((s, x) => s + (+x.pct || 0), 0);
     const { catId: exCat, amount: exAmt, ex } = ipPreview(d);
     const exName = (categoryById('income', exCat) || {}).name || 'income';
     const partLine = x => ex.lines.find(l => l.step.id === x.id) || { amount: 0 };
     window.sdHost = ipHost;
-    return `${head}
+    return `
+      <div class="card ip-card">
+        <div class="tx-label">Which payments do you split?</div>
+        <div class="tx-chips">${catChips(d)}</div>
+        <label class="switch-row" style="margin-top:12px;"><button class="toggle ${d.vatOn ? 'on' : ''}" onclick="ipSet('vatOn', ${!d.vatOn})" aria-label="Set VAT aside"></button><span style="font-weight:600;">Set VAT aside first</span>
+          ${d.vatOn ? `<select class="mini-select" onchange="ipSet('vatCat', this.value)" aria-label="Which income pays VAT">${(data.categories.income || []).filter(c => d.cats.includes(c.id)).map(c => `<option value="${c.id}" ${d.vatCat === c.id ? 'selected' : ''}>on ${escHtml(c.name)}</option>`).join('')}<option value="" ${!d.vatCat ? 'selected' : ''}>on every payment</option></select>` : ''}</label>
+        ${ipVatBlock(d, ex)}
+      </div>
+      <div class="card ip-card ip-split-card">
+      <div class="ip-split-grid"><div class="ip-split-pie">
       ${splitDonutHtml(ipDonutModel(d, ex))}
       <div class="sd-hint">Drag a handle between two slices${matchMedia('(pointer: coarse)').matches ? ' (hold still first for 1 % steps)' : ' (Shift for 1 % steps)'}, or tap a slice.</div>
-      ${ipToolsHtml(d, exAmt)}
-      ${d.vatOn ? ipVatLineHtml(d, ex) : ''}
+      </div><div class="ip-split-side">
       <div class="tx-label">${d.vatOn ? 'After VAT, how do you split the rest?' : 'How do you split it?'}</div>
       <div class="ip-parts" data-sortable>
         ${d.parts.map((x, i) => `
@@ -377,9 +456,8 @@ if (typeof window !== 'undefined') {
       <button class="btn small" style="margin-top:8px;" onclick="ipAddPart()">+ Add a part</button>
       <div class="ip-left ${total > 100 ? 'negative' : ''}">${total > 100 ? `That's ${total}%. Keep it at 100% or less.` : `${100 - total}% left stays in the account.`}</div>
       ${ipExampleCard(d, exName, exAmt, ex)}
-      <div class="grid-2" style="margin-top:14px;">
-        <button class="btn" onclick="ui.modal.payload.step=1;render();">Back</button>
-        <button class="btn primary" onclick="saveIncomePlan()" ${total > 100 ? 'disabled' : ''}>Save plan</button>
+      </div></div>
+      ${ipToolsHtml(d, exAmt)}
       </div>`;
   };
   window.ipExampleCard = (d, exName, exAmt, ex) => `<div class="split-example"><div class="eyebrow">${escHtml(exName)} of ${fmtMoney(exAmt)}${d.vatOn && ex.vat ? ` · VAT ${d.vatMode === 'excl' ? 'on top' : 'included'}` : ''}</div>
@@ -398,6 +476,7 @@ if (typeof window !== 'undefined') {
           ${BUILT_IN.map(b => `<button type="button" class="chip" onclick="ipApplyPreset('${b.id}')">${escHtml(b.name)}</button>`).join('')}
           ${presets.map(pr => `<span class="chip ip-preset-own"><button type="button" onclick="ipApplyPreset('${escHtml(pr.id)}')">${escHtml(pr.name)}</button><button type="button" class="ip-preset-x" aria-label="Delete preset ${escHtml(pr.name)}" onclick="removeIncomePreset('${escHtml(pr.id)}')">${ic('x', 12)}</button></span>`).join('')}
           <button type="button" class="chip ip-preset-save" onclick="saveIncomePreset()">${ic('plus', 12)} Save current as preset</button>
+          <button type="button" class="chip" onclick="ipStartOver()">Start over</button>
           <button type="button" class="chip ip-undo" onclick="ipUndo()" ${d.hist && d.hist.length ? '' : 'disabled'} aria-label="Undo" title="Undo (${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'}+Z)">${ic('undo', 14)} Undo</button>
         </div>
         <label class="ip-try"><span>Try another amount <small>(only a preview, no payment changes)</small></span>
@@ -596,11 +675,11 @@ if (typeof window !== 'undefined') {
         <div class="ip-pick-h">Accounts & brokers</div>${others}
         ${np ? `<div class="ip-np">
             <div class="ip-pick-h">New pocket</div>
-            <div class="ip-np-row"><input class="ip-np-ic" maxlength="4" value="${escHtml(np.icon)}" aria-label="Emoji" oninput="ui.modal.payload.np.icon=this.value"><input class="ip-np-name" value="${escHtml(np.name)}" placeholder="Name, e.g. Holidays" aria-label="Pocket name" oninput="ui.modal.payload.np.name=this.value"></div>
-            <div class="ip-np-colors" role="group" aria-label="Colour">${POCKET_COLORS.map(c => `<button type="button" class="swatch-dot ${np.color === c ? 'selected' : ''}" style="background:${c}" aria-label="Colour ${c}" aria-pressed="${np.color === c}" onclick="ui.modal.payload.np.color='${c}';render();"></button>`).join('')}</div>
-            <div class="ip-np-row"><label class="ip-np-goal">Goal <input inputmode="decimal" value="${escHtml(np.target)}" placeholder="optional" aria-label="Goal amount" oninput="ui.modal.payload.np.target=this.value"></label>
-              <select class="mini-select" aria-label="In which account" onchange="ui.modal.payload.np.acc=this.value">${data.accounts.filter(a => !(typeof isCashWallet === 'function' && isCashWallet(a))).map(a => `<option value="${a.id}" ${np.acc === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}</select></div>
-            <div class="ip-np-row"><button type="button" class="btn small" onclick="ui.modal.payload.np=null;render();">Cancel</button><button type="button" class="btn small primary" onclick="ipCreatePocket()">Create pocket</button></div>
+            <div class="ip-np-row"><input class="ip-np-ic" maxlength="4" value="${escHtml(np.icon)}" aria-label="Emoji" oninput="ui.ipDraft.np.icon=this.value"><input class="ip-np-name" value="${escHtml(np.name)}" placeholder="Name, e.g. Holidays" aria-label="Pocket name" oninput="ui.ipDraft.np.name=this.value"></div>
+            <div class="ip-np-colors" role="group" aria-label="Colour">${POCKET_COLORS.map(c => `<button type="button" class="swatch-dot ${np.color === c ? 'selected' : ''}" style="background:${c}" aria-label="Colour ${c}" aria-pressed="${np.color === c}" onclick="ui.ipDraft.np.color='${c}';render();"></button>`).join('')}</div>
+            <div class="ip-np-row"><label class="ip-np-goal">Goal <input inputmode="decimal" value="${escHtml(np.target)}" placeholder="optional" aria-label="Goal amount" oninput="ui.ipDraft.np.target=this.value"></label>
+              <select class="mini-select" aria-label="In which account" onchange="ui.ipDraft.np.acc=this.value">${data.accounts.filter(a => !(typeof isCashWallet === 'function' && isCashWallet(a))).map(a => `<option value="${a.id}" ${np.acc === a.id ? 'selected' : ''}>${escHtml(a.name)}</option>`).join('')}</select></div>
+            <div class="ip-np-row"><button type="button" class="btn small" onclick="ui.ipDraft.np=null;render();">Cancel</button><button type="button" class="btn small primary" onclick="ipCreatePocket()">Create pocket</button></div>
             <div class="dim" style="font-size:11.5px;">The pocket is made right away, with nothing in it.</div>
           </div>` : `<button type="button" class="ip-opt ip-opt-new" onclick="ipNewPocket(${JSON.stringify(i).replace(/"/g, '&quot;')})"><span class="ip-place-ic">${ic('plus', 14)}</span><span class="ip-opt-name">New pocket</span></button>`}
         ${notPocket ? `<div class="ip-pick-h">Slice colour</div><div class="ip-np-colors" role="group" aria-label="Slice colour">${SLICE_COLORS.map((c, n) => `<button type="button" class="swatch-dot ${ipPartColor(d.parts[i], i) === c ? 'selected' : ''}" style="background:${c}" aria-label="Colour ${n + 1}" onclick="ipSetColor(${i}, '${c}')"></button>`).join('')}</div>` : ''}
@@ -654,6 +733,8 @@ if (typeof window !== 'undefined') {
   };
   /* Rows drag into order (SortableJS); the slices follow. */
   window.incomePlanAfterRender = function () {
+    // A moment after a change on the page, it's written to the plan and saved.
+    if (ui.page === 'income' && ui.ipDraft && snap(ui.ipDraft) !== ui.ipDraft.saved) { clearTimeout(ipCommit.t); ipCommit.t = setTimeout(ipCommit, 350); }
     const list = document.querySelector('.ip-parts[data-sortable]');
     if (!list || list.dataset.bound || typeof loadSortable !== 'function') return;
     list.dataset.bound = '1';
@@ -693,41 +774,4 @@ if (typeof window !== 'undefined') {
       </div>`;
   };
 
-  /* The plan's pie on the tab (not interactive): the saved parts for €1,000. */
-  function ipTabDonut(p) {
-    const v = vatStep(p), parts = partSteps(p).map(x => ({ id: x.id, label: x.label, pct: x.pct, to: incomeStepTarget(x), color: x.color || '' }));
-    if (!parts.length) return '';
-    const d = { vatOn: !!v, vatPct: v ? v.pct : 0, vatCat: v ? v.onlyCat || '' : '', vatMode: (p.vatModes || {})[(v && v.onlyCat) || '*'] || 'incl', vatRoundUp: p.vatRoundUp !== false, cats: p.triggerCats, parts, amt: 1000 };
-    const m = ipDonutModel(d, ipPreview(d).ex);
-    return splitDonutHtml(Object.assign(m, { key: 'ip-tab', interactive: false, small: true, sel: null, center: { amount: m.center.amount, label: `of ${fmtMoney(1000)}` } }));
-  }
-  window.incomePlanTab = function () {
-    const p = incomePlan(), v = vatStep(p), parts = partSteps(p);
-    const catNames = p.triggerCats.map(id => (categoryById('income', id) || {}).name).filter(Boolean);
-    const total = parts.reduce((s, x) => s + (+x.pct || 0), 0);
-    const pending = incomePlanPending();
-    const vatCat = v && v.onlyCat ? (categoryById('income', v.onlyCat) || {}).name : '';
-    const exCat = v && v.onlyCat ? v.onlyCat : p.triggerCats[0];
-    const ex = exCat ? incomeSplit(1000, exCat, p.steps, { vatMode: (p.vatModes || {})[(v && v.onlyCat) || '*'] || 'incl', vatRoundUp: p.vatRoundUp !== false }) : null;
-    return `
-    <div class="card" style="margin-bottom:16px;">
-      <div class="row-flex" style="gap:10px;">
-        <div style="min-width:0;"><div style="font-weight:700;font-size:16px;">Income plan</div>
-          <div style="font-size:12.5px;opacity:.6;">When you get paid, Trackr suggests how to split it.</div></div>
-        <label class="switch-row"><button class="toggle ${p.on ? 'on' : ''}" onclick="toggleIncomePlan()" aria-label="Income plan on"></button><span>${p.on ? 'On' : 'Off'}</span></label>
-      </div>
-      <div class="ip-summary-wrap">${ipTabDonut(p)}<div class="ip-summary">
-        <div class="ip-sum-row dim">For ${escHtml(catNames.join(', ') || 'no income yet')}</div>
-        ${v ? `<div class="ip-sum-row"><b class="ip-pct">${v.pct}%</b><span>VAT${vatCat ? ` on ${escHtml(vatCat)}` : ''}</span><span class="dim">${escHtml(placeText(incomeStepTarget(v)))}</span></div>` : ''}
-        ${v && parts.length ? '<div class="ip-sum-row dim" style="padding-left:2px;">Then, of what\'s left:</div>' : ''}
-        ${parts.map(x => `<div class="ip-sum-row"><b class="ip-pct">${x.pct}%</b><span>${escHtml(ipPartName(x))}</span><span class="dim">${escHtml(placeText(incomeStepTarget(x)))}</span></div>`).join('')}
-        ${total < 100 ? `<div class="ip-sum-row"><b class="ip-pct dim">${100 - total}%</b><span class="dim">Left</span><span class="dim">stays in the account</span></div>` : ''}
-      </div></div>
-      ${ex ? `<div class="split-example" style="margin-top:12px;"><div class="eyebrow">Example: ${escHtml((categoryById('income', exCat) || {}).name || '')} of ${fmtMoney(1000)}</div>
-        <div style="font-size:13px;">${ex.lines.map(l => `${escHtml(l.vat ? 'VAT' : ipPartName(l.step))} <b>${fmtMoney(l.amount)}</b>`).join(' · ')} · stays <b>${fmtMoney(ex.rest)}</b></div></div>` : ''}
-      <button class="btn primary" style="margin-top:14px;" onclick="openIncomePlanEditor()">Edit plan</button>
-    </div>
-    ${pending.length ? `<div class="card"><div class="eyebrow" style="margin-bottom:8px;">Waiting to be split</div>
-      ${pending.map(t => `<div class="split-row"><span class="split-row-what">${escHtml(t.comment || 'Income')} <span class="dim">· ${escHtml(shortDay(t.date))}</span></span><b>${fmtMoney(t.amount, t.currency)}</b><span style="display:flex;gap:6px;justify-content:flex-end;"><button class="btn small primary" onclick="openIncomeSplit('${t.id}')">Split</button><button class="btn small" onclick="skipIncomeSplit('${t.id}')">Skip</button></span></div>`).join('')}</div>` : ''}`;
-  };
 }

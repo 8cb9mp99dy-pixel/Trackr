@@ -3,10 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { nextPayday, safeToSpend, affordCheck } = require('../../spend.js');
-const { iouBalances, iouReminderText } = require('../../ious.js');
-const { addMonthsYmd, contractTerm } = require('../../contracts.js');
 const { nextDueDate, setAsideState } = require('../../setaside.js');
-const { tripTransactions, tripStats } = require('../../trips.js');
 const { dailySpend, spendStreaks, weekdayAverages, heatLevel, priceChanges, categoryChanges } = require('../../patterns.js');
 const { monthToClose, closeChecklist } = require('../../monthclose.js');
 const { snapSchema, snapClean } = require('../../snap.js');
@@ -46,41 +43,6 @@ test('can I afford it: from the main balances, and from savings', () => {
   assert.strictEqual(affordCheck({ amount: 5500, from: 'savings', emergency: { current: 6000, monthly: 1000 } }).verdict, 'no');
 });
 
-test('IOUs: balances per person both ways, and a reminder', () => {
-  const ious = [
-    { person: 'Alex', amount: 40, dir: 'lent', date: '2026-09-01', note: 'Tickets' },
-    { person: 'alex', amount: 10, dir: 'borrowed', date: '2026-09-10' },
-    { person: 'Sam', amount: 15, dir: 'borrowed', date: '2026-10-10' },
-    { person: 'Kim', amount: 99, dir: 'lent', date: '2026-08-01', settledAt: '2026-08-20' },
-  ];
-  const b = iouBalances(ious);
-  assert.deepStrictEqual(b.people.map(p => [p.person, p.net]), [['Alex', 30], ['Sam', -15]]);
-  assert.strictEqual(b.owedToMe, 30);
-  assert.strictEqual(b.iOwe, 15);
-  assert.strictEqual(b.people[0].oldest, '2026-09-01');
-  const txt = iouReminderText(b.people[0], n => '€' + n.toFixed(2));
-  assert.ok(txt.startsWith('Hi Alex, a small reminder: you still owe me €30.00.'));
-  assert.ok(txt.includes('- Tickets (2026-09-01): €40.00'));
-});
-
-test('contracts: the last day to cancel, renewing terms, rolling ones', () => {
-  assert.strictEqual(addMonthsYmd('2026-01-31', 1), '2026-02-28');
-  assert.strictEqual(addMonthsYmd('2026-03-31', -1), '2026-02-28');
-  const c = { cost: 30, period: 'month', termEnd: '2026-11-30', renewMonths: 12, noticeN: 1, noticeUnit: 'months' };
-  const t = contractTerm(c, '2026-10-18');
-  assert.deepStrictEqual([t.end, t.cancelBy, t.daysLeft, t.renewsAgain, t.yearly], ['2026-11-30', '2026-10-30', 12, false, 360]);
-  // Too late for this term: the next one.
-  const late = contractTerm(c, '2026-11-05');
-  assert.deepStrictEqual([late.end, late.cancelBy, late.renewsAgain], ['2027-11-30', '2027-10-30', true]);
-  // An old term end rolls forward a year at a time.
-  assert.strictEqual(contractTerm(Object.assign({}, c, { termEnd: '2024-11-30' }), '2026-10-18').end, '2026-11-30');
-  const weeks = contractTerm({ cost: 120, period: 'year', termEnd: '2026-12-31', noticeN: 2, noticeUnit: 'weeks' }, '2026-10-18');
-  assert.strictEqual(weeks.cancelBy, '2026-12-17');
-  assert.strictEqual(weeks.monthly, 10);
-  const roll = contractTerm({ cost: 10, noticeN: 30, noticeUnit: 'days' }, '2026-10-18');
-  assert.deepStrictEqual([roll.rolling, roll.end], [true, '2026-11-17']);
-});
-
 test('yearly bills: next date, per month, on track or behind', () => {
   assert.strictEqual(nextDueDate('2025-03-15', 12, '2026-10-18'), '2027-03-15');
   const b = { amount: 1200, due: '2027-04-18', everyMonths: 12 };
@@ -94,27 +56,6 @@ test('yearly bills: next date, per month, on track or behind', () => {
   assert.strictEqual(setAsideState(b, '2026-10-18', 700).status, 'on');
   assert.strictEqual(setAsideState(b, '2026-10-18', 1200).status, 'ready');
   assert.strictEqual(setAsideState({ amount: 500, due: '2026-10-28', everyMonths: 12 }, '2026-10-18', 100).perMonth, 400, 'due within a month: all of it now');
-});
-
-test('trips: expenses by date or tagged, pace and per day', () => {
-  const trip = { id: 'tr', from: '2026-10-15', to: '2026-10-21', budget: 700, mode: 'dates' };
-  const txs = [
-    { type: 'expense', date: '2026-10-15', amount: 100, cat: 'Food' },
-    { type: 'expense', date: '2026-10-16', amount: 200, cat: 'Hotel' },
-    { type: 'expense', date: '2026-10-16', amount: 50, tripId: 'none' },
-    { type: 'expense', date: '2026-09-30', amount: 80, tripId: 'tr', cat: 'Flights' },
-    { type: 'income', date: '2026-10-16', amount: 999 },
-    { type: 'expense', date: '2026-10-17', amount: 900, recurringId: 'rent' },
-  ];
-  assert.strictEqual(tripTransactions(trip, txs).length, 3);
-  const s = tripStats(trip, txs, '2026-10-18', null, t => t.cat);
-  assert.deepStrictEqual([s.status, s.days, s.daysGone, s.spent, s.left, s.perDay, s.plannedPerDay], ['ongoing', 7, 4, 380, 320, 95, 100]);
-  assert.strictEqual(s.projected, 665);
-  assert.strictEqual(s.leftPerDay, 80);
-  assert.strictEqual(s.byDay.length, 7);
-  assert.strictEqual(s.byCat[0].name, 'Hotel');
-  assert.strictEqual(tripTransactions(Object.assign({}, trip, { mode: 'tagged' }), txs).length, 1);
-  assert.strictEqual(tripStats(trip, txs, '2026-10-01').status, 'upcoming');
 });
 
 test('patterns: day totals without bills, streaks, weekdays, levels', () => {

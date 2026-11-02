@@ -96,22 +96,8 @@ test('accounts and pockets open from the bank total; the loan stays out of Wealt
   expect(errors).toEqual([]);
 });
 
-test('a trip, its days, receipts and freelance tiles lead on', async ({ page }) => {
+test('freelance tiles lead on', async ({ page }) => {
   const errors = await openApp(page);
-  await page.evaluate(() => {
-    data.trips.push({ id: 'trip_t1', name: 'Demo Lisbon', from: '2026-10-08', to: '2026-10-12', budget: 600, currency: 'EUR', mode: 'dates' });
-    ui.tripId = 'trip_t1'; goPage('trips');
-  });
-  await page.locator('.tr-stats .drill').click();
-  await expect(page.locator('.modal-title')).toHaveText('Demo Lisbon');
-  expect(await sumRows(page)).toBeGreaterThan(0);
-  await page.locator('.modal .close-x').first().click();
-  await page.locator('.tr-day[onclick]').first().click();
-  await expect(page.locator('.modal-title')).toContainText('October 2026');
-  await page.locator('.modal .close-x').first().click();
-  await page.evaluate(() => goPage('receipts'));
-  await page.locator('.rc-stats .drill', { hasText: 'With a receipt' }).click();
-  expect(await page.evaluate(() => ui.receiptFilter)).toBe('receipt');
   await page.evaluate(() => { ui.freelanceTab = 'invoices'; goPage('freelance'); });
   await page.locator('.card.drill', { hasText: 'so far' }).click();
   expect(await page.evaluate(() => ui.freelanceTab)).toBe('vat');
