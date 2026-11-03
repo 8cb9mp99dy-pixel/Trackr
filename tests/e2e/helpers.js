@@ -3,7 +3,7 @@
    the fixture has no sync settings either). */
 const fs = require('fs'), path = require('path');
 const FIXTURE = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'demo-data.json'), 'utf8');
-const PAGES = ['dashboard', 'wealth', 'goals', 'analysis', 'budget', 'investments', 'accounts', 'settings', 'income', 'yearly', 'patterns', 'inbox'];
+const PAGES = ['dashboard', 'wealth', 'goals', 'analysis', 'budget', 'investments', 'accounts', 'settings', 'income', 'yearly', 'patterns', 'inbox', 'pockets'];
 
 async function openApp(page, opts = {}) {
   const errors = [];
