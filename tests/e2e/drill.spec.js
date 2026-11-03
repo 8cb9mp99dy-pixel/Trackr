@@ -55,7 +55,7 @@ test('Totals follow the chosen period, down to a sub-category', async ({ page })
   expect(errors).toEqual([]);
 });
 
-test('recurring tiles, calendar days, the heatmap and weekdays open their list', async ({ page }) => {
+test('recurring tiles and calendar days open their list', async ({ page }) => {
   const errors = await openApp(page);
   await openBudget(page, 'planning');
   await page.evaluate(() => { setBudgetTab('recurring'); });
@@ -67,16 +67,6 @@ test('recurring tiles, calendar days, the heatmap and weekdays open their list',
   await expect(page.locator('.modal-title')).toContainText('October 2026');
   await page.locator('.modal .close-x').first().click();
 
-  await page.evaluate(() => goPage('patterns'));
-  await page.locator('.pt-heat i[data-d]').last().click({ force: true });
-  await expect(page.locator('.modal-title')).toContainText('2026');
-  expect(await sumRows(page)).toBeGreaterThan(0);
-  await page.locator('.modal .close-x').first().click();
-  await page.locator('.pt-wd').first().click();
-  await expect(page.locator('.modal-title')).toHaveText('Mondays');
-  await page.locator('.modal .close-x').first().click();
-  await page.locator('.pt-cat').first().click();
-  await expect(page.locator('.modal .row-flex').first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 

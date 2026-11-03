@@ -6,7 +6,7 @@ const { openApp, PAGES } = require('./helpers');
 
 const MAP = [['Budget', 'budget', 'Money'], ['Income plan', 'income', 'Money'], ['Freelance', 'freelance', 'Money'],
   ['Net worth', 'wealth', 'Wealth'], ['Cash', 'accounts', 'Wealth'], ['Pockets', 'pockets', 'Wealth'], ['Investments', 'investments', 'Wealth'], ['Watchlist', 'watchlist', 'Wealth'], ['Debts', 'wealth', 'Wealth'],
-  ['Goals', 'goals', 'Plan'], ['Yearly bills', 'yearly', 'Plan'], ['Emergency', 'goals', 'Plan'], ['Patterns', 'patterns', 'Plan'], ['Insights', 'analysis', 'Plan']];
+  ['Goals', 'goals', 'Plan'], ['Yearly bills', 'yearly', 'Plan'], ['Emergency', 'goals', 'Plan'], ['Insights', 'analysis', 'Plan']];
 
 test('computer: a short side bar, only the group you are in is open', async ({ page }, info) => {
   test.skip(info.project.name === 'phone');

@@ -25,7 +25,7 @@ test('weekdays start on Monday, whatever the time zone', () => {
   assert.deepStrictEqual(ids(drillFilter(all, { weekday: 6 })), ['sun']);
 });
 
-test('day-to-day leaves out the same things as Patterns', () => {
+test('day-to-day leaves out bills and other recurring payments', () => {
   const all = [tx('a', '2026-10-01'), tx('b', '2026-10-01', { nature: 'Fixed' }), tx('c', '2026-10-01', { recurringId: 'r' }), tx('d', '2026-10-01', { auto: true })];
   assert.deepStrictEqual(ids(drillFilter(all, { dayToDay: true })), ['a']);
 });
@@ -36,5 +36,5 @@ test('only what lacks its own keyboard handling gets a stop', () => {
   assert.ok(!tapTarget('A', '', ['onclick']));
   assert.ok(!tapTarget('DIV', 'modal-backdrop', ['class', 'onclick']));
   assert.ok(!tapTarget('DIV', 'cw-card', ['role', 'tabindex', 'onclick']));
-  assert.ok(!tapTarget('DIV', 'pt-heat', ['class', 'data-plain', 'onclick']));
+  assert.ok(!tapTarget('DIV', 'ip-donut', ['class', 'data-plain', 'onclick']));
 });

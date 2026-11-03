@@ -1,4 +1,4 @@
-/* Feature pages: Safe to spend and Can I afford it, yearly bills, patterns, the month-end check,
+/* Feature pages: Safe to spend and Can I afford it, yearly bills, the month-end check,
    and scanning a receipt
    (Claude faked). Invented data only; the clock is 18 Oct 2026. */
 const { test, expect } = require('@playwright/test');
@@ -14,17 +14,18 @@ async function seed(page) {
 test('pages, Action required lines, and the eye', async ({ page }) => {
   const errors = await openApp(page);
   await seed(page);
-  for (const p of ['yearly', 'patterns']) {
+  for (const p of ['yearly']) {
     await goPage(page, p);
     await expect(page.locator('.main .page')).toBeVisible();
   }
   const att = await page.evaluate(() => actionItems().attention.map(x => x.key));
   expect(att).toEqual(expect.arrayContaining(['yearly:yb_t1:2026-11-01']));
-  // Trips, IOUs and Contracts are gone (2 Nov 2026).
-  expect(await page.evaluate(() => ['trips', 'ious', 'contracts', 'receipts'].filter(p => window.__pageRenderers[p]))).toEqual([]);
+  // Trips, IOUs and Contracts are gone (2 Nov 2026), Patterns too (3 Nov 2026).
+  expect(await page.evaluate(() => ['trips', 'ious', 'contracts', 'receipts', 'patterns'].filter(p => window.__pageRenderers[p]))).toEqual([]);
+  expect(await page.evaluate(() => typeof dailySpend)).toBe('undefined');
   // The eye hides the amounts of every new page and card.
   await page.evaluate(() => togglePrivacy());
-  for (const p of ['dashboard', 'income', 'yearly', 'patterns']) {
+  for (const p of ['dashboard', 'income', 'yearly', 'pockets']) {
     await goPage(page, p);
     const txt = await page.locator('.main').evaluate(el => { const c = el.cloneNode(true); c.querySelectorAll('.ticker').forEach(t => t.remove()); return c.innerText; });
     const hits = (txt.match(/[€£$]\s?\d[\d,.]*/g) || []).filter(m => !/^\$?\d/.test(m));
@@ -62,13 +63,8 @@ test('yearly bills: paid opens the expense and moves the date', async ({ page })
   expect(errors).toEqual([]);
 });
 
-test('patterns and the month-end check', async ({ page }) => {
+test('the month-end check', async ({ page }) => {
   const errors = await openApp(page);
-  await goPage(page, 'patterns');
-  const n = await page.locator('.pt-heat i').count();
-  expect(n).toBeGreaterThanOrEqual(365);
-  await expect(page.locator('.pt-stats')).toContainText('Best streak');
-  await expect(page.locator('.pt-week .pt-wd')).toHaveCount(7);
   await page.evaluate(() => openMonthClose('2026-10'));
   await expect(page.locator('.mc-step').first()).toBeVisible();
   await page.locator('.modal textarea').fill('A calm month.');

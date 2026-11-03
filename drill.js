@@ -1,10 +1,10 @@
-/* Tap a figure, see what's behind it: In and Out in Budget, the totals, a day on the calendar or
-   the heatmap, a weekday, a price change, a category, the balances on Accounts. The list opens in
+/* Tap a figure, see what's behind it: In and Out in Budget, the totals, a day on the calendar, a
+   category, the balances on Accounts. The list opens in
    one window, each row opens its transaction, and "Edit all" takes them to Budget's bulk edit.
    tapAfterRender makes every tappable thing work from the keyboard too. */
 
 /* The transactions a figure stands for. f: { from, to, types, categoryId, subCategoryId, weekday, dayToDay }
- * weekday: 0 = Monday. dayToDay leaves out bills and other recurring payments, like Patterns. */
+ * weekday: 0 = Monday. dayToDay leaves out bills and other recurring payments. */
 function drillFilter(txs, f) {
   return (txs || []).filter(t => {
     if (f.types && !f.types.includes(t.type)) return false;
@@ -94,28 +94,6 @@ if (typeof module !== 'undefined' && module.exports) {
     const due = recurringForMonth(ymdToDate(date)).filter(it => it.day === day && !logged.some(t => t.recurringId && t.recurringId === it.model.recurringId));
     show(dayName(date), logged, { rows: due.map(it => ({ label: it.name || it.model.comment || 'Recurring', sub: it.kind === 'detected' ? 'spotted in your history' : 'due', money: fmtMoney(it.kind === 'detected' ? it.avg : it.model.amount, it.kind === 'detected' ? undefined : it.model.currency), tap: `openTxForm('${it.model.id}')` })) });
   };
-
-  /* Patterns: same selection as the heatmap (day-to-day spending only). */
-  window.drillSpendDay = function (date) {
-    const list = drillFilter(all(), { types: ['expense'], from: date, to: date, dayToDay: true });
-    show(dayName(date), list, { total: list.reduce((s, t) => s + toEUR(t.amount, t.currency), 0), tone: 'negative', sub: 'Day-to-day spending' });
-  };
-  window.drillHeat = function (e) { const d = e.target && e.target.dataset && e.target.dataset.d; if (d) drillSpendDay(d); };
-  window.drillWeekday = function (weekday, from, name) {
-    const list = drillFilter(all(), { types: ['expense'], from, to: todayYmd(), weekday, dayToDay: true });
-    show(`${name}s`, list, { total: list.reduce((s, t) => s + toEUR(t.amount, t.currency), 0), tone: 'negative', sub: 'All your day-to-day spending on this weekday' });
-  };
-  window.drillName = function (name) {
-    const k = txNameKey(name);
-    show(name, all().filter(t => txNameKey(t.comment) === k), { sub: 'Every time' });
-  };
-  window.drillCategoryName = function (name) {
-    const label = t => { const c = categoryById('expense', t.categoryId); return c ? c.name : 'Other'; };
-    const list = drillFilter(all(), { types: ['expense'], from: dateToYmd(new Date(appToday().getTime() - 730 * 864e5)), to: todayYmd() }).filter(t => label(t) === name);
-    show(name, list, { sub: 'Last 24 months' });
-  };
-
-
 
   /* Accounts: which accounts or pockets make up the figure. */
   window.drillBalances = function (kind) {

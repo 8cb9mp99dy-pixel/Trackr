@@ -1,10 +1,9 @@
 /* The ten new features' pure maths: safe to spend and affordability, IOUs, contracts, yearly
-   bills, trips, patterns, the month-end check and the receipt scan. */
+   bills, trips, the month-end check and the receipt scan. */
 const test = require('node:test');
 const assert = require('node:assert');
 const { nextPayday, safeToSpend, affordCheck } = require('../../spend.js');
 const { nextDueDate, setAsideState } = require('../../setaside.js');
-const { dailySpend, spendStreaks, weekdayAverages, heatLevel, priceChanges, categoryChanges } = require('../../patterns.js');
 const { monthToClose, closeChecklist } = require('../../monthclose.js');
 const { snapSchema, snapClean } = require('../../snap.js');
 
@@ -56,39 +55,6 @@ test('yearly bills: next date, per month, on track or behind', () => {
   assert.strictEqual(setAsideState(b, '2026-10-18', 700).status, 'on');
   assert.strictEqual(setAsideState(b, '2026-10-18', 1200).status, 'ready');
   assert.strictEqual(setAsideState({ amount: 500, due: '2026-10-28', everyMonths: 12 }, '2026-10-18', 100).perMonth, 400, 'due within a month: all of it now');
-});
-
-test('patterns: day totals without bills, streaks, weekdays, levels', () => {
-  const txs = [
-    { type: 'expense', date: '2026-10-01', amount: 10 }, { type: 'expense', date: '2026-10-01', amount: 5 },
-    { type: 'expense', date: '2026-10-02', amount: 900, recurringId: 'rent' },
-    { type: 'expense', date: '2026-10-05', amount: 40 },
-  ];
-  const days = dailySpend(txs, '2026-10-01', '2026-10-08');
-  assert.deepStrictEqual(days, { '2026-10-01': 15, '2026-10-05': 40 });
-  const st = spendStreaks(days, '2026-10-01', '2026-10-08');
-  assert.deepStrictEqual([st.noSpendThisMonth, st.current, st.best, st.bestEnd], [6, 3, 3, '2026-10-04']);
-  const wk = weekdayAverages(days, '2026-10-01', '2026-10-07');
-  assert.strictEqual(wk[3].avg, 15, 'Thursday 1 Oct');
-  assert.strictEqual(wk[0].avg, 40, 'Monday 5 Oct');
-  const sorted = [1, 2, 3, 4, 5, 6, 7, 8];
-  assert.deepStrictEqual([0, 1, 4, 6, 8].map(v => heatLevel(v, sorted)), [0, 1, 2, 3, 4]);
-});
-
-test('your own inflation: recurring prices that changed, and categories against a year before', () => {
-  const txs = [
-    { type: 'expense', date: '2025-09-05', amount: 9.99, comment: 'StreamBox', recurringId: 's' },
-    { type: 'expense', date: '2026-10-05', amount: 11.99, comment: 'StreamBox', recurringId: 's' },
-    { type: 'expense', date: '2025-09-01', amount: 800, comment: 'Rent', recurringId: 'r' },
-    { type: 'expense', date: '2026-10-01', amount: 800, comment: 'Rent', recurringId: 'r' },
-    { type: 'expense', date: '2025-06-01', amount: 100, cat: 'Food' }, { type: 'expense', date: '2026-06-01', amount: 150, cat: 'Food' },
-  ];
-  const pc = priceChanges(txs, '2026-10-18');
-  assert.deepStrictEqual(pc.changed.map(x => [x.name, x.before, x.after, x.pct]), [['StreamBox', 9.99, 11.99, 20]]);
-  assert.strictEqual(pc.overall.pct, 0.2);
-  const cc = categoryChanges(txs, '2026-10-18', t => t.cat || 'Bills');
-  const food = cc.find(c => c.name === 'Food');
-  assert.deepStrictEqual([food.before, food.now, food.pct], [100, 150, 50]);
 });
 
 test('month-end check: which month, and the steps', () => {

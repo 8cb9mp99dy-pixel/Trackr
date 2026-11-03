@@ -49,7 +49,7 @@ test('a new pocket with the amount left blank starts at zero; below zero is refu
 
 test('a page with mixed colours exports to PDF', async ({ page }) => {
   const errors = await openApp(page);
-  await page.evaluate(() => goPage('patterns'));
+  await page.evaluate(() => goPage('analysis'));
   const ok = await page.evaluate(async () => { try { const pdf = await buildPagePdf(); return !!pdf; } catch (e) { return String(e && e.message || e); } });
   expect(ok).toBe(true);
   expect(errors).toEqual([]);
