@@ -60,7 +60,7 @@ test('Claude inbox: make a key, review, add an expense and a buy, reject, paste'
     { id: '00000000-0000-4000-8000-000000000003', channel: 'invest', status: 'new', source: 'broker screenshot', created_at: '2026-10-18T09:02:00Z', item: { action: 'buy', date: '2026-10-16', broker: 'Sample Broker', ticker: 'WRLD', quantity: 2, price: 104.2 } },
   );
   await page.evaluate(() => inboxRefresh(true));
-  await expect.poll(() => page.evaluate(() => (actionItems().attention.find(x => /from Claude/.test(x.name)) || {}).name || '')).toBe('3 from Claude to review');
+  await expect.poll(() => page.evaluate(() => (actionItems().attention.find(x => /in your inbox/.test(x.name)) || {}).name || '')).toBe('3 in your inbox to review');
   await page.evaluate(() => openInbox());
   expect(await page.evaluate(() => ui.page)).toBe('inbox');
   await expect(page.locator('.ib-item')).toHaveCount(2); // New: the bakery and the buy
@@ -102,7 +102,7 @@ test('Claude inbox: make a key, review, add an expense and a buy, reject, paste'
   await page.getByRole('button', { name: 'Review them' }).click();
   await page.locator('.ib-item', { hasText: 'Demo Coffee' }).getByRole('button', { name: 'Add', exact: true }).click();
   await expect.poll(() => page.evaluate(() => data.budgetTransactions.some(t => t.comment === 'Demo Coffee' && t.amount === 4.5))).toBe(true);
-  expect(await page.evaluate(() => actionItems().attention.some(x => /from Claude/.test(x.name)))).toBe(false);
+  expect(await page.evaluate(() => actionItems().attention.some(x => /in your inbox/.test(x.name)))).toBe(false);
   expect(errors).toEqual([]);
 });
 

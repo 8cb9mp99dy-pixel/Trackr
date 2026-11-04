@@ -7,8 +7,9 @@
  *   Claude → connector URL …/functions/v1/trackr-inbox/<inbox key> (the MCP server in
  *   supabase/functions/trackr-inbox/index.ts, an Edge Function) → inbox_add (the SQL in
  *   supabase/migrations/003_trackr_inbox.sql) → Trackr fetches it with your sync secret.
- * Every item waits on the page Money → "From Claude": nothing touches your data until you
- * approve it here.
+ * Every item waits on the page Money → Inbox: nothing touches your data until you approve it here.
+ * Apple Pay payments land in the same inbox (channel 'applepay', sent by an iPhone Shortcut with
+ * its own write-only token: applepay.js reads them with walletItem()).
  *   - Budget items: "Add" (ready ones), "Edit" (the expense form, filled in) or "Reject".
  *   - Investment items: buy / sell open the broker's trade panel filled in (you press Buy / Sell
  *     there, as usual); dividend, deposit and withdrawal open the transaction form filled in.
@@ -31,18 +32,20 @@ const INBOX_SQL_TEXT = String.raw`-- Trackr inbox — Claude (your "Trackr Budge
 -- An inbox key can ADD items to this queue, read back, correct or withdraw the ones still waiting,
 -- and read the names Trackr published (categories, accounts and pockets, brokers, assets: no
 -- balances). It can't read or change your data, or anything already reviewed.
+-- Apple Pay: an iPhone Shortcut sends each payment with its own token (add_inbox_item, at the end).
+-- That token can only add payments: it reads nothing, and the other functions refuse it.
 -- Your sync secret never leaves Trackr. Safe to run on a project that has Trackr's setup SQL, and
 -- safe to re-run. (Settings → Claude inbox → "Copy the SQL" gives this same text.)
 
 create table if not exists trackr_inbox_keys (
   key_hash text primary key,                 -- sha256 of the key; the key itself is never stored
   data_id text not null,                     -- the trackr_data row it files into
-  channel text not null,                     -- 'claude' (sends to both), or 'budget' / 'invest'
+  channel text not null,                     -- 'claude' (sends to both), 'budget' / 'invest', or 'applepay'
   created_at timestamptz not null default now(),
   unique (data_id, channel)
 );
 alter table trackr_inbox_keys drop constraint if exists trackr_inbox_keys_channel_check;
-alter table trackr_inbox_keys add constraint trackr_inbox_keys_channel_check check (channel in ('claude', 'budget', 'invest'));
+alter table trackr_inbox_keys add constraint trackr_inbox_keys_channel_check check (channel in ('claude', 'budget', 'invest', 'applepay'));
 create table if not exists trackr_inbox (
   id uuid primary key default gen_random_uuid(),
   data_id text not null,
@@ -54,6 +57,9 @@ create table if not exists trackr_inbox (
   resolved_at timestamptz
 );
 create index if not exists trackr_inbox_open on trackr_inbox (data_id, status, created_at);
+-- The same Apple Pay payment sent twice is kept once (minute + amount text + shop, see add_inbox_item).
+alter table trackr_inbox add column if not exists dedupe_key text;
+create unique index if not exists trackr_inbox_dedupe on trackr_inbox (data_id, dedupe_key) where dedupe_key is not null;
 create table if not exists trackr_inbox_context (
   data_id text primary key,
   context jsonb not null,
@@ -78,7 +84,7 @@ create or replace function inbox_set_key(secret text, channel text, key_hash tex
 returns void language plpgsql security definer set search_path = public, extensions as $$
 declare owner text := trackr_inbox_owner(secret);
 begin
-  if channel not in ('claude', 'budget', 'invest') or key_hash !~ '^[0-9a-f]{64}$' then raise exception 'bad key'; end if;
+  if channel not in ('claude', 'budget', 'invest', 'applepay') or key_hash !~ '^[0-9a-f]{64}$' then raise exception 'bad key'; end if;
   delete from trackr_inbox_keys k where k.data_id = owner and k.channel = inbox_set_key.channel;
   insert into trackr_inbox_keys (key_hash, data_id, channel) values (key_hash, owner, channel);
 end $$;
@@ -138,17 +144,15 @@ returns trackr_inbox_keys language plpgsql security definer set search_path = pu
 declare k trackr_inbox_keys;
 begin
   select * into k from trackr_inbox_keys where key_hash = encode(digest(coalesce(inbox_key, ''), 'sha256'), 'hex');
-  if not found then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
+  if not found or k.channel = 'applepay' then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
   return k;
 end $$;
 revoke all on function trackr_inbox_key(text) from public, anon;
 
 create or replace function inbox_context(inbox_key text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
-declare k trackr_inbox_keys;
+declare k trackr_inbox_keys := trackr_inbox_key(inbox_key);
 begin
-  select * into k from trackr_inbox_keys where key_hash = encode(digest(coalesce(inbox_key, ''), 'sha256'), 'hex');
-  if not found then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
   return jsonb_build_object('channel', k.channel, 'today', to_char(now() at time zone 'Europe/Amsterdam', 'YYYY-MM-DD'),
     'context', coalesce((select context from trackr_inbox_context where data_id = k.data_id), '{}'::jsonb));
 end $$;
@@ -157,10 +161,8 @@ end $$;
 drop function if exists inbox_add(text, jsonb, text);
 create or replace function inbox_add(inbox_key text, items jsonb, source text default null, channel text default null)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
-declare k trackr_inbox_keys; n integer; open_now integer; ch text;
+declare k trackr_inbox_keys := trackr_inbox_key(inbox_key); n integer; open_now integer; ch text;
 begin
-  select * into k from trackr_inbox_keys where key_hash = encode(digest(coalesce(inbox_key, ''), 'sha256'), 'hex');
-  if not found then raise exception 'Unknown inbox key. Make a new one in Trackr: Settings → Claude inbox.'; end if;
   ch := case when k.channel = 'claude' then coalesce(nullif(inbox_add.channel, ''), 'budget') else k.channel end;
   if ch not in ('budget', 'invest') then raise exception 'channel must be budget or invest'; end if;
   if jsonb_typeof(items) <> 'array' or jsonb_array_length(items) = 0 then raise exception 'items must be a non-empty array'; end if;
@@ -186,7 +188,7 @@ begin
       then jsonb_build_object('id', x.id, 'status', x.status, 'channel', x.channel, 'source', x.source, 'created_at', x.created_at, 'item', x.item)
       else jsonb_build_object('id', x.id, 'status', x.status, 'channel', x.channel, 'date', x.item->'date', 'name', coalesce(x.item->'name', x.item->'asset', x.item->'ticker')) end order by x.created_at)
     from (select * from trackr_inbox i
-           where i.data_id = k.data_id and (k.channel = 'claude' or i.channel = k.channel)
+           where i.data_id = k.data_id and ((k.channel = 'claude' and i.channel <> 'applepay') or i.channel = k.channel)
              and (st = 'all' or i.status = st)
              and (inbox_find.date_from is null or i.item->>'date' >= inbox_find.date_from)
              and (inbox_find.date_to is null or i.item->>'date' <= inbox_find.date_to)
@@ -201,7 +203,7 @@ declare k trackr_inbox_keys := trackr_inbox_key(inbox_key); out_item jsonb;
 begin
   if jsonb_typeof(changes) <> 'object' or changes = '{}'::jsonb then raise exception 'changes must be an object with at least one field'; end if;
   update trackr_inbox i set item = i.item || changes
-   where i.id = item_id and i.data_id = k.data_id and (k.channel = 'claude' or i.channel = k.channel)
+   where i.id = item_id and i.data_id = k.data_id and ((k.channel = 'claude' and i.channel <> 'applepay') or i.channel = k.channel)
      and i.status = 'new' and octet_length((i.item || changes)::text) <= 8000
   returning i.item into out_item;
   if not found then raise exception 'No item with this id is waiting for review. What was already reviewed in Trackr cannot be changed.'; end if;
@@ -215,18 +217,58 @@ declare k trackr_inbox_keys := trackr_inbox_key(inbox_key); n integer;
 begin
   if coalesce(cardinality(ids), 0) not between 1 and 50 then raise exception 'ids must list 1 to 50 items'; end if;
   update trackr_inbox i set status = 'rejected', resolved_at = now()
-   where i.id = any(ids) and i.data_id = k.data_id and (k.channel = 'claude' or i.channel = k.channel) and i.status = 'new';
+   where i.id = any(ids) and i.data_id = k.data_id and ((k.channel = 'claude' and i.channel <> 'applepay') or i.channel = k.channel) and i.status = 'new';
   get diagnostics n = row_count;
   return jsonb_build_object('deleted', n, 'skipped', cardinality(ids) - n,
     'message', 'Only items still waiting for review can be deleted. What was already reviewed in Trackr is untouched.');
 end $$;
 
+-- ---- Called by the iPhone Shortcut (with the Apple Pay token) ----
+-- One payment as Wallet shows it: { amount_raw: '€12,50', merchant, card, occurred_at }. Trackr
+-- reads the amount itself (iOS writes it the way your region does). Write-only: it answers
+-- {"ok":true,"id":"…"} or {"ok":false,"error":"…"}, nothing else, and never raises, so the
+-- Shortcut can check the answer. The ok answer is written without spaces on purpose.
+create or replace function add_inbox_item(p_token text, p_item jsonb)
+returns json language plpgsql security definer set search_path = public, extensions as $$
+declare k trackr_inbox_keys; amt text; merchant text; card text; occ text; at timestamptz; dk text; new_id uuid; open_now integer;
+  bad constant text := '{"ok":false,"error":"%s"}';
+begin
+  if p_token is null or length(p_token) > 200 then return format(bad, 'unknown token')::json; end if;
+  select * into k from trackr_inbox_keys where key_hash = encode(digest(p_token, 'sha256'), 'hex') and channel = 'applepay';
+  if not found then return format(bad, 'unknown token')::json; end if;
+  if p_item is null or jsonb_typeof(p_item) <> 'object' then return format(bad, 'p_item must be an object')::json; end if;
+  if octet_length(p_item::text) > 2048 then return format(bad, 'payload too big')::json; end if;
+  amt := left(btrim(regexp_replace(coalesce(p_item->>'amount_raw', ''), '\s+', ' ', 'g')), 40);
+  merchant := left(btrim(regexp_replace(coalesce(p_item->>'merchant', ''), '\s+', ' ', 'g')), 120);
+  card := left(btrim(regexp_replace(coalesce(p_item->>'card', ''), '\s+', ' ', 'g')), 80);
+  occ := left(btrim(coalesce(p_item->>'occurred_at', '')), 40);
+  if amt = '' then return format(bad, 'amount_raw is missing')::json; end if;
+  begin at := case when occ ~ '^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}' then occ::timestamptz end; exception when others then at := null; end;
+  if at is null then
+    at := now();
+    occ := to_char(now() at time zone 'Europe/Amsterdam', 'YYYY-MM-DD"T"HH24:MI:SS');
+  end if;
+  dk := md5(to_char(date_trunc('minute', at at time zone 'UTC'), 'YYYY-MM-DD HH24:MI') || '|' || amt || '|' || lower(merchant));
+  select id into new_id from trackr_inbox where data_id = k.data_id and dedupe_key = dk;
+  if found then return format('{"ok":true,"id":"%s"}', new_id)::json; end if;
+  select count(*) into open_now from trackr_inbox where data_id = k.data_id and status = 'new';
+  if open_now >= 300 then return format(bad, 'inbox full: review it in Trackr')::json; end if;
+  insert into trackr_inbox (data_id, channel, item, source, dedupe_key)
+  values (k.data_id, 'applepay', jsonb_strip_nulls(jsonb_build_object('amount_raw', amt, 'merchant', nullif(merchant, ''), 'card', nullif(card, ''), 'occurred_at', occ)), 'Apple Pay', dk)
+  on conflict (data_id, dedupe_key) where dedupe_key is not null do nothing
+  returning id into new_id;
+  if new_id is null then select id into new_id from trackr_inbox where data_id = k.data_id and dedupe_key = dk; end if;
+  return format('{"ok":true,"id":"%s"}', new_id)::json;
+exception when others then
+  return format(bad, 'not saved')::json;
+end $$;
+
 revoke all on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
   inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text),
-  inbox_find(text, text, text, text, text, integer), inbox_update(text, uuid, jsonb), inbox_withdraw(text, uuid[]) from public;
+  inbox_find(text, text, text, text, text, integer), inbox_update(text, uuid, jsonb), inbox_withdraw(text, uuid[]), add_inbox_item(text, jsonb) from public;
 grant execute on function inbox_set_key(text, text, text), inbox_drop_key(text, text), inbox_status(text), inbox_set_context(text, jsonb),
   inbox_list(text), inbox_resolve(text, uuid[], text), inbox_context(text), inbox_add(text, jsonb, text, text),
-  inbox_find(text, text, text, text, text, integer), inbox_update(text, uuid, jsonb), inbox_withdraw(text, uuid[]) to anon;
+  inbox_find(text, text, text, text, text, integer), inbox_update(text, uuid, jsonb), inbox_withdraw(text, uuid[]), add_inbox_item(text, jsonb) to anon;
 notify pgrst, 'reload schema';
 `;
 const INBOX_FUNCTION_TEXT = String.raw`// @ts-nocheck
@@ -826,15 +868,20 @@ if (typeof module !== 'undefined' && module.exports) {
   /* ---- Review: a page like Budget, day by day ---- */
   window.openInbox = function () { goPage('inbox'); inboxRefresh(); };
   window.inboxCount = () => openItems().length;
+  /* The Wallet card names payments came with (for Settings → Apple Pay). */
+  window.inboxWalletCards = () => Array.from(new Set(state.items.filter(x => x.channel === 'applepay' && x.item && x.item.card).map(x => String(x.item.card).trim())));
   window.inboxTabOn = () => openItems().length > 0 || channelsOn().length > 0 || ui.page === 'inbox' || rejectedNow().length > 0;
   const rejectedNow = () => inboxKeptRejected(data.inboxRejected, todayYmd());
   const failed = {}; // id → why it couldn't be added in a batch (a transfer bigger than the pocket…)
   /* What you taught Trackr comes first: your rules, then the name you've used before. Claude's
    * category stays for a name only partly known; its account is kept if it named one. */
   function normalized(x, ctx) {
-    const item = Object.assign({}, x.item, state.edits[x.id]);
-    if (item._draft) return { channel: x.channel, kind: item._draft.type, form: 'tx', draft: Object.assign({}, item._draft), problems: [], ok: true, ready: true, edited: true };
-    let n = inboxNormalize(item, x.channel, ctx);
+    const wallet = x.channel === 'applepay' && typeof walletItem === 'function' ? walletItem(x.item, walletOpts()) : null;
+    const channel = wallet ? 'budget' : x.channel;
+    const item = Object.assign({}, wallet ? wallet.item : x.item, state.edits[x.id]);
+    if (item._draft) return { channel: x.channel, kind: item._draft.type, form: 'tx', draft: Object.assign({}, item._draft), problems: [], ok: true, ready: true, edited: true, wallet };
+    let n = inboxNormalize(item, channel, ctx);
+    if (wallet) n = walletChecks(walletGuess(n, item, ctx, x), wallet);
     if (n.form !== 'tx') return n;
     const d = n.draft;
     if (d.type === 'transfer') {
@@ -849,13 +896,36 @@ if (typeof module !== 'undefined' && module.exports) {
       const known = past && (!d.categoryId || txNameKey(past.comment) === txNameKey(d.comment));
       const use = ch && ch.categoryId ? ch : known ? past : null;
       if (use) { item.category_id = use.categoryId; item.subcategory_id = use.subCategoryId || ''; }
-      if (past && !item.account_id && !item.account && !item.pocket_id && !item.pocket && past.accountId) item.account_id = past.accountId;
+      // A Wallet card says its own account (an unknown card stays without one, to check).
+      if (past && !wallet && !item.account_id && !item.account && !item.pocket_id && !item.pocket && past.accountId) item.account_id = past.accountId;
       if (past && !item.payment_method_id && past.paymentMethodId) item.payment_method_id = past.paymentMethodId;
-      n = inboxNormalize(item, x.channel, ctx);
+      n = inboxNormalize(item, channel, ctx);
+      if (wallet) n = walletChecks(walletGuess(n, item, ctx, x), wallet);
       if (ch && ch.comment) n.draft.comment = ch.comment;
       if (ch && ch.nature) n.draft.nature = ch.nature;
     }
     n.draft.logo = txLogoForName(n.draft.comment) || (past && past.logo) || builtinLogoFor(n.draft.comment);
+    return n;
+  }
+  /* Apple Pay: nothing taught Trackr this shop's category yet, so its name may say (Albert Heijn →
+     Groceries). Your rules and past names, tried just after, still come first. */
+  function walletGuess(n, item, ctx, x) {
+    const d = n.draft;
+    if (n.form !== 'tx' || d.type !== 'expense' || d.categoryId || (state.edits[x.id] && state.edits[x.id].category_id)) return n;
+    const g = walletGuessCategory(d.comment, ctx.categories.expense);
+    if (!g) return n;
+    item.category_id = g.categoryId; item.subcategory_id = g.subCategoryId;
+    return inboxNormalize(item, 'budget', ctx);
+  }
+  /* What only a payment from Wallet needs to say (the amount it couldn't read, an unknown card…). */
+  function walletChecks(n, wallet) {
+    const own = wallet.problems, noAmount = own.some(p => /amount/.test(p.text) && p.block);
+    n.problems = own.concat(n.problems.filter(p => !(noAmount && p.text === 'No amount.')));
+    n.ok = !n.problems.some(p => p.block);
+    n.ready = n.ok && !n.problems.length;
+    n.wallet = wallet;
+    // An unknown card: no account, rather than your main one, until you pick it.
+    if (!wallet.linked && n.form === 'tx') { n.draft.accountId = ''; n.draft.pocketId = ''; }
     return n;
   }
   function endpointLogo(ref) {
@@ -924,7 +994,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const pocket = asked('pocket') ? `${asked('pocket').name} ?` : (txPocket(d) || {}).name || '';
     return { title: d.comment || (d.type === 'income' ? 'Income' : d.type === 'transfer' ? 'Transfer' : 'Expense'),
       amount: `${d.type === 'income' ? '+' : d.type === 'expense' ? '-' : ''}${d.amount ? fmtMoney(+d.amount, d.currency) : '—'}`, cls: d.type === 'income' ? 'positive' : d.type === 'expense' ? 'negative' : 'ib-move',
-      meta: (d.type === 'transfer' ? [move] : [cat ? `${cat.name}${sub ? ' · ' + sub.name : ''}` : '', acc ? acc.name : '', pocket]).filter(Boolean).join(' · ') };
+      meta: (d.type === 'transfer' ? [move] : [cat ? `${cat.name}${sub ? ' · ' + sub.name : ''}` : '', acc ? acc.name : n.wallet && !n.wallet.linked ? 'No account' : '', pocket]).filter(Boolean).join(' · ') };
   }
   function avatarOf(n) {
     if (n.form === 'tx') return txAvatarHtml(n.draft);
@@ -946,7 +1016,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const what = `${escHtml(r.other.name || 'a transaction')}, ${escHtml(shortDay(r.other.date))}`;
       hints.unshift(`<li>${r.status === 'same' ? 'Already in Trackr' : 'Maybe in Trackr'}: ${r.other.trade ? what : `<button class="link-btn" onclick="openTxForm('${escHtml(r.other.id)}')">${what}</button>`}</li>`);
     }
-    if (r.twice) hints.unshift('<li>Claude sent this twice.</li>');
+    if (r.twice) hints.unshift(`<li>${x.channel === 'applepay' ? 'Apple Pay' : 'Claude'} sent this twice.</li>`);
     if (r.pair) hints.unshift('<li>A move there and back the same day: together they change nothing.</li>');
     if (r.claudeChanged) hints.push('<li>Claude changed this after your edit. Your version is kept.</li>');
     if (r.fail) hints.unshift(`<li class="block">${escHtml(r.fail)}</li>`);
@@ -957,6 +1027,7 @@ if (typeof module !== 'undefined' && module.exports) {
       <input class="ib-tick" type="checkbox" aria-label="Select ${escHtml(l.title)}" ${isPicked(r) ? 'checked' : ''} onchange="inboxPick('${id}',this.checked)">
       <div class="ib-mid">
         <button class="ib-open" onclick="inboxOpen('${id}')" ${n.form === 'trade' && !d.accountKey ? 'disabled' : ''}>${avatarOf(n)}<span class="ib-txt"><b>${escHtml(l.title)}</b><span>${escHtml(l.meta || '—')}</span></span></button>
+        ${n.wallet ? walletLineHtml(n) : ''}
         ${needsCat ? categoryPicker(r, id) : ''}
         ${hints.length ? `<ul class="ib-probs">${hints.join('')}</ul>` : ''}
         ${fixes.length ? `<div class="ib-fixes">${fixes.join('')}</div>` : ''}
@@ -970,6 +1041,13 @@ if (typeof module !== 'undefined' && module.exports) {
         </span>
       </div>
     </div>`;
+  }
+  /* Apple Pay · the card · the time · what Wallet wrote, when Trackr cleaned it · ≈ € for another currency. */
+  function walletLineHtml(n) {
+    const w = n.wallet, d = n.draft, raw = String(w.merchant || '').trim();
+    const eur = d.currency && d.currency !== 'EUR' && +d.amount ? `≈ ${fmtMoney(toEUR(+d.amount, d.currency))}` : '';
+    const parts = ['Apple Pay', w.card, w.time, raw && raw !== d.comment ? `“${raw}”` : '', eur].filter(Boolean);
+    return `<span class="ib-wallet dim">${parts.map(escHtml).join(' · ')}</span>`;
   }
   function rejectedRowHtml({ x, n }) {
     const id = escHtml(x.id), l = itemLine(n);
@@ -1003,12 +1081,14 @@ if (typeof module !== 'undefined' && module.exports) {
     const picked = shown.filter(isPicked), adds = picked.filter(isAddable), net = sign => adds.reduce((s, r) => { const v = signedEUR(r.n); return s + (v * sign > 0 ? Math.abs(v) : 0); }, 0);
     const js = v => escHtml(String(v).replace(/\\/g, '\\\\').replace(/'/g, "\\'"));
     const labels = { new: 'New', check: 'To check', same: 'Already in Trackr', rejected: 'Rejected' };
-    const nothing = `<div class="card"><div class="empty-state"><div class="title">Nothing to review</div><div class="sub">${on.length ? 'Send a screenshot or a statement to your Trackr project in Claude: it shows up here.' : 'Connect Claude in Settings → Claude inbox, or paste what Claude gave you.'}</div></div></div>`;
+    const nothing = `<div class="card"><div class="empty-state"><div class="title">Nothing to review</div><div class="sub">${on.length ? 'Pay with Apple Pay, or send a screenshot or a statement to your Trackr project in Claude: it shows up here.' : 'Set up Apple Pay or Claude in Settings, or paste what Claude gave you.'}</div></div></div>`;
+    const ready = rows.filter(r => r.status === 'new' && isAddable(r));
     return `
     <div class="page surface-light">
       <div class="page-head">
-        <div><h1 class="page-title">From Claude</h1><div class="page-subtitle">${rows.length ? `${rows.length} waiting · nothing is in Trackr until you add it` : 'What Claude reads from your screenshots and statements'}</div></div>
+        <div><h1 class="page-title">Inbox</h1><div class="page-subtitle">${rows.length ? `${rows.length} waiting · nothing is in Trackr until you add it` : 'Your Apple Pay payments, and what Claude reads from your screenshots'}</div></div>
         <div class="row-flex" style="gap:8px;">
+          ${ready.length ? `<button class="btn primary" onclick="inboxAddReady()">${ic('check', 15)} Add all ready (${ready.length})</button>` : ''}
           <button class="btn" onclick="openInboxPaste()">${ic('copy', 15)} Paste</button>
           ${on.length ? '<button class="btn" onclick="inboxRefresh(true)">↻ Check now</button>' : '<button class="btn" onclick="goPage(\'settings\');ui.settingsOpenSections={claude:true};render()">Set up</button>'}
         </div>
@@ -1128,6 +1208,8 @@ if (typeof module !== 'undefined' && module.exports) {
     save(); render(); inboxRefresh();
     safetyToast(`<span>${how === 'main' ? `${escHtml(u.name)} is the main balance of ${escHtml(acc.name)}` : `Pocket ${escHtml(u.name)} made in ${escHtml(acc.name)}, empty for now`}</span>`, { ms: 4000 });
   };
+  /* Everything under New: nothing to check, nothing missing. */
+  window.inboxAddReady = function () { addRows(reviewRows().filter(r => r.status === 'new' && isAddable(r))); };
   window.inboxAddPicked = function () { addRows(shownRows(reviewRows()).filter(r => isPicked(r) && isAddable(r))); };
   window.inboxRejectPicked = function () { rejectRows(shownRows(reviewRows()).filter(isPicked)); };
   /* Open it where you'd normally enter it, filled in: nothing goes in until you say so. */
@@ -1205,7 +1287,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const on = channelsOn().length > 0, has = !!keys.claude;
     const copyBtn = (label, what, ch) => `<button class="btn small" onclick="inboxCopy('${what}','${ch || ''}')">${ic('copy', 14)} ${label}</button>`;
     return `
-      <div class="ib-note">Send receipts and screenshots to two projects in Claude, <b>Trackr Budget</b> and <b>Trackr Investments</b>. Through a connector, each item waits in <b>Money → From Claude</b> until you add it. Claude only gets an inbox key: it can drop items there, correct or withdraw the ones still waiting, and read your category, account, pocket and asset names. It never sees a balance, and what you've reviewed is out of its reach.</div>
+      <div class="ib-note">Send receipts and screenshots to two projects in Claude, <b>Trackr Budget</b> and <b>Trackr Investments</b>. Through a connector, each item waits in <b>Money → Inbox</b> until you add it. Claude only gets an inbox key: it can drop items there, correct or withdraw the ones still waiting, and read your category, account, pocket and asset names. It never sees a balance, and what you've reviewed is out of its reach.</div>
       <div class="ib-step"><b>1. Add the inbox to Supabase</b> <span class="dim">(once)</span>
         <div class="ib-row">${copyBtn('Copy the SQL', 'sql')}${dash('sql/new')}<button class="btn small" onclick="inboxCheck()">Check</button></div>
         <div class="dim" style="font-size:12px;">SQL editor → New query → paste → Run, then Check. After an update, run it again: your data isn't touched.${state.missing ? ' <b>Not there yet.</b>' : ''}</div>
@@ -1279,11 +1361,11 @@ if (typeof module !== 'undefined' && module.exports) {
   window.__attention.push(() => {
     const n = openItems().length;
     return n ? [{ key: 'inbox:' + n, icon: `<span class="add-ic" style="width:30px;height:30px;">${ic('receipt', 16)}</span>`,
-      name: `${n} from Claude to review`, detail: 'Read from your screenshots and receipts. Nothing is in Trackr until you add it.',
+      name: `${n} in your inbox to review`, detail: 'From Apple Pay and Claude. Nothing is in Trackr until you add it.',
       actions: [{ label: 'Review', onclick: 'closeModal();openInbox()', primary: true }] }] : [];
   });
   window.__addMenu.push({ label: 'Paste from Claude', sub: 'Review what it read', icon: 'copy', go: 'openInboxPaste()' });
-  window.__palette.push(add => { add('Actions', 'From Claude', 'Review what Claude sent', () => openInbox(), 'receipt'); add('Pages', 'Claude inbox setup', 'Settings → Claude inbox', () => { goPage('settings'); ui.settingsOpenSections = { claude: true }; render(); }, 'settings'); });
+  window.__palette.push(add => { add('Actions', 'Inbox', 'Review your Apple Pay payments and what Claude sent', () => openInbox(), 'receipt'); add('Pages', 'Claude inbox setup', 'Settings → Claude inbox', () => { goPage('settings'); ui.settingsOpenSections = { claude: true }; render(); }, 'settings'); });
 
   // Fetch at start, when you come back to the app, and every minute while it's open.
   setTimeout(() => inboxRefresh(), 2500);

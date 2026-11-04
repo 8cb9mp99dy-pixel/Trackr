@@ -111,3 +111,61 @@ test('the old calls still work after the SQL is run again', async () => {
   assert.equal((await rpc('inbox_context', { inbox_key: KEY })).channel, 'claude');
   assert.equal(await rpc('inbox_status', { secret: SECRET }).then(s => s.keys.length), 1);
 });
+
+/* ---- Apple Pay: the iPhone Shortcut's own token, write-only ---- */
+const PAY = 'trk_pay_' + 'c'.repeat(32);
+const pay = (p_item, p_token) => anon(() => rpc('add_inbox_item', { p_token: p_token || PAY, p_item: JSON.stringify(p_item) }));
+const payment = o => Object.assign({ amount_raw: '€12,50', merchant: 'Demo Café', card: 'Demo Card', occurred_at: '2026-10-17T12:34:56+02:00' }, o);
+
+test('Apple Pay: a payment lands in the inbox, with exactly {"ok":true,"id":…}', async () => {
+  await rpc('inbox_set_key', { secret: SECRET, channel: 'applepay', key_hash: sha(PAY) });
+  const out = await pay(payment());
+  assert.equal(out.ok, true);
+  const text = (await db.query(`select add_inbox_item(p_token => $1, p_item => $2)::text as t`, [PAY, JSON.stringify(payment({ merchant: 'Demo Text' }))])).rows[0].t;
+  assert.match(text, /^\{"ok":true,"id":"[0-9a-f-]{36}"\}$/); // the Shortcut looks for "ok":true, no space
+  const row = (await db.query('select channel, source, status, item from trackr_inbox where id = $1', [out.id])).rows[0];
+  assert.deepEqual([row.channel, row.source, row.status], ['applepay', 'Apple Pay', 'new']);
+  assert.deepEqual(row.item, { amount_raw: '€12,50', merchant: 'Demo Café', card: 'Demo Card', occurred_at: '2026-10-17T12:34:56+02:00' });
+  assert.ok((await rpc('inbox_list', { secret: SECRET })).some(x => x.id === out.id && x.channel === 'applepay'));
+});
+
+test('Apple Pay: the same payment twice is kept once (same minute, amount and shop)', async () => {
+  const a = await pay(payment({ merchant: 'Demo Twice', occurred_at: '2026-10-17T09:00:05+02:00' }));
+  const b = await pay(payment({ merchant: 'Demo Twice', occurred_at: '2026-10-17T09:00:50+02:00' }));
+  assert.deepEqual([a.ok, b.ok, b.id], [true, true, a.id]);
+  const c = await pay(payment({ merchant: 'Demo Twice', occurred_at: '2026-10-17T09:01:10+02:00' }));
+  assert.notEqual(c.id, a.id);
+  assert.equal((await db.query(`select count(*)::int as n from trackr_inbox where item->>'merchant' = 'Demo Twice'`)).rows[0].n, 2);
+});
+
+test('Apple Pay: a wrong token, a Claude key, a big or odd payload are refused, never raised', async () => {
+  assert.deepEqual(await pay(payment(), 'trk_pay_nope'), { ok: false, error: 'unknown token' });
+  assert.deepEqual(await pay(payment(), KEY), { ok: false, error: 'unknown token' });
+  assert.deepEqual(await anon(() => rpc('add_inbox_item', { p_token: PAY, p_item: '[1]' })), { ok: false, error: 'p_item must be an object' });
+  assert.deepEqual(await pay(payment({ merchant: 'x'.repeat(3000) })), { ok: false, error: 'payload too big' });
+  assert.deepEqual(await pay(payment({ amount_raw: '' })), { ok: false, error: 'amount_raw is missing' });
+  // Long text is cut, odd keys are dropped, an unreadable date becomes now.
+  const ok = await pay({ amount_raw: 'twelve euros', merchant: 'Demo ' + 'y'.repeat(200), card: 'c'.repeat(100), occurred_at: 'yesterday', _draft: { amount: 1 }, extra: 1 });
+  assert.equal(ok.ok, true);
+  const it = (await db.query('select item from trackr_inbox where id = $1', [ok.id])).rows[0].item;
+  assert.deepEqual(Object.keys(it).sort(), ['amount_raw', 'card', 'merchant', 'occurred_at']);
+  assert.deepEqual([it.amount_raw, it.merchant.length, it.card.length], ['twelve euros', 120, 80]);
+  assert.match(it.occurred_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+});
+
+test('Apple Pay: the token only adds. It reads nothing and changes nothing', async () => {
+  const { id } = await pay(payment({ merchant: 'Demo Private' }));
+  await refuses(rpc('inbox_find', { inbox_key: PAY }), /Unknown inbox key/);
+  await refuses(rpc('inbox_context', { inbox_key: PAY }), /Unknown inbox key/);
+  await refuses(rpc('inbox_update', { inbox_key: PAY, item_id: id, changes: { merchant: 'x' } }), /Unknown inbox key/);
+  await refuses(rpc('inbox_withdraw', { inbox_key: PAY, ids: [id] }), /Unknown inbox key/);
+  await refuses(rpc('inbox_add', { inbox_key: PAY, items: JSON.stringify([item()]), source: null, channel: 'budget' }), /Unknown inbox key/);
+  // And Claude's key doesn't see, change or withdraw Apple Pay payments.
+  assert.ok(!(await rpc('inbox_find', { inbox_key: KEY, status: 'all', max_items: 300 })).some(x => x.id === id));
+  await refuses(rpc('inbox_update', { inbox_key: KEY, item_id: id, changes: { merchant: 'x' } }), /waiting for review/);
+  assert.equal((await rpc('inbox_withdraw', { inbox_key: KEY, ids: [id] })).deleted, 0);
+  // A new token: the old one stops working.
+  await rpc('inbox_set_key', { secret: SECRET, channel: 'applepay', key_hash: sha(PAY + 'new') });
+  assert.deepEqual(await pay(payment({ merchant: 'Demo Old Token' })), { ok: false, error: 'unknown token' });
+  assert.equal((await pay(payment({ merchant: 'Demo New Token' }), PAY + 'new')).ok, true);
+});

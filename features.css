@@ -178,6 +178,22 @@
 }
 .ib-note { font-size: 12.5px; line-height: 1.5; color: var(--fx-dim); margin-bottom: 12px; }
 .ib-note b { color: var(--fx-ink); }
+/* Apple Pay (applepay.js): the line under a payment, the cards table, the counts in the menu. */
+.ib-wallet { display: block; margin: 2px 0 0 50px; font-size: 12px; overflow-wrap: anywhere; }
+.ap-cards { display: flex; flex-direction: column; gap: 6px; }
+.ap-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 6px; align-items: center; }
+.ap-card input, .ap-card select { min-width: 0; width: 100%; }
+.nav-count { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 5px; margin-left: 6px; border-radius: 999px;
+  background: var(--fx-ink); color: var(--fx-paper); font-size: 10.5px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; vertical-align: 1px; }
+.nav-icon .nav-count { position: absolute; top: -6px; right: -10px; margin: 0; }
+.nav-sub .nav-count, .more-tile .nav-count { margin-left: auto; }
+.more-tile .nav-count { margin-left: 6px; }
+.bt-inbox { font-size: inherit; }
+@media (max-width: 640px) {
+  .ib-wallet { margin-left: 0; }
+  .ap-card { grid-template-columns: minmax(0, 1fr) auto; }
+  .ap-card select { grid-column: 1 / -1; grid-row: 2; }
+}
 .ib-step { border-top: 1px solid var(--fx-line); padding: 12px 0; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; }
 .ib-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .ib-row a.btn { text-decoration: none; }

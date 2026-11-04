@@ -3,7 +3,7 @@
 Send receipts, bank or card screenshots and broker screenshots to two projects in Claude
 ("Trackr Budget" and "Trackr Investments"). Claude reads them and, through the Trackr connector,
 drops every transaction into an inbox in your own Supabase. Trackr shows them on the page
-**Money → From Claude** (also from Action required). Nothing reaches your accounts until you add
+**Money → Inbox** (also from Action required; Apple Pay payments land there too, see `docs/apple-pay-shortcut.md`). Nothing reaches your accounts until you add
 it there.
 
 ```

@@ -4,7 +4,7 @@
  * goPage('…') id stays the same — only how they're grouped changes:
  *
  *   Home      Overview
- *   Money     Budget (Transactions · Totals · Recurring · Forecast · Budgets · Categories · Import) · Income plan · Freelance · From Claude (once connected)
+ *   Money     Budget (Transactions · Totals · Recurring · Forecast · Budgets · Categories · Import) · Income plan · Freelance · Inbox (once Apple Pay or Claude is set up, with the count waiting)
  *             (Receipts, Trips, IOUs and Contracts were removed at the user's request, 2 Nov 2026: don't bring them back)
  *   Wealth    Overview · Cash (the old Accounts page) · Pockets (pockets.js) · Investments (+ each account) · Watchlist · Debts
  *   Plan      Goals · Yearly bills · Emergency · Insights (the old Analysis page)
@@ -40,7 +40,7 @@ const SECTION_TABS = {
     ['Budget', "goPage('budget')", () => ui.page === 'budget'],
     ['Income plan', "goPage('income')", () => ui.page === 'income'],
     ['Freelance', "goPage('freelance')", () => ui.page === 'freelance'],
-    ['From Claude', "goPage('inbox')", () => ui.page === 'inbox', () => typeof inboxTabOn === 'function' && inboxTabOn()],
+    ['Inbox', "goPage('inbox')", () => ui.page === 'inbox', () => typeof inboxTabOn === 'function' && inboxTabOn(), () => (typeof inboxCount === 'function' ? inboxCount() : 0)],
   ],
   wealth: [
     ['Net worth', "goWealthSection('assets')", () => ui.page === 'wealth' && ui.wealthTab !== 'liabilities'],
@@ -58,11 +58,15 @@ const SECTION_TABS = {
   ],
 };
 const sectionTabs = id => (SECTION_TABS[id] || []).filter(t => !t[3] || t[3]());
+/* How many wait on a page (the Inbox), as a small number after its name; on Money's icon too. */
+const navCount = n => (n > 0 ? `<span class="nav-count" aria-label="${n} waiting">${n > 99 ? '99+' : n}</span>` : '');
+const tabCount = t => navCount(t[4] ? t[4]() : 0);
+function navGroupCountHtml(id) { return id === 'budget' && typeof inboxCount === 'function' ? navCount(inboxCount()) : ''; }
 function sectionTabsHtml() {
   if (!newNavOn()) return '';
   const item = NEW_NAV.find(navItemActive);
   if (!item || !SECTION_TABS[item.id]) return '';
-  return `<nav class="section-tabs" aria-label="${escHtml(item.label)}">${sectionTabs(item.id).map(([label, go, on]) => `<button class="${on() ? 'on' : ''}" onclick="${go}">${label}</button>`).join('')}</nav>`;
+  return `<nav class="section-tabs" aria-label="${escHtml(item.label)}">${sectionTabs(item.id).map(t => `<button class="${t[2]() ? 'on' : ''}" onclick="${t[1]}">${t[0]}${tabCount(t)}</button>`).join('')}</nav>`;
 }
 /* The side bar on a computer: the groups, with the pages of the one you're in under it. A group's
    name opens its first page. */
@@ -70,8 +74,8 @@ function navTreeHtml() {
   const top = (item, go, badge) => `<li><button class="nav-item ${navItemActive(item) ? 'active' : ''}" onclick="${go}"><span class="nav-icon">${ic(item.icon, 19)}${badge || ''}</span><span class="label">${item.label}</span></button></li>`;
   const group = item => {
     const open = navItemActive(item), tabs = sectionTabs(item.id);
-    return `<li><button class="nav-item nav-group ${open ? 'open' : ''}" aria-expanded="${open}" onclick="${tabs[0][1]}"><span class="nav-icon">${ic(item.icon, 19)}</span><span class="label">${item.label}</span><span class="nav-chev">${ic('chevronRight', 14)}</span></button>
-      ${open ? `<ul class="nav-subs">${tabs.map(([label, go, on]) => `<li><button class="nav-item nav-sub ${on() ? 'active' : ''}" onclick="${go}"><span class="label">${label}</span></button></li>`).join('')}</ul>` : ''}</li>`;
+    return `<li><button class="nav-item nav-group ${open ? 'open' : ''}" aria-expanded="${open}" onclick="${tabs[0][1]}"><span class="nav-icon">${ic(item.icon, 19)}${open ? '' : navGroupCountHtml(item.id)}</span><span class="label">${item.label}</span><span class="nav-chev">${ic('chevronRight', 14)}</span></button>
+      ${open ? `<ul class="nav-subs">${tabs.map(t => `<li><button class="nav-item nav-sub ${t[2]() ? 'active' : ''}" onclick="${t[1]}"><span class="label">${t[0]}</span>${tabCount(t)}</button></li>`).join('')}</ul>` : ''}</li>`;
   };
   return `<ul class="nav-list nav-tree">
     ${top(NEW_NAV[0], "goPage('dashboard')")}
@@ -83,7 +87,7 @@ function navTreeHtml() {
 /* The phone's More sheet: the same map. */
 function navMapHtml() {
   return `${NEW_NAV.filter(i => SECTION_TABS[i.id]).map(i => `<div class="eyebrow more-head">${ic(i.icon, 15)} ${i.label}</div>
-    <div class="more-grid">${sectionTabs(i.id).map(([label, go, on]) => `<button class="more-tile ${on() ? 'active' : ''}" onclick="${go}">${label}</button>`).join('')}</div>`).join('')}`;
+    <div class="more-grid">${sectionTabs(i.id).map(t => `<button class="more-tile ${t[2]() ? 'active' : ''}" onclick="${t[1]}">${t[0]}${tabCount(t)}</button>`).join('')}</div>`).join('')}`;
 }
 /* A redraw puts the scrolling bars back at their start: keep the side bar where you left it, and
    the section you're on in view. */

@@ -444,7 +444,8 @@ function defaultData() {
       spendBuffer: 0, // kept aside in "Safe to spend" (spend.js)
       classicNav: false, // Settings → Display → "Classic navigation": every page in the side bar (nav.js)
       applyTradesToHoldings: false, // Investments → an account → Buy: "Also update my holdings and cash"
-      inboxChannels: {}, // Claude inbox (inbox.js): { claude: 'YYYY-MM-DD' } when its connector is on
+      inboxChannels: {}, // Inbox (inbox.js): { claude: 'YYYY-MM-DD', applepay: 'YYYY-MM-DD' } when its connector / token is on
+      walletCards: [], // Settings → Apple Pay (applepay.js): [{ name: 'Wallet card name', ref: 'acc:ID' | 'pk:ACC:POCKET' }]
       privacyMode: false,
       eurUsdRate: 1.08, // used to blend USD crypto purchases into one EUR average price
       eurUsdRateAuto: true, // true = kept in sync from a live FX rate; false = manually overridden
@@ -509,7 +510,7 @@ function defaultData() {
     cards: [], // the bank cards on the Accounts page: a picture and a link, no card data (cards.js)
     photoThumbs: {}, // photo id → a very small copy of a goal's cover, for your other devices (photos.js)
     images: {},      // photo id → { path, w, h, type, createdAt } in the private image storage (images.js); never the picture or a link
-    inboxRejected: [], // what you rejected on From Claude, kept 30 days to put back (inbox.js)
+    inboxRejected: [], // what you rejected in Money → Inbox, kept 30 days to put back (inbox.js)
     trips: [], // trips with dates and a budget (the Trips page was removed, 2 Nov 2026; kept)
     monthClose: {}, // 'YYYY-MM' → { at, note }: the month-end check (monthclose.js)
     vat: { rate: 21, pocket: '', freelanceIncludesVat: true, paid: {} },
@@ -2495,7 +2496,7 @@ function renderApp(app) {
           ${navItems.map(item => `
             <li class="${item.phone ? 'nav-phone' : 'nav-desk'}">
               <button class="nav-item ${navActive(item) ? 'active' : ''}" onclick="${item.id === 'settings' ? settingsNavItemOnClick() : `goPage('${item.id}')`}">
-                <span class="nav-icon">${ic(item.icon, 19)}${item.id === 'settings' ? navSyncBadgeHtml() : ''}</span><span class="label">${item.label}</span>
+                <span class="nav-icon">${ic(item.icon, 19)}${item.id === 'settings' ? navSyncBadgeHtml() : typeof navGroupCountHtml === 'function' ? navGroupCountHtml(item.id) : ''}</span><span class="label">${item.label}</span>
               </button>
             </li>`).join('')}
           <li class="nav-more">
@@ -3214,7 +3215,7 @@ function renderBudget() {
   return `
   <div class="page surface-light">
     <div class="page-head">
-      <div><h1 class="page-title">Budget</h1><div class="page-subtitle">${data.budgetTransactions.length} transaction${data.budgetTransactions.length !== 1 ? 's' : ''} logged</div></div>
+      <div><h1 class="page-title">Budget</h1><div class="page-subtitle">${data.budgetTransactions.length} transaction${data.budgetTransactions.length !== 1 ? 's' : ''} logged${typeof inboxCount === 'function' && inboxCount() ? ` · <button class="link-btn bt-inbox" onclick="openInbox()">${inboxCount()} in the inbox to review</button>` : ''}</div></div>
     </div>
     ${typeof cardsHtml === 'function' ? cardsHtml() : ''}
     ${typeof completedGoalsHtml === 'function' ? completedGoalsHtml() : ''}
@@ -6561,6 +6562,7 @@ function saveManualPrices() {
 const SETTINGS_SECTIONS = [
   { id: 'supabasesync', icon: '🔄', title: 'Supabase Sync (iPhone access)' },
   { id: 'claude', icon: '💬', title: 'Claude inbox' },
+  { id: 'applepay', icon: '', title: 'Apple Pay' },
   { id: 'display', icon: '🖥️', title: 'Display Preferences' },
   { id: 'categories', icon: '🏷️', title: 'Categories' },
   { id: 'assetcategories', icon: '📦', title: 'Asset Categories' },
@@ -6575,6 +6577,7 @@ const SETTINGS_BODY = {
   supabasesync: settingsSupabaseSyncHtml,
   display: settingsDisplayHtml,
   claude: () => (typeof inboxSettingsHtml === 'function' ? inboxSettingsHtml() : ''),
+  applepay: () => (typeof applePaySettingsHtml === 'function' ? applePaySettingsHtml() : ''),
   // One place to edit categories: Budget → Categories (same editor, so nothing is lost here).
   categories: () => `<div style="font-size:13px;opacity:.7;line-height:1.5;margin-bottom:12px;">Income and spending categories, their sub-categories and payment methods are edited in one place: Budget → Categories.</div>
     <button class="btn" onclick="goPage('budget');setBudgetTab('categories')">Open Budget → Categories ${ic('chevronRight', 14)}</button>`,
