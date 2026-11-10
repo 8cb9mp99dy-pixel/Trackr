@@ -100,9 +100,10 @@ function actionItems() {
   // Recurring items the app added by itself a few days ago: were they really paid? (one line)
   if (typeof recurringMonthState === 'function') {
     const ym = todayYmd().slice(0, 7), cut = dateToYmd(new Date(appToday().getTime() - 2 * 86400000));
-    const n = activeRecurringSeries().map(x => recurringMonthState(x, ym)).filter(st => st && st.state === 'expected' && st.due <= cut).length;
+    const waiting = typeof balancesFromTx === 'function' && balancesFromTx();
+    const n = activeRecurringSeries().map(x => recurringMonthState(x, ym)).filter(st => st && st.state === 'expected' && (st.t ? st.due <= cut : true)).length;
     if (n) attention.push({ key: 'rec:' + ym, icon: `<span class="add-ic" style="width:30px;height:30px;">${ic('refresh', 16)}</span>`, name: 'Recurring payments',
-      detail: `${n} added by the app this month — paid as usual, a different amount, or missed?`,
+      detail: waiting ? `${n} due — paid as usual, a different amount, or missed? Nothing moves your balances until you say.` : `${n} added by the app this month — paid as usual, a different amount, or missed?`,
       actions: [{ label: 'Check', onclick: "closeModal();goPage('budget');setBudgetTab('recurring')", primary: true }] });
   }
   // X-ray rules that need a look (Analysis), each can be snoozed for 30 days.

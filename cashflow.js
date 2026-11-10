@@ -228,7 +228,7 @@ function recurringForMonth(monthDate) {
     // More than once a month: each date on its own.
     const occ = recurIsShort(x.st) ? recurringOccurrences(x.id) : [];
     recurDates(x.st, `${ym}-01`, recurMonthEnd(ym)).forEach(date => out.push({ day: +date.slice(8, 10), model: x.model, kind: 'series',
-      state: st ? st.state : !recurIsShort(x.st) ? '' : date > today ? 'upcoming' : occ.some(t => t.date === date) ? 'paid' : 'missed' }));
+      state: st ? st.state : !recurIsShort(x.st) ? '' : date > today ? 'upcoming' : occ.some(t => t.date === date) ? 'paid' : balancesFromTx() && date >= recurringDueCutoff() ? 'expected' : 'missed' }));
   });
   detectRecurring().forEach(d => out.push({ day: Math.min(d.day, last), model: d.model, kind: 'detected', name: d.name, avg: d.avg }));
   return out;

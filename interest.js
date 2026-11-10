@@ -219,9 +219,12 @@ if (typeof module !== 'undefined' && module.exports) {
     const amt = parseFloat(String(v).replace(',', '.'));
     if (!(amt > 0)) return;
     const cat = (data.categories.income || []).find(c => (c.subcategories || []).some(s => s.id === 'sci_interest'));
-    p.amountSaved = Math.round(((+p.amountSaved || 0) + amt) * 100) / 100;
-    data.budgetTransactions.push({ id: uid('tx'), date: todayYmd(), type: 'income', categoryId: cat ? cat.id : '', subCategoryId: cat ? 'sci_interest' : null, nature: 'Variable',
-      paymentMethodId: null, accountId: null, currency: acc.currency, amount: amt, comment: `Interest · ${p.name}`, location: '', description: `Added to the pocket ${p.name} (${acc.name})`, logo: '', impact: '', pocketInterest: p.id, reviewed: true });
+    // A real income on the pocket, so the transaction is what moves it (it used to add to the pocket
+    // and log an income with no account, which "Link them" could then count a second time).
+    const rec = { id: uid('tx'), date: todayYmd(), type: 'income', categoryId: cat ? cat.id : '', subCategoryId: cat ? 'sci_interest' : null, nature: 'Variable',
+      paymentMethodId: null, accountId: acc.id, pocketId: p.id, currency: acc.currency, amount: amt, comment: `Interest · ${p.name}`, location: '', description: `Added to the pocket ${p.name} (${acc.name})`, logo: '', impact: '', pocketInterest: p.id, reviewed: true };
+    data.budgetTransactions.push(rec);
+    applyTxToAccountBalance(rec, 1);
     save(); render();
   };
 }

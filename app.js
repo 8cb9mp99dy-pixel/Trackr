@@ -445,6 +445,7 @@ function defaultData() {
       classicNav: false, // Settings → Display → "Classic navigation": every page in the side bar (nav.js)
       applyTradesToHoldings: false, // Investments → an account → Buy: "Also update my holdings and cash"
       inboxChannels: {}, // Inbox (inbox.js): { claude: 'YYYY-MM-DD', applepay: 'YYYY-MM-DD' } when its connector / token is on
+      balanceModel: '', // 'tx' once switched (balances.js): a balance = its starting point + its transactions
       walletCards: [], // Settings → Apple Pay (applepay.js): [{ name: 'Wallet card name', ref: 'acc:ID' | 'pk:ACC:POCKET' }]
       privacyMode: false,
       eurUsdRate: 1.08, // used to blend USD crypto purchases into one EUR average price
@@ -860,6 +861,7 @@ function syncAdoptRemote(row) {
   try { localStorage.setItem(STORAGE_KEY + '-backup', JSON.stringify(data)); } catch (e) {}
   data = row.data;
   try { migrateCryptoModel(); } catch (e) { console.error('Migration failed', e); }
+  if (typeof balancesAfterLoad === 'function') balancesAfterLoad(); // balances worked out from its transactions
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
   syncUpdateConfig({ lastSeenUpdatedAt: row.updated_at, pending: false, lastReceivedAt: new Date().toISOString() });
   applyTheme();
@@ -991,6 +993,8 @@ async function load() {
   // No local copy at all (first open, or browser storage was cleared): there is nothing here
   // worth sending, so whatever the cloud has wins.
   if (!localData) syncUpdateConfig({ pending: false, lastSeenUpdatedAt: null });
+  // A new start has nothing to back up: balances follow transactions from day one (balances.js).
+  if (!localData) data.settings.balanceModel = 'tx';
 
   applyTheme();
   render();
@@ -1303,6 +1307,7 @@ async function save(opts) {
   if (window.__quietBatch) return;
   const auto = !!(opts && opts.auto);
   if (!auto) data.updatedAt = new Date().toISOString();
+  if (typeof balancesBeforeSave === 'function' && balancesBeforeSave(opts) === false) return;
   mirrorLinkedBrokerCash();
   recordHistorySnapshot();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
@@ -4192,6 +4197,9 @@ function attachToRecurringSeries(record, opts) {
 /* Adds every entry that has come due since the last one, up to today. Returns how many. */
 function runRecurring() {
   if (!data || !data.recurring) return 0;
+  // Balances from transactions: nothing is added by itself any more; a due item waits for you
+  // ("To confirm" in Budget → Recurring and Action required: Paid / Other amount / Missed).
+  if (balancesFromTx()) return 0;
   const today = todayYmd(), thisMonth = ymOf(today);
   let added = 0;
   Object.keys(data.recurring).forEach(id => {
@@ -4290,6 +4298,12 @@ function recurringShortState(x, ym) {
   if (!dates.length) return null;
   const today = todayYmd(), passed = dates.filter(d => d <= today);
   if (!passed.length) return { state: 'upcoming', due: dates[0], ym, short: true };
+  // Balances from transactions: the dates that came (in the last 5 weeks) with nothing logged wait for you.
+  if (balancesFromTx() && !(x.st.missed || []).includes(ym)) {
+    const occ = recurringOccurrences(x.id), cut = recurringDueCutoff();
+    const due = passed.filter(d => d >= cut && !occ.some(t => recurSameSlot(x.st, t.date, d)));
+    if (due.length) return { state: 'expected', due: due[due.length - 1], ym, short: true, dueDates: due, count: `${due.length} to confirm` };
+  }
   const logged = recurringOccurrences(x.id).filter(t => ymOf(t.date) === ym && t.date <= today).length;
   return { state: logged ? 'paid' : 'missed', due: passed[passed.length - 1], ym, short: true, count: `${Math.min(logged, passed.length)} of ${dates.length} this month` };
 }
@@ -4301,6 +4315,7 @@ function recurringMonthState(x, ym) {
   if (st.every && !recurDates(st, `${ym}-01`, recurMonthEnd(ym)).length) return null;
   if ((st.missed || []).includes(ym)) return { state: 'missed', due, ym };
   const here = occ.filter(t => ymOf(t.date) === ym);
+  if (!here.length && balancesFromTx() && due <= todayYmd()) return due >= recurringDueCutoff() ? { state: 'expected', due, ym } : { state: 'missed', due, ym };
   if (!here.length) return due > todayYmd() || ym > st.lastMonth ? { state: 'upcoming', due, ym } : { state: 'missed', due, ym };
   const t = here[here.length - 1];
   if (t.auto && !t.confirmed) return { state: 'expected', due, ym, t };
@@ -4308,6 +4323,28 @@ function recurringMonthState(x, ym) {
   const ref = prev ? toEUR(+prev.amount || 0, prev.currency) : 0, amt = toEUR(+t.amount || 0, t.currency);
   if (ref > 0 && Math.abs(amt - ref) > ref * RECURRING_TOLERANCE) return { state: 'different', due, ym, t, ref };
   return { state: 'paid', due, ym, t };
+}
+/* How far back a due item still waits for you (older ones show as missed, never added by themselves). */
+function recurringDueCutoff() { return dateToYmd(new Date(appToday().getTime() - 35 * 86400000)); }
+/* "Paid" on an item that came due: its entry is added now, confirmed (balances from transactions). */
+function recurringPayDue(id, ym, other) {
+  const st = data.recurring && data.recurring[id], model = recurringModel(id);
+  if (!st || !model) return;
+  const x = { id, st, model };
+  const s = recurIsShort(st) ? recurringShortState(x, ym) : recurringMonthState(x, ym);
+  if (!s || s.state !== 'expected' || s.t) return;
+  const entries = (s.dueDates || [s.due]).map(date => Object.assign(st.every ? recurringEntryOn(id, model, st, date) : recurringEntry(id, model, ym, st.day), { confirmed: true }));
+  if (entries.some(e => !recurringEntryFits(e))) { alert('There isn\'t enough in the place it comes from for this.'); return; }
+  const why = typeof balanceWhyRefused === 'function' ? balanceWhyRefused(entries) : '';
+  if (why) { alert(why); return; }
+  entries.forEach(e => {
+    data.budgetTransactions.push(e);
+    applyTxToAccountBalance(e, 1);
+    if (ymOf(e.date) > st.lastMonth) st.lastMonth = ymOf(e.date);
+    if (st.every && e.date > recurLast(st)) st.lastDate = e.date;
+  });
+  save();
+  if (other) openRecurringAmount(entries[0].id); else render();
 }
 const RECURRING_STATE_LABEL = { paid: 'Paid', different: 'Paid, different amount', expected: 'To confirm', missed: 'Missed', upcoming: 'Coming' };
 function recurringConfirm(txId) {
@@ -4373,7 +4410,8 @@ function saveRecurringAmount() {
 function recurringStateChipHtml(x, s) {
   if (!s) return '';
   const acts = [];
-  if (s.state === 'expected') acts.push(`<button class="btn small primary" onclick="recurringConfirm('${s.t.id}')">Paid</button>`, `<button class="btn small" onclick="openRecurringAmount('${s.t.id}')">Other amount</button>`, `<button class="btn small ghost" onclick="recurringMarkMissed('${x.id}','${s.ym}')">Missed</button>`);
+  if (s.state === 'expected' && !s.t) acts.push(`<button class="btn small primary" onclick="recurringPayDue('${x.id}','${s.ym}')">${s.short ? `Add ${s.dueDates.length}` : 'Paid'}</button>`, ...(s.short ? [] : [`<button class="btn small" onclick="recurringPayDue('${x.id}','${s.ym}',true)">Other amount</button>`]), `<button class="btn small ghost" onclick="recurringMarkMissed('${x.id}','${s.ym}')">Missed</button>`);
+  else if (s.state === 'expected') acts.push(`<button class="btn small primary" onclick="recurringConfirm('${s.t.id}')">Paid</button>`, `<button class="btn small" onclick="openRecurringAmount('${s.t.id}')">Other amount</button>`, `<button class="btn small ghost" onclick="recurringMarkMissed('${x.id}','${s.ym}')">Missed</button>`);
   else if (s.state === 'missed' && s.due <= todayYmd() && !s.short) acts.push(`<button class="btn small ghost" onclick="recurringUnmiss('${x.id}','${s.ym}')">It was paid</button>`);
   const note = s.state === 'different' ? ` · usually ${fmtMoney(s.ref)}` : s.count ? ` · ${s.count}` : '';
   return `<div class="rec-state-row"><span class="rec-state ${s.state}">${RECURRING_STATE_LABEL[s.state]}${note}</span>${acts.join('')}</div>`;
@@ -4477,6 +4515,12 @@ function cashflowBarsHtml(monthDate) {
    scratch. sign=1 applies the transaction (income adds, expense subtracts); sign=-1 reverses it
    (used before re-applying an edited transaction, and before deleting one), so editing the
    amount/account/type of an existing transaction, or deleting it, never double-counts. */
+/* What applyTxToAccountBalance / a transfer moved since the last save, per place (balances.js tells
+   these apart from a balance typed by hand, which becomes a "Balance correction"). */
+let balanceInterim = {};
+/* Switched to balances from transactions (balances.js)? Until then everything works as before. */
+function balancesFromTx() { return !!(data && data.settings && data.settings.balanceModel === 'tx'); }
+function balInterim(ref, d) { balanceInterim[ref] = (balanceInterim[ref] || 0) + d; }
 function applyTxToAccountBalance(record, sign) {
   if (record && record.type === 'transfer') return applyTransferEffect(record, sign);
   if (!record || !record.accountId) return;
@@ -4487,10 +4531,11 @@ function applyTxToAccountBalance(record, sign) {
   // Paid from or into a pocket: only that pocket moves. Deleted since: nothing left to keep in sync.
   if (record.pocketId) {
     const pk = (acc.pockets || []).find(p => p.id === record.pocketId);
-    if (pk) pk.amountSaved = round2(pk.amountSaved + delta);
+    if (pk) { pk.amountSaved = round2(pk.amountSaved + delta); balInterim(`pk:${acc.id}:${pk.id}`, delta); }
     return;
   }
-  acc.balance += delta;
+  acc.balance = round2(acc.balance + delta);
+  balInterim('acc:' + acc.id, delta);
 }
 const round2 = n => Math.round(n * 100) / 100;
 /* The name of an account's main balance: its default pocket, "Personal" at Revolut. */
@@ -4538,15 +4583,15 @@ function transferEndpoint(ref) {
   if (!ep) return null;
   if (ep.kind === 'acc') {
     const a = accountById(ep.accountId);
-    return a ? { label: a.name, ccy: a.currency, floor: false, get: () => a.balance, add: d => { a.balance = round2(a.balance + d); } } : null;
+    return a ? { label: a.name, ccy: a.currency, floor: false, get: () => a.balance, add: d => { a.balance = round2(a.balance + d); balInterim('acc:' + a.id, d); } } : null;
   }
   if (ep.kind === 'pk') {
     const a = accountById(ep.accountId), pk = a && (a.pockets || []).find(p => p.id === ep.pocketId);
-    return pk ? { label: `${a.name} › ${pk.name}`, ccy: a.currency, floor: true, get: () => pk.amountSaved, add: d => { pk.amountSaved = round2(pk.amountSaved + d); } } : null;
+    return pk ? { label: `${a.name} › ${pk.name}`, ccy: a.currency, floor: true, get: () => pk.amountSaved, add: d => { pk.amountSaved = round2(pk.amountSaved + d); balInterim(`pk:${a.id}:${pk.id}`, d); } } : null;
   }
   if (ep.kind === 'brk') {
     const b = brokerById(ep.brokerId);
-    return b ? { label: `${b.name} (cash)`, ccy: brokerCashCurrency(b), floor: true, get: () => brokerCash(b), add: d => { setBrokerCash(b, round2(brokerCash(b) + d)); } } : null;
+    return b ? { label: `${b.name} (cash)`, ccy: brokerCashCurrency(b), floor: true, get: () => brokerCash(b), add: d => { setBrokerCash(b, round2(brokerCash(b) + d)); const la = linkedAccountForBroker(b); balInterim(la ? 'acc:' + la.id : 'brk:' + b.id, d); } } : null;
   }
   if (ep.kind === 'cx') {
     const name = ep.exchange;
@@ -4560,6 +4605,7 @@ function transferEndpoint(ref) {
         let c = cryptoExchangeCashFor(name);
         if (!c) { c = { id: uid('cec'), exchange: name, amount: 0, currency: 'EUR', interestBearing: false, interestRate: null }; data.cryptoExchangeCash.push(c); }
         c.amount = round2(c.amount + d);
+        balInterim('cx:' + name.trim().toLowerCase(), d);
       },
     };
   }
@@ -4592,7 +4638,9 @@ function applyTransferEffect(record, sign) {
   const dst = transferEndpoint(sign === 1 ? record.to : record.from);
   if (!src || !dst) return;
   let srcAmt = convertCurrency(record.amount, record.currency, src.ccy);
-  if (src.floor) srcAmt = Math.min(srcAmt, Math.max(0, src.get()));
+  // The old model took only what a pocket still held when undoing a transfer, which made or lost money
+  // on an edit; balances from transactions refuse an overdraw before it happens instead.
+  if (src.floor && !balancesFromTx()) srcAmt = Math.min(srcAmt, Math.max(0, src.get()));
   if (srcAmt <= 0) return;
   const dstAmt = convertCurrency(convertCurrency(srcAmt, src.ccy, record.currency), record.currency, dst.ccy);
   src.add(-srcAmt);
@@ -5179,11 +5227,19 @@ function saveTxForm() {
   // applying its new effect — otherwise editing the amount/account/type would double-count.
   const idx = p.id ? data.budgetTransactions.findIndex(t => t.id === p.id) : -1;
   const prior = idx !== -1 ? data.budgetTransactions[idx] : null;
+  // Balances from transactions (balances.js): worked out with this change in place of the old one,
+  // no balance may go below zero. The form stays open with why.
+  if (prior && prior.updatedAt) record.updatedAt = prior.updatedAt; // stamped again at save only if it changed
+  if (prior && prior.fxIn && !record.fxIn) record.fxIn = prior.fxIn; // its conversion, kept while amount and currency stay
+  if (balancesFromTx()) {
+    const why = typeof balanceWhyRefused === 'function' ? balanceWhyRefused([record], prior ? [prior.id] : []) : '';
+    if (why) { alert(why); return; }
+  }
   if (prior) applyTxToAccountBalance(prior, -1);
   // A pocket / broker / exchange can't go below zero, so refuse a transfer or a pocket payment bigger
   // than what's actually there (checked after undoing the old version, so editing down/up works).
   const src = txSource(record);
-  if (src && !txSourceHolds(src, record)) {
+  if (src && !balancesFromTx() && !txSourceHolds(src, record)) {
     if (prior) applyTxToAccountBalance(prior, 1);
     const need = convertCurrency(record.amount, record.currency, src.ccy);
     alert(`${src.label} only holds ${fmtMoney(src.get(), src.ccy)}, so ${fmtMoney(need, src.ccy)} can't be ${isTransfer ? 'moved out of it' : 'paid from it'}.`);
@@ -7466,6 +7522,7 @@ function syncConflictBannerHtml() {
       <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
         <button class="btn primary" onclick="resolveSyncConflictUseRemote()">Use the cloud's version</button>
         <button class="btn" onclick="resolveSyncConflictKeepLocal()">Keep this device's version</button>
+        ${typeof syncMergeButtonHtml === 'function' ? syncMergeButtonHtml('') : ''}
       </div>
     </div>`;
 }
@@ -7497,7 +7554,7 @@ function syncConflictExplanationHtml() {
     : c.reason === 'shrink'
       ? 'This device was about to send a copy with far fewer transactions or accounts than the cloud holds. Nothing has been sent.'
       : 'Changes were made here and on your other device before they could sync. Nothing has been overwritten.';
-  return `${intro} Pick the one to keep — the other is replaced on both devices.<br>${syncDifferenceHtml()}`;
+  return `${intro} ${typeof syncMergeButtonHtml === 'function' && syncMergeButtonHtml() ? 'Keep both to lose no transaction (the newer version of one changed on both), or pick one side: the other is then replaced on both devices.' : 'Pick the one to keep — the other is replaced on both devices.'}<br>${syncDifferenceHtml()}`;
 }
 /* A short code derived from the project + secret: every device showing the same Sync ID shares
    the same data in the cloud. Different IDs = different "rooms" (e.g. a mistyped secret), which
@@ -7520,6 +7577,7 @@ function syncGlobalBannerHtml() {
       <div class="sync-banner-actions">
         <button class="btn small" onclick="resolveSyncConflictKeepLocal()">Keep this device's data</button>
         <button class="btn small" onclick="resolveSyncConflictUseRemote()">Use the cloud's data</button>
+        ${typeof syncMergeButtonHtml === 'function' ? syncMergeButtonHtml('small') : ''}
       </div>
     </div>`;
   if (syncStatusState() === 'warning' && (syncIsPending() || syncState.consecutiveFailures >= SYNC_WARN_AFTER_FAILURES)) return `
@@ -7822,6 +7880,7 @@ window.__modalRenderers.syncStatus = function () {
       <div class="row-flex" style="flex-wrap:wrap;gap:10px;">
         <button class="btn primary" onclick="closeModal();resolveSyncConflictUseRemote();">Use the cloud's version</button>
         <button class="btn" onclick="closeModal();resolveSyncConflictKeepLocal();">Keep this device's version</button>
+        ${typeof syncMergeButtonHtml === 'function' ? syncMergeButtonHtml('', 'closeModal();') : ''}
       </div>`;
   }
   const errorHtml = syncState.lastError ? `

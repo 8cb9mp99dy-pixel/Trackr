@@ -734,6 +734,12 @@ function applyTradeToHoldings(id) {
         if (keep <= 1e-9) data.cryptoLots = data.cryptoLots.filter(x => x !== l);
         else { l.quantity = +((+l.quantity) * keep).toFixed(10); l.amountPaid = +((+l.amountPaid) * keep).toFixed(2); }
       });
+    } else if ((o.type === 'cash' || o.type === 'xcash') && typeof balancesFromTx === 'function' && balancesFromTx()) {
+      // Balances from transactions: the trade itself moves the cash (rec.cashMove, balances.js).
+      const ref = o.type === 'cash' ? 'brk:' + o.brokerId : 'cx:' + o.exchange, d = Math.round((o.c1 - o.c0) * 100) / 100;
+      if (o.type === 'xcash' && !cryptoExchangeCashFor(o.exchange)) data.cryptoExchangeCash.push({ id: uid('cec'), exchange: o.exchange, amount: 0, currency: o.ccy, interestBearing: false, interestRate: null });
+      rec.cashMove = { ref, amount: d, date: todayYmd() };
+      balNudge(ref, d);
     } else if (o.type === 'cash') setBrokerCash(brokerById(o.brokerId), Math.round(o.c1 * 100) / 100);
     else if (o.type === 'xcash') {
       let c = cryptoExchangeCashFor(o.exchange);

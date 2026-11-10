@@ -1065,6 +1065,9 @@ function biBalanceAccounts(rec) {
   return [rec.from, rec.to].map(parseTransferRef).filter(ep => ep && (ep.kind === 'acc' || ep.kind === 'pk')).map(ep => accountById(ep.accountId)).filter(Boolean);
 }
 function biCountsForBalance(rec, st) {
+  // Balances from transactions (balances.js): a row moves a balance when it is dated on or after
+  // that balance's starting point, whatever is picked here (only transactions move balances).
+  if (typeof balancesFromTx === 'function' && balancesFromTx() && typeof balancesTxCounts === 'function') return balancesTxCounts(rec);
   const mode = (st && st.balanceMode) || 'smart';
   if (mode === 'none') return false;
   if (rec.type !== 'transfer' && !accountById(rec.accountId)) return false;
@@ -1099,6 +1102,12 @@ function biBalancePreview(st) {
 }
 function biBalanceChoiceHtml(st) {
   const mode = st.balanceMode || 'smart', pv = biBalancePreview(st);
+  if (typeof balancesFromTx === 'function' && balancesFromTx()) return `
+      <div class="bi-balances" id="bi-balances">
+        <strong style="font-size:13px;">Account balances</strong>
+        <div style="font-size:12.5px;opacity:.65;margin-top:6px;line-height:1.45;">Rows dated on or after a balance's starting point move it; older ones are history. ${pv.older ? `${pv.older} row${pv.older === 1 ? ' is' : 's are'} older.` : ''}</div>
+        ${pv.moves.length ? `<div class="bi-balance-moves">${pv.moves.map(m => `<span class="chip" style="cursor:default;">${escHtml(m.label)} <strong class="${m.delta > 0 ? 'positive' : 'negative'}">${m.delta > 0 ? '+' : '−'}${fmtMoney(Math.abs(m.delta), m.ccy)}</strong></span>`).join('')}</div>` : ''}
+      </div>`;
   const seg = (m, label) => `<button type="button" class="seg ${mode === m ? 'on' : ''}" onclick="ui.budgetImport.balanceMode='${m}';render();">${label}</button>`;
   const why = mode === 'smart'
     ? `Only rows dated after you last checked each balance. ${pv.older ? `${pv.older} older row${pv.older === 1 ? ' is' : 's are'} already in the balance you typed, so ${pv.older === 1 ? 'it doesn\'t' : 'they don\'t'} change it.` : ''}`
