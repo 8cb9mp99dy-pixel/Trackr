@@ -156,7 +156,14 @@ function saveWalletModal() {
   } else {
     const w = cashWallet();
     if (!w) { closeModal(); return; }
-    if (p.mode === 'count') {
+    if (p.mode === 'count' && typeof balancesFromTx === 'function' && balancesFromTx()) {
+      // Only Budget moves balances: the difference is filled in as a correction in the Budget form.
+      w.balanceCheckedAt = now;
+      const diff = Math.round((v - w.balance) * 100) / 100;
+      if (Math.abs(diff) < 0.005) { save(); closeModal(); return; }
+      budgetConfirm([balCorrection('acc:' + w.id, diff, todayYmd(), w.currency, w.name, '')]);
+      return;
+    } else if (p.mode === 'count') {
       w.balance = Math.round(v * 100) / 100;
       w.balanceCheckedAt = now;
     } else {
@@ -168,6 +175,7 @@ function saveWalletModal() {
         nature: 'Variable', paymentMethodId: cashPaymentMethodId(), accountId: w.id, currency: w.currency, amount: Math.round(v * 100) / 100,
         comment: ((nameEl && nameEl.value) || '').trim() || reason.label, location: '', description: '', logo: '', impact: '',
       };
+      if (typeof budgetConfirm === 'function' && budgetConfirm([record])) return; // only Budget moves balances: the form opens filled in
       data.budgetTransactions.push(record);
       applyTxToAccountBalance(record, 1);
     }

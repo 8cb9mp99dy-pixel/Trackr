@@ -223,6 +223,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // and log an income with no account, which "Link them" could then count a second time).
     const rec = { id: uid('tx'), date: todayYmd(), type: 'income', categoryId: cat ? cat.id : '', subCategoryId: cat ? 'sci_interest' : null, nature: 'Variable',
       paymentMethodId: null, accountId: acc.id, pocketId: p.id, currency: acc.currency, amount: amt, comment: `Interest · ${p.name}`, location: '', description: `Added to the pocket ${p.name} (${acc.name})`, logo: '', impact: '', pocketInterest: p.id, reviewed: true };
+    if (typeof budgetConfirm === 'function' && budgetConfirm([rec])) return; // only Budget moves balances: the form opens filled in
     data.budgetTransactions.push(rec);
     applyTxToAccountBalance(rec, 1);
     save(); render();

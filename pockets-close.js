@@ -101,9 +101,16 @@ if (typeof module !== 'undefined' && module.exports) {
       if (m.how === 'main') rec = Object.assign(base, { type: 'transfer', accountId: null, comment: `${p.name} closed`, from: ref, to: 'acc:' + a.id, fromLabel: p.name, toLabel: a.name });
       else if (m.how === 'pocket') rec = Object.assign(base, { type: 'transfer', accountId: null, comment: `${p.name} closed`, from: ref, to: m.to, fromLabel: p.name, toLabel: transferEndpoint(m.to).label });
       else if (m.record) rec = Object.assign(base, { type: 'expense', accountId: a.id, pocketId: p.id, date: m.date || day, categoryId: m.categoryId || null, comment: String(m.name || p.name).trim(), reviewed: true });
+      const budgetOnly = typeof balancesFromTx === 'function' && balancesFromTx();
+      // Only Budget moves balances: "already spent and recorded" empties it by a Balance correction.
+      if (!rec && budgetOnly) rec = Object.assign(base, { type: 'transfer', accountId: null, comment: `${p.name} closed`, description: 'Already spent and recorded', from: ref, to: 'adj:correction', fromLabel: p.name, toLabel: 'Balance correction', correction: true });
+      // …and the closing transaction waits in the Budget form: the pocket closes once it's saved.
+      if (rec && budgetOnly && typeof budgetConfirm === 'function') { budgetConfirm([rec], ids => finishClose(ids[0] || null)); return; }
       if (rec) { data.budgetTransactions.push(rec); applyTxToAccountBalance(rec, 1); txId = rec.id; }
       else p.amountSaved = 0; // spent, already recorded: emptied, as you chose
     }
+    finishClose(txId);
+    function finishClose(txId) {
     p.amountSaved = Math.round((+p.amountSaved || 0) * 100) / 100;
     p.finishedAt = day;
     p.closed = { at: day, finalAmount: facts.finalAmount, finalAmountEUR: Math.round(toEUR(facts.finalAmount, a.currency) * 100) / 100, currency: a.currency, goalAmount: facts.goalAmount, startedAt: facts.startedAt, days: facts.days, note: String(m.note || '').trim(), photo: m.photo || '', how: left > 0.004 ? m.how : 'empty', txId };
@@ -113,6 +120,7 @@ if (typeof module !== 'undefined' && module.exports) {
     save(); closeModal();
     if (typeof offerUndo === 'function') offerUndo(`${p.name} closed`, before);
     if (typeof fxSuccess === 'function') fxSuccess('Pocket closed');
+    }
   };
   /* Back to an open pocket. The money stays where it went; the story is kept. */
   window.reopenClosedPocket = function (accId, pkId) {

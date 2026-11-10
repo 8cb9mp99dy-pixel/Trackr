@@ -505,7 +505,7 @@ function piGroupHtml(g, gi) {
           <tbody>${g.rows.map((r, ri) => piRowHtml(r, gi, ri)).join('') || '<tr><td colspan="7" style="opacity:.5;">No positions in the file for this broker.</td></tr>'}</tbody>
         </table>
       </div>
-      ${g.cash ? `<div class="card-nested" style="margin-top:12px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">Cash not invested</div><div style="font-size:13px;"><span style="opacity:.5;">${fmtMoney(cashNow, g.brokerId ? brokerCashCurrency(brokerById(g.brokerId)) : g.cash.currency)} →</span> <strong>${fmtMoney(g.cash.amount, g.cash.currency)}</strong></div></div>${g.brokerId && linkedAccountForBroker(brokerById(g.brokerId)) ? `<div style="font-size:11px;opacity:.65;margin-top:4px;">Also updates your ${escHtml(linkedAccountForBroker(brokerById(g.brokerId)).name)} bank account balance.</div>` : ''}</div>`
+      ${g.cash ? `<div class="card-nested" style="margin-top:12px;"><div class="row-flex"><div style="font-weight:600;font-size:13px;">Cash not invested</div><div style="font-size:13px;"><span style="opacity:.5;">${fmtMoney(cashNow, g.brokerId ? brokerCashCurrency(brokerById(g.brokerId)) : g.cash.currency)} →</span> <strong>${fmtMoney(g.cash.amount, g.cash.currency)}</strong></div></div>${typeof balancesFromTx === 'function' && balancesFromTx() ? '<div style="font-size:11px;opacity:.65;margin-top:4px;">Only Budget moves cash: after the import, "Fix in Budget" fills in the difference for you to save there.</div>' : g.brokerId && linkedAccountForBroker(brokerById(g.brokerId)) ? `<div style="font-size:11px;opacity:.65;margin-top:4px;">Also updates your ${escHtml(linkedAccountForBroker(brokerById(g.brokerId)).name)} bank account balance.</div>` : ''}</div>`
         : `<div style="font-size:12px;opacity:.65;margin-top:10px;">No Cash row for this broker — its cash stays as it is.</div>`}
       ${g.missing.length ? `
         <div class="card-nested" style="margin-top:12px;border:1px solid var(--manual-accent,#E8963C);">
@@ -609,7 +609,10 @@ async function applyExcelImport() {
       }
       s.removed++;
     });
-    if (g.cash && b) {
+    if (g.cash && b && typeof balancesFromTx === 'function' && balancesFromTx()) {
+      // Only Budget moves cash: the file's number is offered as "Fix in Budget" after the import.
+      s.cash = { amount: g.cash.amount, currency: g.cash.currency, fix: 'brk:' + b.id };
+    } else if (g.cash && b) {
       setBrokerCash(b, Math.round(g.cash.amount * 100) / 100);
       if (!linkedAccountForBroker(b)) b.cashCurrency = g.cash.currency;
       s.cash = { amount: g.cash.amount, currency: g.cash.currency };
@@ -625,7 +628,7 @@ function piDoneHtml(st) {
     <div class="card-dark" style="margin-bottom:16px;">
       <div style="font-weight:700;margin-bottom:10px;">Import done</div>
       <div class="stack-gap-8" style="font-size:13px;">
-        ${st.summary.map(s => `<div><strong>${escHtml(s.broker)}</strong>${s.created ? ' (new)' : ''} — ${s.updated} updated, ${s.added} added${s.removed ? `, ${s.removed} removed (sold)` : ''}${s.cash ? ` · cash ${fmtMoney(s.cash.amount, s.cash.currency)}` : ''}</div>`).join('')}
+        ${st.summary.map(s => `<div><strong>${escHtml(s.broker)}</strong>${s.created ? ' (new)' : ''} — ${s.updated} updated, ${s.added} added${s.removed ? `, ${s.removed} removed (sold)` : ''}${s.cash && s.cash.fix ? ` · cash in the file ${fmtMoney(s.cash.amount, s.cash.currency)}, not changed here <button class="btn small" onclick="openBalanceFix('${s.cash.fix}', ${Math.round(s.cash.amount * 100) / 100})">Fix in Budget</button>` : s.cash ? ` · cash ${fmtMoney(s.cash.amount, s.cash.currency)}` : ''}</div>`).join('')}
       </div>
     </div>
     <div class="row-flex" style="gap:10px;justify-content:flex-start;">

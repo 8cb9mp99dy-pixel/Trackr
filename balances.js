@@ -12,13 +12,17 @@
  * A broker with the same name as a bank account has no cash of its own: it is that account's
  * main balance (linkedAccountForBroker), as before.
  *
- * What moves a balance (dated on or after its start): incomes and expenses with an account (and
- * pocket), transfers (from / to), and a trade applied to holdings (rec.cashMove). Nothing else.
+ * What moves a balance (dated on or after its start): Budget transactions only, i.e. incomes and
+ * expenses with an account (and pocket) and transfers (from / to). Nothing else (the user's rule,
+ * 10 Nov 2026: "only changes in the budget part should be able to move cash balances").
  * The stored numbers (a.balance, p.amountSaved, b.cashBalance, c.amount) are only a copy, written
- * again at every save. Typing a balance by hand (Update balance, pocket form, cash Count, broker
- * cash…) is noticed at the next save and recorded as a visible "Balance correction" transfer
- * (from / to 'adj:correction'), the user's choice. A change that would take any balance below zero
- * is refused. An amount in another currency is converted once, when first counted, and kept on
+ * again at every save: a copy changed any other way is simply put back. Balance fields outside
+ * Budget are read-only with "Fix in Budget" (openBalanceFix): it fills in a "Balance correction"
+ * transfer (from / to 'adj:correction') in the Budget form, and it moves the balance only when you
+ * save it there. Buttons on other pages that make transactions (a deposit, the Income plan split,
+ * closing a pocket, interest, an invoice paid, the cash wallet) fill in the Budget form or the "Add
+ * to Budget" window instead (budgetConfirm). An applied trade never touches cash. A change that
+ * would take any balance below zero is refused. An amount in another currency is converted once, when first counted, and kept on
  * the transaction (t.fxIn), so a rate moving never moves a balance.
  *
  * Until the user switches (data.settings.balanceModel === 'tx'), Trackr works as before; the
@@ -99,12 +103,6 @@ function balEffects(doc, env, txs, places) {
     if (!places.has(ref)) return; // its pocket was deleted: it moves nothing, as before
     const v = balAmountIn(t, 'acc', ccyOf(ref), env);
     out.push({ ref, delta: t.type === 'income' ? v : -v, date: t.date, tx: t });
-  });
-  (doc.investmentTransactions || []).forEach(r => {
-    const m = r && r.applied && r.cashMove;
-    if (!m || !m.ref || !m.date) return;
-    const ref = balResolve(m.ref, doc, env);
-    if (ref && places.has(ref)) out.push({ ref, delta: +m.amount || 0, date: m.date, tx: r, trade: true });
   });
   return out;
 }
@@ -262,17 +260,8 @@ if (typeof window !== 'undefined') {
     Object.keys(data.deletedTx).forEach(id => { if (data.deletedTx[id] < cut) delete data.deletedTx[id]; });
     if (!balancesFromTx()) { baseFor = data; takeSigs(); resetInterim(); return true; }
     const E = env(true);
-    let r = balCompute(data, E);
-    // A balance typed by hand: its copy moved without a transaction → a visible correction.
-    if (!fresh && !(opts && opts.repair)) {
-      const add = [];
-      r.places.forEach((p, ref) => {
-        if (baseValues[ref] == null || p.opening == null) return;
-        const typed = balR2(p.cache - baseValues[ref] - (balanceInterim[ref] || 0));
-        if (Math.abs(typed) >= 0.005) add.push(balCorrection(ref, typed, E.today, p.ccy, p.name, uid('tx')));
-      });
-      if (add.length) { data.budgetTransactions.push(...add); r = balCompute(data, E); }
-    }
+    const r = balCompute(data, E);
+    // A copy changed without a Budget transaction is put back (written again below): only Budget moves balances.
     // Never below zero (unless it already was, and doesn't get lower).
     if (!fresh && !(opts && opts.repair)) {
       const low = Object.keys(r.values).filter(ref => r.values[ref] < -0.005 && r.values[ref] < (baseValues[ref] == null ? 0 : baseValues[ref]) - 0.005);
@@ -307,6 +296,89 @@ if (typeof window !== 'undefined') {
     balInterim(r, d);
   };
   window.balancesNow = () => balCompute(data, env(false));
+
+  /* ---- Only Budget moves balances: other pages fill in Budget ----
+     One transaction: the Budget form opens filled in. Several: the "Add to Budget" window lists
+     them. Nothing moves until you save there; then(ids) finishes the other page's part. Returns
+     false before the switch (the page then does as it always did). */
+  const formKeys = () => Object.keys(blankTxDraft()).concat(['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil', 'warrantyNoted', 'tripId', 'recurringId', 'business', 'vatRate']);
+  const asDraft = r => {
+    const keys = formKeys(), prefill = {}, extra = {};
+    Object.keys(r).forEach(k => { if (k === 'id' || k === 'fromLabel' || k === 'toLabel') return; (keys.includes(k) ? prefill : extra)[k] = r[k]; });
+    prefill.amount = String(r.amount);
+    return { prefill, extra };
+  };
+  window.budgetConfirm = function (records, then, opts) {
+    if (!balancesFromTx()) return false;
+    records = (records || []).filter(Boolean);
+    if (!records.length) { if (then) then([]); return true; }
+    if (records.length === 1) {
+      const d = asDraft(records[0]);
+      openTxForm(null, Object.assign(d.prefill, { _extra: d.extra, _then: then || null }));
+      return true;
+    }
+    ui.modal = { type: 'budgetConfirm', payload: { records, then, title: (opts && opts.title) || 'Add to Budget', error: '' } };
+    render();
+    return true;
+  };
+  window.budgetConfirmSave = function () {
+    const p = ui.modal && ui.modal.payload; if (!p) return;
+    const before = JSON.stringify(data), realAlert = window.alert, ids = [];
+    let said = '', failed = false;
+    window.alert = m => { if (!said) said = m; };
+    try {
+      quietBatch(() => {
+        for (const r of p.records) {
+          const d = asDraft(r), id = uid('tx');
+          ui.modal = { type: 'tx', payload: Object.assign(blankTxDraft(), d.prefill, { id, _extra: d.extra, step: 1 }) };
+          saveTxForm();
+          if (!data.budgetTransactions.some(t => t.id === id)) { failed = true; break; }
+          ids.push(id);
+        }
+        if (failed) { data = JSON.parse(before); window.balancesAfterLoad(); }
+      });
+    } finally { window.alert = realAlert; }
+    if (failed) { ui.modal = { type: 'budgetConfirm', payload: Object.assign(p, { error: said || 'One of them could not be saved: open it in Budget to see why.' }) }; render(); return; }
+    ui.modal = null;
+    if (p.then) p.then(ids); else render();
+  };
+  window.__modalRenderers.budgetConfirm = function (p) {
+    const line = r => {
+      const where = r.type === 'transfer' ? `${(transferEndpoint(r.from) || {}).label || '?'} → ${(transferEndpoint(r.to) || {}).label || '?'}` : ((accountById(r.accountId) || {}).name || '');
+      const sign = r.type === 'income' ? '+' : r.type === 'expense' ? '−' : '';
+      return `<div class="lu-row"><div class="lu-txt"><b>${escHtml(r.comment || r.type)}</b><span class="dim">${escHtml(shortDay(r.date))} · ${escHtml(where)}</span></div><b class="num">${sign}${fmtMoney(+r.amount || 0, r.currency)}</b></div>`;
+    };
+    return `<div class="modal-head"><div class="modal-title">${escHtml(p.title)}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
+      <p class="dim" style="font-size:12.5px;margin:0 0 10px;">Only Budget moves your balances. Check these ${p.records.length}: nothing moves until you save them. You can change each one in Budget afterwards.</p>
+      <div class="lu-list">${p.records.map(line).join('')}</div>
+      ${p.error ? `<div class="info-box" style="margin-top:10px;color:var(--negative);">${escHtml(p.error)}</div>` : ''}
+      <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="budgetConfirmSave()">Save ${p.records.length} in Budget</button></div>`;
+  };
+  /* "Fix in Budget": what does the bank show? → a Balance correction in the Budget form. */
+  window.openBalanceFix = function (ref, real) {
+    ui.modal = { type: 'balanceFix', payload: { ref, real: real == null ? '' : String(real) } };
+    render();
+  };
+  window.__modalRenderers.balanceFix = function (p) {
+    const r = balancesNow(), key = balResolve(p.ref, data, env(false)), pl = r.places.get(key);
+    const head = `<div class="modal-head"><div class="modal-title">Fix a balance in Budget</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>`;
+    if (!pl) return `${head}<div class="modal-actions"><button class="btn primary" onclick="closeModal()">OK</button></div>`;
+    return `${head}
+      <p style="font-size:13px;margin:0 0 10px;"><b>${escHtml(pl.name)}</b> · Trackr: ${fmtMoney(r.values[key], pl.ccy)}</p>
+      <label class="field"><span class="label-text">What your bank shows now${pl.kind === 'acc' ? ' (main balance, without pockets)' : ''}</span><input id="bf-real" inputmode="decimal" value="${escHtml(p.real)}" oninput="ui.modal.payload.real=this.value"></label>
+      <p class="dim" style="font-size:12px;margin:8px 0 0;">The difference is filled in as a "Balance correction" in the Budget form: it moves the balance only when you save it there. Something missing? Better to add the real transaction in Budget instead.</p>
+      <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="balanceFixGo()">Continue in Budget</button></div>`;
+  };
+  window.balanceFixGo = function () {
+    const p = ui.modal && ui.modal.payload; if (!p) return;
+    const v = parseFloat(String(p.real).replace(/\s/g, '').replace(',', '.'));
+    if (!Number.isFinite(v)) { alert('Type the amount your bank shows.'); return; }
+    const r = balancesNow(), key = balResolve(p.ref, data, env(false)), pl = r.places.get(key);
+    if (!pl) { closeModal(); return; }
+    const diff = balR2(v - r.values[key]);
+    if (Math.abs(diff) < 0.005) { closeModal(); if (typeof fxSuccess === 'function') fxSuccess('Already right'); return; }
+    budgetConfirm([balCorrection(p.ref, diff, todayYmd(), pl.ccy, pl.name, '')]);
+  };
 
   /* ---- The switch: backup, real balances, review ---- */
   const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; };

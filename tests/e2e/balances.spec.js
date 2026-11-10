@@ -98,14 +98,24 @@ test('only a transaction moves a balance: add, edit, delete; earlier ones are hi
   expect(said.pop()).toMatch(/below zero/);
   expect(await page.evaluate(() => data.budgetTransactions.some(t => t.id === 'tx_sneak'))).toBe(false);
 
-  // Typing a balance by hand (Update balance): a visible correction does it, either way.
-  const typed = Math.round((b0 + 15 + 50) * 100) / 100;
-  await page.evaluate(v => { data.accounts.find(a => a.id === 'acc_demo1').balance = v; save(); }, typed);
-  expect(await bal(page, 'acc_demo1')).toBe(typed);
-  await page.evaluate(v => { data.accounts.find(a => a.id === 'acc_demo1').balance = v; save(); }, typed - 80);
-  expect(await bal(page, 'acc_demo1')).toBeCloseTo(typed - 80, 2);
+  // Only Budget moves a balance: a number changed anywhere else is put back at the next save…
+  const now = await bal(page, 'acc_demo1');
+  await page.evaluate(() => { data.accounts.find(a => a.id === 'acc_demo1').balance = 1234.56; save(); });
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(now, 2);
+  // …and "Fix in Budget" fills in a correction in the Budget form: nothing moves until it's saved there.
+  await page.evaluate(() => { goPage('accounts'); ui.openAccountId = 'acc_demo1'; render(); });
+  await page.getByRole('button', { name: 'Fix in Budget' }).first().click();
+  await page.locator('#bf-real').fill(String(Math.round((now + 50) * 100) / 100));
+  await page.getByRole('button', { name: 'Continue in Budget' }).click();
+  expect(await page.evaluate(() => [ui.modal.type, ui.modal.payload.type, ui.modal.payload.from, ui.modal.payload.to, ui.modal.payload.amount])).toEqual(['tx', 'transfer', 'adj:correction', 'acc:acc_demo1', '50']);
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(now, 2);
+  await page.evaluate(() => saveTxForm());
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(now + 50, 2);
   const c = await page.evaluate(() => data.budgetTransactions.filter(t => t.correction).map(t => [t.type, t.comment, t.from, t.to, t.amount]));
-  expect(c).toEqual([['transfer', 'Balance correction', 'adj:correction', 'acc:acc_demo1', 50], ['transfer', 'Balance correction', 'acc:acc_demo1', 'adj:correction', 80]]);
+  expect(c).toEqual([['transfer', 'Balance correction', 'adj:correction', 'acc:acc_demo1', 50]]);
+  // The account form's balance can't be typed any more.
+  await page.evaluate(() => openAccountForm('acc_demo1'));
+  await expect(page.locator('#af-balance')).toBeDisabled();
   expect(errors).toEqual([]);
 });
 
@@ -210,5 +220,87 @@ test('two devices changed: Keep both keeps every transaction (the newer of one c
   await expect.poll(() => sent.length).toBeGreaterThan(0);
   expect(sent[sent.length - 1].budgetTransactions.some(t => t.id === 'tx_cloud')).toBe(true);
   expect(await page.evaluate(() => syncState.conflict)).toBe(null);
+  expect(errors).toEqual([]);
+});
+
+test('only Budget moves balances: other pages fill in the Budget form or the Add to Budget window', async ({ page }) => {
+  const errors = await openApp(page);
+  page.on('dialog', d => d.accept());
+  await switchOn(page);
+  const b1 = await bal(page, 'acc_demo1');
+  // An income split by the Income plan: its transfers wait in "Add to Budget".
+  const id = await addTx(page, { type: 'income', amount: '1000', comment: 'Demo Salary' });
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(b1 + 1000, 2);
+  const pk = await page.evaluate(() => data.accounts.find(a => a.id === 'acc_demo1').pockets[0].id);
+  const recs = await page.evaluate(([i, p]) => {
+    const t = data.budgetTransactions.find(x => x.id === i);
+    budgetConfirm([
+      { id: 'x1', date: '2026-10-18', type: 'transfer', currency: 'EUR', amount: 100, comment: 'Demo Save', from: 'acc:acc_demo1', to: `pk:acc_demo1:${p}`, splitOf: t.id },
+      { id: 'x2', date: '2026-10-18', type: 'transfer', currency: 'EUR', amount: 50, comment: 'Demo Save 2', from: 'acc:acc_demo1', to: `pk:acc_demo1:${p}`, splitOf: t.id },
+    ], ids => { window.__done = ids; });
+    return ui.modal.type;
+  }, [id, pk]);
+  expect(recs).toBe('budgetConfirm');
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(b1 + 1000, 2);
+  await page.getByRole('button', { name: 'Save 2 in Budget' }).click();
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(b1 + 850, 2);
+  expect(await page.evaluate(() => [window.__done.length, data.budgetTransactions.filter(t => t.comment === 'Demo Save').map(t => t.splitOf).length])).toEqual([2, 1]);
+  // Cancel: nothing moves.
+  await page.evaluate(() => { budgetConfirm([{ date: '2026-10-18', type: 'transfer', currency: 'EUR', amount: 5, comment: 'Demo Cancelled', from: 'acc:acc_demo1', to: 'acc:acc_demo2' }, { date: '2026-10-18', type: 'transfer', currency: 'EUR', amount: 6, comment: 'Demo Cancelled 2', from: 'acc:acc_demo1', to: 'acc:acc_demo2' }]); closeModal(); });
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(b1 + 850, 2);
+  // Record the deposit (a broker page): the Budget form opens filled in.
+  await page.evaluate(() => { data.budgetTransactions.length; budgetConfirm([{ date: '2026-10-18', type: 'transfer', currency: 'EUR', amount: 25, comment: 'Deposit to Demo Broker', from: 'acc:acc_demo1', to: 'acc:acc_demo2' }]); });
+  expect(await page.evaluate(() => [ui.modal.type, ui.modal.payload.amount, ui.modal.payload.comment, !!ui.modal.payload.id])).toEqual(['tx', '25', 'Deposit to Demo Broker', false]);
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(b1 + 850, 2);
+  await page.evaluate(() => saveTxForm());
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(b1 + 825, 2);
+  expect(errors).toEqual([]);
+});
+
+test('the real buttons: close a pocket, count the cash, record a deposit, apply a trade — each waits in Budget', async ({ page }) => {
+  const errors = await openApp(page);
+  page.on('dialog', d => d.accept());
+  await switchOn(page);
+  const pocket = () => page.evaluate(() => data.accounts.find(a => a.id === 'acc_demo1').pockets[0]);
+
+  // Close a pocket, its money back to the main balance: the transfer opens in the Budget form.
+  const b1 = await bal(page, 'acc_demo1');
+  await page.evaluate(() => { openPocketClose('acc_demo1', 'pk_demo1'); closePocket(); });
+  expect(await page.evaluate(() => [ui.modal.type, ui.modal.payload.type, ui.modal.payload.from, ui.modal.payload.to, ui.modal.payload.amount])).toEqual(['tx', 'transfer', 'pk:acc_demo1:pk_demo1', 'acc:acc_demo1', '420']);
+  expect((await pocket()).closed).toBeUndefined();
+  await page.evaluate(() => saveTxForm());
+  const p = await pocket();
+  expect([p.amountSaved, !!p.closed, !!p.closed.txId]).toEqual([0, true, true]);
+  expect(await bal(page, 'acc_demo1')).toBeCloseTo(b1 + 420, 2);
+
+  // The cash wallet: set up (a new place starts at what you counted), then a count fills in a correction.
+  await page.evaluate(() => { openWalletModal('setup'); ui.modal.payload.amount = '40'; render(); saveWalletModal(); });
+  const wid = await page.evaluate(() => data.accounts.find(a => a.kind === 'cash').id);
+  expect(await bal(page, wid)).toBe(40);
+  await page.evaluate(() => { openWalletModal('count'); ui.modal.payload.amount = '35'; render(); saveWalletModal(); });
+  expect(await page.evaluate(() => [ui.modal.type, ui.modal.payload.from, ui.modal.payload.amount])).toEqual(['tx', `acc:${wid}`, '5']);
+  expect(await bal(page, wid)).toBe(40);
+  await page.evaluate(() => saveTxForm());
+  expect(await bal(page, wid)).toBe(35);
+
+  // Record the deposit on a broker page: the Budget form, filled in.
+  const cash0 = await page.evaluate(() => brokerCash(brokerById('brk_demo1')));
+  await page.evaluate(() => { openInvestAccount('broker:brk_demo1'); openDepositForm(); });
+  await page.locator('#dp-amount').fill('30');
+  await page.getByRole('button', { name: 'Record the deposit' }).click();
+  expect(await page.evaluate(() => [ui.modal.type, ui.modal.payload.to, ui.modal.payload.amount])).toEqual(['tx', 'brk:brk_demo1', '30']);
+  expect(await page.evaluate(() => brokerCash(brokerById('brk_demo1')))).toBeCloseTo(cash0, 2);
+  await page.evaluate(() => saveTxForm());
+  expect(await page.evaluate(() => brokerCash(brokerById('brk_demo1')))).toBeCloseTo(cash0 + 30, 2);
+
+  // Apply a buy to holdings: the cash never moves by itself; "and record the cash" fills in Budget.
+  await page.evaluate(() => { Object.assign(data.investmentTransactions.find(t => t.id === 'it_1'), { assetKey: 'a:as_world', quantity: 1, unitPrice: 101.5, amount: 101.5 }); save(); openApplyTrade('it_1'); });
+  await expect(page.getByRole('button', { name: 'Apply and record the cash in Budget' })).toBeVisible();
+  await page.getByRole('button', { name: 'Apply and record the cash in Budget' }).click();
+  expect(await page.evaluate(() => data.investmentTransactions.find(t => t.id === 'it_1').applied)).toBe(true);
+  expect(await page.evaluate(() => [ui.modal.type, ui.modal.payload.from, ui.modal.payload.to, ui.modal.payload.amount, ui.modal.payload.comment])).toEqual(['tx', 'brk:brk_demo1', 'adj:correction', '101.5', 'Buy WRLD']);
+  expect(await page.evaluate(() => brokerCash(brokerById('brk_demo1')))).toBeCloseTo(cash0 + 30, 2);
+  await page.evaluate(() => saveTxForm());
+  expect(await page.evaluate(() => brokerCash(brokerById('brk_demo1')))).toBeCloseTo(cash0 + 30 - 101.5, 2);
   expect(errors).toEqual([]);
 });

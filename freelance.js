@@ -270,11 +270,16 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!(amt > 0)) { alert('Enter the amount you received.'); return; }
     const t = { id: uid('tx'), date: p.date || todayYmd(), type: 'income', categoryId: 'inc_freelance', subCategoryId: null, nature: 'Variable', paymentMethodId: null,
       accountId: p.accountId || null, currency: 'EUR', amount: r2v(amt), comment: i.client, location: '', description: i.number ? `Invoice ${i.number}` : '', logo: (typeof txLogoForName === 'function' && txLogoForName(i.client)) || '', impact: '', invoiceId: i.id };
+    const finish = (ids, saved) => {
+      const tx = saved || t;
+      Object.assign(i, { status: 'paid', paidDate: tx.date, paidTxId: tx.id });
+      save(); closeModal();
+      if (typeof incomePlanOffer === 'function') incomePlanOffer(tx);
+    };
+    if (typeof budgetConfirm === 'function' && budgetConfirm([t], finish)) return; // only Budget moves balances: the form opens filled in
     data.budgetTransactions.push(t);
     applyTxToAccountBalance(t, 1);
-    Object.assign(i, { status: 'paid', paidDate: t.date, paidTxId: t.id });
-    save(); closeModal();
-    if (typeof incomePlanOffer === 'function') incomePlanOffer(t);
+    finish([t.id], t);
   };
 
   /* ---- VAT paid ---- */
@@ -310,24 +315,27 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!(amt > 0)) { alert('Enter the amount paid.'); return; }
     const src = parseTransferRef(p.from) || {};
     const accId = src.accountId; if (!accId || !accountById(accId)) { alert('Pick where it was paid from.'); return; }
-    const txIds = [];
+    const recs = [];
     if (src.kind === 'pk') {
       const ep = transferEndpoint(p.from);
       if (ep && ep.get() + 0.005 < amt) { alert(`${ep.label} only holds ${fmtMoney(ep.get(), ep.ccy)}.`); return; }
-      const tr = { id: uid('tx'), date: p.date, type: 'transfer', categoryId: null, subCategoryId: null, nature: 'Variable', paymentMethodId: null, accountId: null, currency: 'EUR', amount: amt,
-        comment: `VAT ${p.key.replace('-', ' ')}`, location: '', description: '', logo: '', impact: '', from: p.from, to: 'acc:' + accId, fromLabel: ep.label, toLabel: accountById(accId).name };
-      data.budgetTransactions.push(tr); applyTxToAccountBalance(tr, 1); txIds.push(tr.id);
+      recs.push({ id: uid('tx'), date: p.date, type: 'transfer', categoryId: null, subCategoryId: null, nature: 'Variable', paymentMethodId: null, accountId: null, currency: 'EUR', amount: amt,
+        comment: `VAT ${p.key.replace('-', ' ')}`, location: '', description: '', logo: '', impact: '', from: p.from, to: 'acc:' + accId, fromLabel: ep.label, toLabel: accountById(accId).name });
     }
-    const ex = { id: uid('tx'), date: p.date, type: 'expense', categoryId: 'exp_fees', subCategoryId: vatSubcategory(), nature: 'Variable', paymentMethodId: null, accountId: accId, currency: 'EUR', amount: amt,
-      comment: `VAT ${p.key.replace('-', ' ')}`, location: '', description: 'VAT return', logo: '', impact: '', reviewed: true };
-    data.budgetTransactions.push(ex); applyTxToAccountBalance(ex, 1); txIds.push(ex.id);
-    vatSettings().paid[p.key] = { date: p.date, amount: amt, txIds };
-    save(); closeModal();
+    recs.push({ id: uid('tx'), date: p.date, type: 'expense', categoryId: 'exp_fees', subCategoryId: vatSubcategory(), nature: 'Variable', paymentMethodId: null, accountId: accId, currency: 'EUR', amount: amt,
+      comment: `VAT ${p.key.replace('-', ' ')}`, location: '', description: 'VAT return', logo: '', impact: '', reviewed: true });
+    const key = p.key, date = p.date;
+    const finish = txIds => { vatSettings().paid[key] = { date, amount: amt, txIds }; save(); closeModal(); };
+    if (typeof budgetConfirm === 'function' && budgetConfirm(recs, finish, { title: 'VAT paid' })) return; // only Budget moves balances
+    recs.forEach(r => { data.budgetTransactions.push(r); applyTxToAccountBalance(r, 1); });
+    finish(recs.map(r => r.id));
   };
   /* Undoes "Mark as paid": the payment it recorded goes too. */
   window.unmarkVatPaid = function (key) {
     const rec = vatSettings().paid[key]; if (!rec) return;
-    (rec.txIds || []).forEach(id => { const t = data.budgetTransactions.find(x => x.id === id); if (t) { applyTxToAccountBalance(t, -1); data.budgetTransactions = data.budgetTransactions.filter(x => x !== t); } });
+    // Balances from transactions: only Budget moves balances, so the payment stays there (delete it in Budget if it didn't happen).
+    if (typeof balancesFromTx === 'function' && balancesFromTx()) { if ((rec.txIds || []).length) alert('The payment stays in Budget: delete it there if it didn\'t happen.'); }
+    else (rec.txIds || []).forEach(id => { const t = data.budgetTransactions.find(x => x.id === id); if (t) { applyTxToAccountBalance(t, -1); data.budgetTransactions = data.budgetTransactions.filter(x => x !== t); } });
     delete vatSettings().paid[key];
     save(); render();
   };

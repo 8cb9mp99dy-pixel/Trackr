@@ -67,13 +67,13 @@ test('a place with no start begins today at what it shows: nothing jumps when sw
   assert.deepEqual(r.anchors.find(a => a.ref === 'acc:acc_b'), { ref: 'acc:acc_b', opening: 85.4, date: '2026-11-10' });
 });
 
-test('a broker named like a bank account is that account; an applied trade moves cash', () => {
+test('a broker named like a bank account is that account; only Budget transactions move cash, never a trade', () => {
   const d = doc();
-  d.budgetTransactions.push({ id: 'dep', type: 'transfer', from: 'acc:acc_b', to: 'brk:brk_link', currency: 'EUR', amount: 20, date: '2026-11-06' });
-  d.investmentTransactions.push({ id: 'buy', applied: true, cashMove: { ref: 'brk:brk_x', amount: -120, date: '2026-11-07' } }, { id: 'rec', applied: false, cashMove: { ref: 'brk:brk_x', amount: -999, date: '2026-11-07' } },
-    { id: 'cx', applied: true, cashMove: { ref: 'cx:Demo Exchange', amount: 15, date: '2026-11-07' } });
+  d.budgetTransactions.push({ id: 'dep', type: 'transfer', from: 'acc:acc_b', to: 'brk:brk_link', currency: 'EUR', amount: 20, date: '2026-11-06' },
+    { id: 'cx', type: 'transfer', from: BAL_ADJ, to: 'cx:Demo Exchange', currency: 'EUR', amount: 15, date: '2026-11-07' });
+  d.investmentTransactions.push({ id: 'buy', applied: true, action: 'Buy', amount: 120, cashMove: { ref: 'brk:brk_x', amount: -120, date: '2026-11-07' } });
   const r = balCompute(d, ENV).values;
-  assert.deepEqual([r['acc:acc_a'], r['acc:acc_b'], r['brk:brk_x'], r['cx:demo exchange']], [1020, 30, 180, 55]);
+  assert.deepEqual([r['acc:acc_a'], r['acc:acc_b'], r['brk:brk_x'], r['cx:demo exchange']], [1020, 30, 300, 55]);
   assert.equal(r['brk:brk_link'], undefined);
 });
 

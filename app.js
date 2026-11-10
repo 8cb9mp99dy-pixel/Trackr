@@ -2873,13 +2873,14 @@ function accountExpandedHtml(acc) {
     <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--dark-border);">
       ${accountSinceCheckHtml(acc)}
       <div style="margin-bottom:16px;">
+        ${balancesFromTx() ? `<div class="row-flex" style="gap:10px;margin-bottom:6px;"><span style="font-size:12.5px;opacity:.75;flex:1;">Only Budget moves this balance. Bank shows something else?</span><button class="btn small" onclick="openBalanceFix('acc:${acc.id}')">Fix in Budget</button></div>` : `
         <label class="field"><span class="label-text">${hasPk ? (totalMode ? 'Correct the total (main balance + pockets), as your bank shows it' : 'Correct the main balance (outside pockets), as your bank shows it') : 'Correct the balance, as your bank shows it'}</span>
           <div style="display:flex;gap:8px;">
             <input type="number" step="0.01" id="quickbal-${acc.id}" placeholder="${totalMode ? accountTotal(acc) : acc.balance}" inputmode="decimal">
             <button class="btn primary" onclick="quickUpdateBalance('${acc.id}', ${totalMode})">Set</button>
           </div>
         </label>
-        ${hasPk ? `<button class="link-btn" style="font-size:12px;padding:4px 0;text-align:left;" onclick="ui.balanceInputTotal=${totalMode ? 'null' : `'${acc.id}'`};render()">${totalMode ? 'Type the main balance instead' : 'My bank shows the total with pockets — type that instead'}</button>` : ''}
+        ${hasPk ? `<button class="link-btn" style="font-size:12px;padding:4px 0;text-align:left;" onclick="ui.balanceInputTotal=${totalMode ? 'null' : `'${acc.id}'`};render()">${totalMode ? 'Type the main balance instead' : 'My bank shows the total with pockets — type that instead'}</button>` : ''}`}
         <div class="row-flex" style="margin-top:6px;gap:10px;flex-wrap:nowrap;"><span style="font-size:12.5px;opacity:.75;flex:1;">Main account: new incomes and expenses go here unless you pick another</span><div class="toggle ${data.settings.mainAccountId === acc.id ? 'on' : ''}" role="switch" aria-label="Main account" onclick="setMainAccount('${acc.id}')" style="flex:none;"></div></div>
       </div>
       <div class="row-flex" style="margin-bottom:10px;">
@@ -3056,7 +3057,7 @@ window.__modalRenderers.account = function (payload) {
       <label class="field"><span class="label-text">Icon</span><input id="af-icon" value="${escHtml(acc ? acc.icon : '🏦')}" maxlength="4"></label>
       <label class="field"><span class="label-text">Account name</span><input id="af-name" placeholder="Account name (e.g. Revolut, BNP...)" value="${escHtml(acc ? acc.name : '')}"></label>
       <div class="form-grid">
-        <label class="field"><span class="label-text">Current balance</span><input id="af-balance" type="number" step="0.01" value="${acc ? acc.balance : ''}"></label>
+        <label class="field"><span class="label-text">${acc && balancesFromTx() ? 'Balance (moved by Budget only)' : 'Current balance'}</span><input id="af-balance" type="number" step="0.01" value="${acc ? acc.balance : ''}" ${acc && balancesFromTx() ? 'disabled' : ''}>${acc && balancesFromTx() ? `<button type="button" class="link-btn" style="font-size:12px;padding:4px 0;text-align:left;" onclick="openBalanceFix('acc:${acc.id}')">Fix in Budget</button>` : ''}</label>
         <label class="field"><span class="label-text">Currency</span><select id="af-currency">${CURRENCIES.map(c => `<option ${acc && acc.currency === c ? 'selected' : (!acc && c === 'EUR' ? 'selected' : '')}>${c}</option>`).join('')}</select></label>
       </div>
       ${acc && linkedBrokerForAccount(acc) ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">This balance is also the cash at your <strong>${escHtml(linkedBrokerForAccount(acc).name)}</strong> broker (Investments) — they always stay the same.</div>` : ''}
@@ -3130,7 +3131,7 @@ function saveAccountForm(id) {
   if (id) {
     const acc = accountById(id);
     acc.balanceCheckedAt = new Date().toISOString(); // saving the form = you just looked at this balance
-    Object.assign(acc, { name, balance, icon, currency, description, color, visibleInTotals, countsAsInvestment });
+    Object.assign(acc, { name, icon, currency, description, color, visibleInTotals, countsAsInvestment }, balancesFromTx() ? {} : { balance });
     const mainEl = document.getElementById('af-main');
     if (mainEl) { if (mainEl.value.trim()) acc.mainName = mainEl.value.trim(); else delete acc.mainName; }
     if (logo) { acc.logo = logo; acc.logoKind = 'image'; } else { acc.logoKind = 'emoji'; }
@@ -3152,7 +3153,7 @@ window.__modalRenderers.pocket = function (payload) {
       <label class="field"><span class="label-text">Icon</span><input id="pf-icon" value="${escHtml(pk ? pk.icon : '🎯')}" maxlength="4"></label>
       <label class="field"><span class="label-text">Pocket name</span><input id="pf-name" value="${escHtml(pk ? pk.name : '')}"></label>
       <div class="form-grid">
-        <label class="field"><span class="label-text">Amount saved</span><input id="pf-saved" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0" value="${pk ? pk.amountSaved : ''}"></label>
+        <label class="field"><span class="label-text">Amount saved</span><input id="pf-saved" type="number" step="0.01" min="0" inputmode="decimal" placeholder="0" value="${pk ? pk.amountSaved : ''}" ${pk && balancesFromTx() ? 'disabled' : ''}>${pk && balancesFromTx() ? `<button type="button" class="link-btn" style="font-size:12px;padding:4px 0;text-align:left;" onclick="openBalanceFix('pk:${payload.accId}:${pk.id}')">Moved by Budget only · Fix in Budget</button>` : ''}</label>
         <label class="field"><span class="label-text">Target amount</span><input id="pf-target" type="number" step="0.01" value="${pk && pk.targetAmount ? pk.targetAmount : ''}"></label>
       </div>
       <div>
@@ -3183,7 +3184,7 @@ function savePocketForm(accId, pkId) {
   const int = typeof readPocketInterestForm === 'function' ? readPocketInterestForm(acc, old && old.interest) : { interest: old ? old.interest : undefined };
   if (int.error) { alert(int.error); return; }
   if (old) {
-    Object.assign(old, { name, amountSaved, targetAmount, icon, color });
+    Object.assign(old, { name, targetAmount, icon, color }, balancesFromTx() ? {} : { amountSaved });
     if (int.interest) old.interest = int.interest; else delete old.interest;
   } else {
     acc.pockets.push(Object.assign({ id: uid('pk'), icon, name, amountSaved, targetAmount, color, createdAt: new Date().toISOString() }, int.interest ? { interest: int.interest } : {}));
@@ -4573,6 +4574,7 @@ function parseTransferRef(ref) {
   if (kind === 'pk') { const j = rest.indexOf(':'); return j < 0 ? null : { kind, accountId: rest.slice(0, j), pocketId: rest.slice(j + 1) }; }
   if (kind === 'brk') return { kind, brokerId: rest };
   if (kind === 'cx') return { kind, exchange: rest };
+  if (kind === 'adj') return { kind }; // a "Balance correction": money from / to outside what Trackr tracks
   return null;
 }
 /* Resolves a ref to the live thing it points at, or null if it no longer exists (deleted on the
@@ -4581,6 +4583,7 @@ function parseTransferRef(ref) {
 function transferEndpoint(ref) {
   const ep = parseTransferRef(ref);
   if (!ep) return null;
+  if (ep.kind === 'adj') return { label: 'Balance correction', ccy: data.settings.defaultCurrency || 'EUR', floor: false, get: () => Infinity, add: () => {} };
   if (ep.kind === 'acc') {
     const a = accountById(ep.accountId);
     return a ? { label: a.name, ccy: a.currency, floor: false, get: () => a.balance, add: d => { a.balance = round2(a.balance + d); balInterim('acc:' + a.id, d); } } : null;
@@ -4621,6 +4624,8 @@ function transferEndpointOptions() {
     { label: 'Pockets', items: data.accounts.flatMap(a => (a.pockets || []).filter(p => shown(a, p)).map(p => ({ ref: `pk:${a.id}:${p.id}`, label: `${p.icon || '🎯'} ${a.name} › ${p.name}` }))) },
     { label: 'Stock brokers (cash)', items: data.brokers.map(b => ({ ref: 'brk:' + b.id, label: `${b.name}` })) },
     { label: 'Crypto exchanges (cash)', items: cryptoBrokerNames().map(n => ({ ref: 'cx:' + n, label: `${n}` })) },
+    // Balances from transactions: a correction is made here, in Budget, like any transfer.
+    { label: 'Correction', items: balancesFromTx() || [pl.from, pl.to].includes('adj:correction') ? [{ ref: 'adj:correction', label: 'Balance correction' }] : [] },
   ];
   return groups.filter(g => g.items.length);
 }
@@ -5216,6 +5221,7 @@ function saveTxForm() {
   if (!isTransfer && p.pocketId) record.pocketId = p.pocketId;
   // Links and marks the form doesn't show are kept when you edit (an income's split, its invoice…).
   ['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil', 'warrantyNoted', 'tripId'].forEach(k => { if (p[k] != null && p[k] !== '') record[k] = p[k]; });
+  if (p._extra) Object.assign(record, p._extra); // filled in by another page (budgetConfirm, balances.js)
   if (p.type === 'expense' && p.business) { record.business = true; if (p.vatRate != null && p.vatRate !== '') record.vatRate = +p.vatRate; }
   // Edited by hand: its category is yours now (off the "To review" list).
   if (p.id) { const was = data.budgetTransactions.find(t => t.id === p.id); if (was && (was.reviewed || isToReview(was))) record.reviewed = true; }
@@ -5256,6 +5262,7 @@ function saveTxForm() {
   attachToRecurringSeries(record, { setDay: !!prior && prior.nature === 'Fixed', every: p.every, days: p.every === 'twice' ? txRepeatSeries(p).days : undefined });
   runRecurring();
   save(); closeModal();
+  if (typeof p._then === 'function') { if (data.budgetTransactions.some(t => t.id === record.id)) p._then([record.id], record); return; } // the page that filled it in finishes its part (unless the save was refused)
   if (window.__quietBatch) return;
   if (typeof fxSuccess === 'function') fxSuccess(p.type === 'transfer' ? 'Transfer saved' : 'Transaction saved');
   // A new salary / freelance income: offer to split it (Budget → Income plan).
@@ -5964,7 +5971,7 @@ window.__modalRenderers.cryptoExchangeCash = function (payload) {
     <div class="modal-head"><div class="modal-title">${existing ? 'Edit' : 'Add'} exchange cash</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
     <div class="form-grid" style="margin-bottom:16px;">
       <label class="field span-2"><span class="label-text">Exchange</span><input id="cec-exchange" list="crypto-broker-list" value="${escHtml(payload.exchange || '')}" placeholder="e.g. Binance"></label>
-      <label class="field"><span class="label-text">Amount</span><input id="cec-amount" type="number" step="0.01" value="${existing ? existing.amount : ''}"></label>
+      <label class="field"><span class="label-text">Amount</span><input id="cec-amount" type="number" step="0.01" value="${existing ? existing.amount : ''}" ${existing && balancesFromTx() ? 'disabled' : ''}>${existing && balancesFromTx() ? `<button type="button" class="link-btn" style="font-size:12px;padding:4px 0;text-align:left;" onclick="openBalanceFix('cx:${escHtml(existing.exchange).replace(/'/g, "\\'")}')">Moved by Budget only · Fix in Budget</button>` : ''}</label>
       <label class="field"><span class="label-text">Currency</span><select id="cec-currency">
         <option value="EUR" ${!existing || existing.currency === 'EUR' ? 'selected' : ''}>EUR</option>
         <option value="USD" ${existing && existing.currency === 'USD' ? 'selected' : ''}>USD</option>
@@ -5990,7 +5997,7 @@ function saveCryptoExchangeCashForm(previousName) {
   const interestRate = rateRaw === '' ? null : parseFloat(rateRaw);
   let entry = previousName ? cryptoExchangeCashFor(previousName) : null;
   if (entry) {
-    Object.assign(entry, { exchange, amount, currency, interestBearing, interestRate });
+    Object.assign(entry, { exchange, currency, interestBearing, interestRate }, balancesFromTx() ? {} : { amount });
   } else {
     data.cryptoExchangeCash.push({ id: uid('cec'), exchange, amount, currency, interestBearing, interestRate });
   }
@@ -6341,7 +6348,7 @@ window.__modalRenderers.broker = function (payload) {
       </label>
       ${b && b.logo ? `<div style="display:flex;align-items:center;gap:8px;">${logoImg(b.logo, 32)}<span style="font-size:12px;opacity:.6;">Current logo</span></div>` : ''}
       <div class="form-grid">
-        <label class="field"><span class="label-text">Cash held here</span><input id="bf-cash" type="number" step="0.01" value="${b ? brokerCash(b) : ''}" placeholder="0"></label>
+        <label class="field"><span class="label-text">Cash held here</span><input id="bf-cash" type="number" step="0.01" value="${b ? brokerCash(b) : ''}" placeholder="0" ${b && balancesFromTx() ? 'disabled' : ''}>${b && balancesFromTx() ? `<button type="button" class="link-btn" style="font-size:12px;padding:4px 0;text-align:left;" onclick="openBalanceFix('brk:${b.id}')">Moved by Budget only · Fix in Budget</button>` : ''}</label>
         <label class="field"><span class="label-text">Currency</span><select id="bf-cash-currency" ${linkedAcc ? 'disabled' : ''}>${CURRENCIES.map(c => `<option ${(b ? brokerCashCurrency(b) : 'EUR') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       </div>
       ${linkedAcc ? `<div style="font-size:12px;opacity:.65;margin-top:-4px;">Same cash as your <strong>${escHtml(linkedAcc.name)}</strong> bank account — changing it here changes the account's balance too.</div>` : `<div style="font-size:12px;opacity:.65;margin-top:-4px;">Tip: give it the same name as one of your bank accounts and both will always share one cash balance.</div>`}
@@ -6382,7 +6389,8 @@ function saveBrokerForm(id) {
   else { b = { id: uid('brk'), ...fields, cashBalance: 0, logo: fields.logo || builtinLogoFor(name) }; data.brokers.push(b); }
   // Linked to a bank account (same name): an empty or untouched cash field never overwrites the
   // account's balance — only a cash amount you actually typed here changes it.
-  if (!linkedAccountForBroker(b)) b.cashBalance = cashBalance;
+  if (balancesFromTx() && cashBefore != null) { /* only Budget moves it (Fix in Budget) */ }
+  else if (!linkedAccountForBroker(b)) b.cashBalance = cashBalance;
   else if (cashRaw !== '' && cashBalance !== cashBefore) setBrokerCash(b, cashBalance);
   save(); closeModal();
 }

@@ -214,20 +214,24 @@ if (typeof window !== 'undefined') {
     const lines = p.lines.filter(l => l.on && l.amount > 0 && l.to !== 'stay' && l.to !== 'acc:' + src.id);
     if (lines.some(l => !l.to || !transferEndpoint(l.to))) { alert('Choose where each part goes.'); return; }
     const date = t.date > todayYmd() ? t.date : todayYmd();
-    const ids = [];
+    const ids = [], recs = [];
+    // Pockets you chose to close once their goal is reached: the closing window opens for the first.
+    const close = lines.find(l => l.close && findPocket(l.to));
+    const finish = done => {
+      t.split = { at: new Date().toISOString(), transfers: done };
+      save(); closeModal();
+      if (close && typeof openPocketClose === 'function') { const ep = parseTransferRef(close.to); openPocketClose(ep.accountId, ep.pocketId); }
+    };
     lines.forEach(l => {
       const rec = { id: uid('tx'), date, type: 'transfer', categoryId: null, subCategoryId: null, nature: 'Variable', paymentMethodId: null, accountId: null,
         currency: t.currency, amount: Math.round(l.amount * 100) / 100, comment: `${l.label} · ${t.comment || 'income'}`, location: '', description: `Income plan (${l.pct}%)`, logo: '', impact: '',
         from: 'acc:' + src.id, to: l.to, fromLabel: src.name, toLabel: transferEndpoint(l.to).label, splitOf: t.id };
-      data.budgetTransactions.push(rec);
-      applyTxToAccountBalance(rec, 1);
-      ids.push(rec.id);
+      recs.push(rec);
     });
-    t.split = { at: new Date().toISOString(), transfers: ids };
-    // Pockets you chose to close once their goal is reached: the closing window opens for the first.
-    const close = lines.find(l => l.close && findPocket(l.to));
-    save(); closeModal();
-    if (close && typeof openPocketClose === 'function') { const ep = parseTransferRef(close.to); openPocketClose(ep.accountId, ep.pocketId); }
+    // Only Budget moves balances: the transfers wait in "Add to Budget" until you save them there.
+    if (typeof budgetConfirm === 'function' && budgetConfirm(recs, finish, { title: 'Split this income' })) return;
+    recs.forEach(rec => { data.budgetTransactions.push(rec); applyTxToAccountBalance(rec, 1); ids.push(rec.id); });
+    finish(ids);
   };
   window.skipIncomeSplit = function (txId) {
     const t = data.budgetTransactions.find(x => x.id === txId);

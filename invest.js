@@ -444,6 +444,7 @@ function confirmDeposit() {
     paymentMethodId: null, accountId: null, currency: 'EUR', amount: round2(amount), comment: `Deposit to ${acc.name}`, location: '', description: '', logo: '', impact: '',
     from, to, fromLabel: transferEndpoint(from).label, toLabel: transferEndpoint(to).label,
   };
+  if (typeof budgetConfirm === 'function' && budgetConfirm([record])) return; // only Budget moves balances: the form opens filled in
   data.budgetTransactions.push(record);
   applyTxToAccountBalance(record, 1);
   save(); closeModal();
@@ -675,8 +676,14 @@ function tradeEffects(rec) {
   if (rec.action === 'Buy') leg(rec.assetKey, 'buy', qty, px, amt, fee);
   else if (rec.action === 'Sell') realised = leg(rec.assetKey, 'sell', qty, px, amt) - fee;
   else if (rec.action === 'Convert') { realised = leg(rec.assetKey, 'sell', qty, px, amt) - fee; leg(rec.toKey, 'buy', +rec.toQuantity || 0, +rec.toUnitPrice || 0, amt); }
-  // Cash: a buy takes it, a sale adds it; a convert doesn't touch it.
-  if (rec.action !== 'Convert') {
+  // Cash: a buy takes it, a sale adds it; a convert doesn't touch it. Balances from transactions:
+  // only Budget moves cash, so the move is only noted (E.cash) for "Apply and record the cash in Budget".
+  let cashNote = null;
+  if (rec.action !== 'Convert' && typeof balancesFromTx === 'function' && balancesFromTx()) {
+    const sign = rec.action === 'Buy' ? -1 : 1, move = rec.action === 'Buy' ? amt + fee : amt - fee;
+    if (acc.kind === 'broker') { const b = brokerById(acc.id); cashNote = { ref: 'brk:' + b.id, ccy: brokerCashCurrency(b), delta: sign * convertCurrency(move, 'EUR', brokerCashCurrency(b)), label: `${b.name} cash` }; }
+    else { const ce = cryptoExchangeCashFor(acc.name), ccy = ce ? ce.currency : 'EUR'; cashNote = { ref: 'cx:' + acc.name, ccy, delta: sign * convertCurrency(move, 'EUR', ccy), label: `${acc.name} cash` }; }
+  } else if (rec.action !== 'Convert') {
     const sign = rec.action === 'Buy' ? -1 : 1, move = rec.action === 'Buy' ? amt + fee : amt - fee;
     if (acc.kind === 'broker') {
       const b = brokerById(acc.id), ccy = brokerCashCurrency(b), c0 = brokerCash(b), c1 = c0 + sign * convertCurrency(move, 'EUR', ccy);
@@ -688,7 +695,7 @@ function tradeEffects(rec) {
       ops.push({ type: 'xcash', label: `${acc.name} cash`, exchange: acc.name, ccy, c0, c1 });
     }
   }
-  return { ops, problems, realised: rec.action === 'Buy' ? null : realised };
+  return { ops, problems, realised: rec.action === 'Buy' ? null : realised, cash: cashNote };
 }
 function openApplyTrade(id) { ui.modal = { type: 'applyTrade', payload: { id } }; render(); }
 window.__modalRenderers.applyTrade = function (p) {
@@ -705,10 +712,12 @@ window.__modalRenderers.applyTrade = function (p) {
     ${E.problems.length ? `<div class="info-box" style="margin-top:10px;color:var(--negative);">${E.problems.map(escHtml).join('<br>')}</div>` : ''}
     <div class="modal-actions">
       <button class="btn ghost" onclick="closeModal()">Only record it</button>
-      <button class="btn primary" ${E.ops.length && !E.problems.length ? '' : 'disabled'} onclick="applyTradeToHoldings('${rec.id}')">Apply</button>
-    </div>`;
+      <button class="btn ${E.cash ? '' : 'primary'}" ${E.ops.length && !E.problems.length ? '' : 'disabled'} onclick="applyTradeToHoldings('${rec.id}')">Apply${E.cash ? ' (holdings only)' : ''}</button>
+      ${E.cash ? `<button class="btn primary" ${E.ops.length && !E.problems.length ? '' : 'disabled'} onclick="applyTradeToHoldings('${rec.id}', true)">Apply and record the cash in Budget</button>` : ''}
+    </div>
+    ${E.cash ? `<div style="font-size:11.5px;opacity:.6;margin-top:8px;">Only Budget moves cash: ${escHtml(E.cash.label)} ${E.cash.delta < 0 ? '−' : '+'}${fmtMoney(Math.abs(E.cash.delta), E.cash.ccy)} is filled in for you to save in Budget.</div>` : ''}`;
 };
-function applyTradeToHoldings(id) {
+function applyTradeToHoldings(id, recordCash) {
   const rec = (data.investmentTransactions || []).find(x => x.id === id);
   if (!rec || rec.applied) { closeModal(); return; }
   const E = tradeEffects(rec);
@@ -734,12 +743,6 @@ function applyTradeToHoldings(id) {
         if (keep <= 1e-9) data.cryptoLots = data.cryptoLots.filter(x => x !== l);
         else { l.quantity = +((+l.quantity) * keep).toFixed(10); l.amountPaid = +((+l.amountPaid) * keep).toFixed(2); }
       });
-    } else if ((o.type === 'cash' || o.type === 'xcash') && typeof balancesFromTx === 'function' && balancesFromTx()) {
-      // Balances from transactions: the trade itself moves the cash (rec.cashMove, balances.js).
-      const ref = o.type === 'cash' ? 'brk:' + o.brokerId : 'cx:' + o.exchange, d = Math.round((o.c1 - o.c0) * 100) / 100;
-      if (o.type === 'xcash' && !cryptoExchangeCashFor(o.exchange)) data.cryptoExchangeCash.push({ id: uid('cec'), exchange: o.exchange, amount: 0, currency: o.ccy, interestBearing: false, interestRate: null });
-      rec.cashMove = { ref, amount: d, date: todayYmd() };
-      balNudge(ref, d);
     } else if (o.type === 'cash') setBrokerCash(brokerById(o.brokerId), Math.round(o.c1 * 100) / 100);
     else if (o.type === 'xcash') {
       let c = cryptoExchangeCashFor(o.exchange);
@@ -750,4 +753,9 @@ function applyTradeToHoldings(id) {
   rec.applied = true;
   if (E.realised != null) rec.realisedGain = Math.round(E.realised * 100) / 100;
   save(); closeModal();
+  // The cash, as a Balance correction in the Budget form (it moves only when saved there).
+  if (recordCash && E.cash && typeof budgetConfirm === 'function') {
+    const c = balCorrection(E.cash.ref, E.cash.delta, todayYmd(), E.cash.ccy, E.cash.label, '');
+    budgetConfirm([Object.assign(c, { comment: `${rec.action} ${rec.ticker || ''}`.trim(), description: 'Cash of a trade' })]);
+  }
 }
