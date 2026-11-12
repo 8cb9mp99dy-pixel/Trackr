@@ -93,7 +93,7 @@ test('the projects\' instructions', () => {
 
 /* The Edge Function, run here: the same file, with Supabase's RPCs faked. */
 function loadFunction() {
-  const sandbox = { module: { exports: {} }, URL, Response, Request, JSON, console };
+  const sandbox = { module: { exports: {} }, URL, Response, Request, JSON, console, crypto: globalThis.crypto };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../supabase/functions/trackr-inbox/index.ts'), 'utf8'), sandbox);
   return sandbox.module.exports;
 }
@@ -124,7 +124,7 @@ test('connector: initialize, tools, and calls that go to the inbox with the key'
   const note = await call(fn, { jsonrpc: '2.0', method: 'notifications/initialized' }, {});
   assert.equal(note.status, 202);
   const list = await call(fn, { jsonrpc: '2.0', id: 2, method: 'tools/list' }, {});
-  assert.deepEqual(list.body.result.tools.map(t => t.name), ['get_trackr_context', 'add_budget_items', 'add_investment_items', 'list_inbox_items', 'update_inbox_item', 'delete_inbox_items']);
+  assert.deepEqual(list.body.result.tools.map(t => t.name), ['get_trackr_context', 'add_budget_items', 'add_investment_items', 'add_position_snapshots', 'list_inbox_items', 'update_inbox_item', 'delete_inbox_items']);
 
   const ctx = await call(fn, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_trackr_context', arguments: {} } }, { inbox_context: { channel: 'claude', today: '2026-10-18', context: { categories: {} } } });
   assert.deepEqual(ctx.calls.map(c => [c.name, c.args.inbox_key, c.headers.apikey]), [['inbox_context', KEY, 'test-anon-not-real']]);
@@ -135,6 +135,33 @@ test('connector: initialize, tools, and calls that go to the inbox with the key'
   assert.equal(add.body.result.structuredContent.added, 1);
   const budget = await call(fn, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'add_budget_items', arguments: { items: [{ type: 'expense' }] } } }, { inbox_add: { added: 1 } });
   assert.equal(budget.calls[0].args.channel, 'budget');
+
+  // Positions: one item per line, action 'snapshot', the broker and the day on each, one batch id.
+  const snap = await call(fn, { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'add_position_snapshots', arguments: { broker: 'Sample Broker', date: '2026-10-17', source: 'positions', positions: [{ ticker: 'WRLD', quantity: 26, avg_price: 93, currency: 'EUR' }, { ticker: 'DGLD', quantity: 3, avg_price: 101.3, currency: 'EUR', avg_price_alt: 110, alt_currency: 'USD' }] } } }, { inbox_add: a => ({ added: a.items.length }) });
+  const sent = snap.calls[0].args;
+  assert.deepEqual([snap.calls[0].name, sent.channel, sent.source, sent.items.length], ['inbox_add', 'invest', 'positions', 2]);
+  assert.ok(sent.items.every(x => x.action === 'snapshot' && x.broker === 'Sample Broker' && x.date === '2026-10-17' && x.batch_size === 2));
+  assert.match(sent.items[0].batch, /^[0-9a-f-]{36}$/);
+  assert.equal(sent.items[0].batch, sent.items[1].batch);
+  assert.deepEqual([sent.items[1].quantity, sent.items[1].avg_price, sent.items[1].avg_price_alt, sent.items[1].alt_currency], [3, 101.3, 110, 'USD']);
+  const nobroker = await call(fn, { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'add_position_snapshots', arguments: { date: '2026-10-17', positions: [{ ticker: 'X', quantity: 1, avg_price: 1 }] } } }, {});
+  assert.equal(nobroker.body.result.isError, true);
+  assert.equal(nobroker.calls.length, 0);
+});
+
+test('a position from a broker overview: matched to the asset at that broker, never a trade', () => {
+  const ctx = { today: '2026-10-18', currency: 'EUR', categories: { expense: [], income: [] }, accounts: [], paymentMethods: [],
+    investAccounts: [{ key: 'broker:b1', name: 'Sample Broker', ref: 'brk:b1', assets: [{ key: 'a:w', ticker: 'WRLD', name: 'World', isin: 'IE00B4L5Y983' }] }] };
+  const n = inboxNormalize({ action: 'snapshot', date: '2026-10-17', broker: 'Sample Broker', isin: 'IE00B4L5Y983', quantity: '26', avg_price: '93,5', currency: 'eur', avg_price_alt: 101, alt_currency: 'usd', batch: 'b' }, 'invest', ctx);
+  assert.equal(n.form, 'snapshot');
+  assert.equal(n.ok, true);
+  assert.deepEqual([n.draft.accountKey, n.draft.from, n.draft.qty, n.draft.avg, n.draft.ccy, n.draft.alt.ccy, n.draft.batch], ['broker:b1', 'a:w', 26, 93.5, 'EUR', 'USD', 'b']);
+  const unknown = inboxNormalize({ action: 'snapshot', date: '2026-10-17', broker: 'Sample Broker', ticker: 'NOPE', quantity: 1, avg_price: 1 }, 'invest', ctx);
+  assert.equal(unknown.ok, false);
+  assert.match(unknown.problems[0].text, /isn't in Trackr yet/);
+  const unread = inboxNormalize({ action: 'snapshot', date: '2026-10-17', broker: 'Sample Broker', ticker: 'WRLD', quantity: 'abc', avg_price: 1 }, 'invest', ctx);
+  assert.equal(unread.ok, false);
+  assert.equal(inboxInstructions('invest').includes('add_position_snapshots'), true);
 });
 
 test('connector: errors come back to Claude, nothing is sent without a key or items', async () => {

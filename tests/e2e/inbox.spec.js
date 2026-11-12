@@ -46,7 +46,9 @@ test('Claude inbox: make a key, review, add an expense and a buy, reject, paste'
   // The names Claude may read: categories and accounts, no amounts.
   await expect.poll(() => !!sb.context).toBe(true);
   expect(sb.context.categories.expense.length).toBeGreaterThan(0);
-  expect(JSON.stringify(sb.context)).not.toMatch(/"(balance|amount|quantity)"/);
+  expect(JSON.stringify(sb.context)).not.toMatch(/"(balance|amount|value|cash)"/);
+  // Holdings: quantity and average buy price only, nowhere else (the user's choice, 12 Nov 2026).
+  expect(JSON.stringify(Object.assign({}, sb.context, { investAccounts: [] }))).not.toMatch(/"(quantity|avg_price)"/);
   const first = sb.context.accounts.find(x => x.pockets);
   expect(first.pockets[0]).toEqual({ id: 'main', name: 'Main balance', default: true });
   expect(first.pockets.length).toBeGreaterThan(1);

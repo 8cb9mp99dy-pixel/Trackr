@@ -8,7 +8,7 @@ it there.
 
 ```
 Claude project ──▶ connector  …/functions/v1/trackr-inbox/<inbox key>   (MCP server, Edge Function)
-                     │ get_trackr_context · add_budget_items · add_investment_items
+                     │ get_trackr_context · add_budget_items · add_investment_items · add_position_snapshots
                      │ list_inbox_items · update_inbox_item · delete_inbox_items
                      ▼
                Supabase: inbox_context / inbox_add / inbox_find / inbox_update / inbox_withdraw
@@ -54,8 +54,8 @@ adding items keeps working.
 
 | Who | With | Can |
 |---|---|---|
-| Claude (the connector) | the inbox key at the end of its URL | add up to 50 items per call to the review queue (300 waiting at most); read back, correct or withdraw the items still waiting, amounts included (only what Claude itself sent); see the status, date and name of what was reviewed; read the names Trackr published: categories, accounts and pockets, payment methods, brokers and their assets. Never a balance, and nothing reviewed can be changed. |
-| Trackr | your sync secret (never sent to Claude) | make and replace the key (only its sha256 is stored), publish those names, list, add, reject. |
+| Claude (the connector) | the inbox key at the end of its URL | add up to 50 items per call to the review queue (300 waiting at most); read back, correct or withdraw the items still waiting, amounts included (only what Claude itself sent); see the status, date and name of what was reviewed; read the names Trackr published: categories, accounts and pockets, payment methods, brokers and their assets, and for each asset you hold at a broker its quantity and average buy price. Never a balance, a value or cash, and nothing reviewed can be changed. |
+| Trackr | your sync secret (never sent to Claude) | make and replace the key (only its sha256 is stored), publish those names and holdings, list, add, reject. |
 
 The function holds no secret of its own: it calls the same public functions with the project's
 anon key, and the database checks the inbox key. A leaked URL can read, change or withdraw what
@@ -78,7 +78,7 @@ The page reads like Budget: logos, one card per day, the amounts for the day. Ea
   deleted; **Put back** returns an item to review. Only items rejected from now on are listed here.
 
 Your rules and the names you've used before fill in the category, account and logo. The comparison
-happens in the app: Claude still sees names only, no amounts. Every action on many items has
+happens in the app: Claude sees names, plus the quantity and average buy price of your holdings, never a balance. Every action on many items has
 **Undo** for 10 seconds; undone items come back as items on this device.
 
 - **Edit** (or a tap on the row) opens the transaction form, filled in. **Save changes** keeps your
@@ -87,6 +87,35 @@ happens in the app: Claude still sees names only, no amounts. Every action on ma
   the item. An asset that isn't in Trackr yet must be added first. A dividend, deposit or
   withdrawal opens the transaction form.
 - Connector off or failing: Claude gives a JSON block. Paste it in **Add → Paste from Claude**.
+
+## Positions (what a broker shows you hold)
+
+A positions or portfolio overview (Trading 212, Trade Republic…) is not a list of trades: filed as
+buys it would count everything twice. *Trackr Investments* sends it with
+**add_position_snapshots**: one broker per call, the day it shows, and per line the quantity and
+the average buy price (and the average in a second currency when the broker shows two). Each line
+becomes one card in the inbox, compared with what Trackr holds there:
+
+| Trackr: X @ A → Broker: Y @ B | What the card offers |
+|---|---|
+| the same (quantity within 0.000001, average within 0.01) | **Already in Trackr**: *Done* closes it, nothing changes |
+| Y > X | **Record the buy**: a buy of Y − X at (Y·B − X·A) / (Y − X), dated on the screenshot, already applied (the holding becomes Y @ B). *Overwrite instead* is offered too |
+| Y > X, but that price is ≤ 0, over 3 × B or under B / 3 | **To check**: only *Overwrite* |
+| Y < X, or the same quantity with another average | **Overwrite**: the holding becomes Y @ B, recorded as an *Adjustment*. Never a sale, no gain or loss |
+| an asset Trackr doesn't have | **To check**: add it first |
+| two different lines for one holding | **To check**: reject the wrong one (two identical lines count once) |
+
+Above the cards, one line per screenshot lists what you hold at that broker that the screenshot
+doesn't show. Nothing is proposed for those. The average is compared in the holding's own currency:
+the broker's own figure in that currency when it shows one, otherwise converted at today's rate (the
+card says so and waits under To check). Cash is never touched. Each card is applied on its own, after
+a window that says exactly what changes. The record on the broker page → Transactions keeps what was
+there before: **Undo** puts it back, as long as the holding hasn't changed since. Coins kept as dated
+purchases get one more purchase for a buy; an overwrite turns their purchases at that place into one,
+dated on the screenshot.
+
+After this update: replace the function in Supabase (step 2 above) and paste the *Trackr
+Investments* instructions again. No SQL change.
 
 ## Pockets
 

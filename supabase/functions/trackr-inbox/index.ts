@@ -4,12 +4,13 @@
 // screenshots into the Trackr inbox, where Trackr asks you to review each item.
 // Its URL is your project URL + /functions/v1/trackr-inbox/ + your inbox key (Trackr makes it).
 // The key can add to the review queue, read back, correct or withdraw what still waits, and read
-// names (no balances). It can't touch anything already reviewed. It is checked by the database
+// names, plus the quantity and average buy price of what you hold at each broker (no balances,
+// values or cash). It can't touch anything already reviewed. It is checked by the database
 // (003_trackr_inbox.sql), never stored here. No other secret is needed.
 // Deploy: Supabase → Edge Functions → Deploy a new function → Via editor → name "trackr-inbox",
 // paste this file, Deploy. Then in its settings turn OFF "Verify JWT" (Claude has no Supabase login).
 
-const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.1.0' };
+const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.2.0' };
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, authorization' };
 
@@ -57,16 +58,31 @@ const INVEST_ITEM = {
   },
   required: ['action', 'date'],
 };
+const SNAP_POSITION = {
+  type: 'object',
+  properties: {
+    asset_key: str('The asset key from get_trackr_context (investAccounts[].assets[].key)'),
+    ticker: str('Ticker or coin symbol'),
+    isin: str('ISIN when shown'),
+    asset: str('Asset name'),
+    quantity: num('How many shares / coins I hold now'),
+    avg_price: num('My average buy price per share / coin, as the broker shows it'),
+    currency: str('Currency of avg_price, ISO code, e.g. EUR'),
+    avg_price_alt: num('A second average buy price when the broker shows one in another currency (e.g. the $ figure next to the € one)'),
+    alt_currency: str('Currency of avg_price_alt, e.g. USD'),
+  },
+  required: ['quantity', 'avg_price'],
+};
 const itemsInput = item => ({
   type: 'object',
   properties: { items: { type: 'array', minItems: 1, maxItems: 50, items: item }, source: str('What I sent, e.g. "Revolut screenshot"') },
   required: ['items'],
 });
-const ITEM_FIELDS = Object.assign({}, INVEST_ITEM.properties, BUDGET_ITEM.properties);
+const ITEM_FIELDS = Object.assign({}, SNAP_POSITION.properties, INVEST_ITEM.properties, BUDGET_ITEM.properties);
 const TOOLS = [
   {
     name: 'get_trackr_context', title: 'Trackr names',
-    description: 'My Trackr categories and sub-categories, accounts with their pockets (the one marked default is the main balance), payment methods, brokers and the assets at each (ids, names, tickers, ISINs), and today\'s date. Names only: no amounts. Call it once per conversation before adding items, and use its ids.',
+    description: 'My Trackr categories and sub-categories, accounts with their pockets (the one marked default is the main balance), payment methods, brokers and the assets at each (ids, names, tickers, ISINs; for what I hold there, the quantity and average buy price), and today\'s date. No balances, values or cash. Call it once per conversation before adding items, and use its ids.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
@@ -80,6 +96,22 @@ const TOOLS = [
     name: 'add_investment_items', title: 'Send trades to Trackr',
     description: 'Send executed buys, sells, dividends, deposits or withdrawals to my Trackr inbox (up to 50 at once). They wait there until I review them in Trackr: nothing changes before I approve it.',
     inputSchema: itemsInput(INVEST_ITEM),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: 'add_position_snapshots', title: 'Send my positions to Trackr',
+    description: 'Send what one broker shows I hold now (a portfolio / positions overview: quantity and average buy price per holding, up to 50), NOT trades. Trackr compares each one with what it holds and asks me, card by card: more than Trackr = a buy of the difference, less = the holding is corrected (never a sale). Nothing changes before I approve it. For executed orders use add_investment_items.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        broker_key: str('The broker key from get_trackr_context (investAccounts[].key)'),
+        broker: str('Broker name if no key fits'),
+        date: str('The day the overview shows, YYYY-MM-DD'),
+        positions: { type: 'array', minItems: 1, maxItems: 50, items: SNAP_POSITION },
+        source: str('What I sent, e.g. "Trading 212 portfolio screenshot"'),
+      },
+      required: ['date', 'positions'],
+    },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
@@ -144,6 +176,18 @@ async function callTool(name, args, key, env, fetchFn) {
     const source = args && typeof args.source === 'string' ? args.source.slice(0, 200) : null;
     return rpc(env, fetchFn, 'inbox_add', { inbox_key: key, items, source, channel: name === 'add_budget_items' ? 'budget' : 'invest' });
   }
+  if (name === 'add_position_snapshots') {
+    const a = args || {}, text = (v, n) => (typeof v === 'string' && v ? v.slice(0, n) : undefined);
+    const list = Array.isArray(a.positions) ? a.positions.filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [];
+    if (!list.length) throw new Error('positions must be a non-empty list of objects');
+    if (list.length > 50) throw new Error('at most 50 positions at once');
+    if (!text(a.broker_key, 120) && !text(a.broker, 80)) throw new Error('broker_key (or broker) is needed: one broker per call');
+    // One id for the whole overview: Trackr lists what you hold there that it doesn't show.
+    const batch = crypto.randomUUID();
+    const items = list.map(p => Object.assign({}, p, { action: 'snapshot', date: text(a.date, 10), broker_key: text(a.broker_key, 120), broker: text(a.broker, 80), batch, batch_size: list.length }));
+    const source = text(a.source, 200) || null;
+    return rpc(env, fetchFn, 'inbox_add', { inbox_key: key, items, source, channel: 'invest' });
+  }
   if (name === 'list_inbox_items') {
     const a = args || {}, text = v => (typeof v === 'string' && v ? v.slice(0, 200) : null);
     return { items: await rpc(env, fetchFn, 'inbox_find', { inbox_key: key, status: text(a.status) || 'new', date_from: text(a.date_from), date_to: text(a.date_to), source: text(a.source), max_items: typeof a.limit === 'number' ? a.limit : 100 }) };
@@ -176,7 +220,7 @@ async function handleMessage(msg, key, env, fetchFn) {
       protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER,
-      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids, then send what you read with add_budget_items or add_investment_items. Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
+      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids (and what I hold at each broker), then send what you read with add_budget_items or add_investment_items (executed trades), or add_position_snapshots (what a broker shows I hold now: quantity and average buy price). Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
     });
   }
   if (msg.method === 'ping') return reply({});

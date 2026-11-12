@@ -178,6 +178,12 @@
 }
 .ib-note { font-size: 12.5px; line-height: 1.5; color: var(--fx-dim); margin-bottom: 12px; }
 .ib-note b { color: var(--fx-ink); }
+/* Position snapshots (snapshots.js): Trackr → broker, and what would change. */
+.snap-cmp { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 13px; margin-top: 6px; }
+.snap-cmp > span:first-child { color: var(--fx-dim); }
+.snap-what { font-size: 12.5px; color: var(--fx-dim); margin-top: 4px; }
+.snap-batch div { margin-top: 4px; }
+.ib-snap .ib-btns { flex-wrap: wrap; }
 /* Apple Pay (applepay.js): the line under a payment, the cards table, the counts in the menu. */
 .ib-wallet { display: block; margin: 2px 0 0 50px; font-size: 12px; overflow-wrap: anywhere; }
 .ap-cards { display: flex; flex-direction: column; gap: 6px; }

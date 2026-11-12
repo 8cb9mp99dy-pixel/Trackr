@@ -277,12 +277,13 @@ const INBOX_FUNCTION_TEXT = String.raw`// @ts-nocheck
 // screenshots into the Trackr inbox, where Trackr asks you to review each item.
 // Its URL is your project URL + /functions/v1/trackr-inbox/ + your inbox key (Trackr makes it).
 // The key can add to the review queue, read back, correct or withdraw what still waits, and read
-// names (no balances). It can't touch anything already reviewed. It is checked by the database
+// names, plus the quantity and average buy price of what you hold at each broker (no balances,
+// values or cash). It can't touch anything already reviewed. It is checked by the database
 // (003_trackr_inbox.sql), never stored here. No other secret is needed.
 // Deploy: Supabase → Edge Functions → Deploy a new function → Via editor → name "trackr-inbox",
 // paste this file, Deploy. Then in its settings turn OFF "Verify JWT" (Claude has no Supabase login).
 
-const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.1.0' };
+const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.2.0' };
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, authorization' };
 
@@ -330,16 +331,31 @@ const INVEST_ITEM = {
   },
   required: ['action', 'date'],
 };
+const SNAP_POSITION = {
+  type: 'object',
+  properties: {
+    asset_key: str('The asset key from get_trackr_context (investAccounts[].assets[].key)'),
+    ticker: str('Ticker or coin symbol'),
+    isin: str('ISIN when shown'),
+    asset: str('Asset name'),
+    quantity: num('How many shares / coins I hold now'),
+    avg_price: num('My average buy price per share / coin, as the broker shows it'),
+    currency: str('Currency of avg_price, ISO code, e.g. EUR'),
+    avg_price_alt: num('A second average buy price when the broker shows one in another currency (e.g. the $ figure next to the € one)'),
+    alt_currency: str('Currency of avg_price_alt, e.g. USD'),
+  },
+  required: ['quantity', 'avg_price'],
+};
 const itemsInput = item => ({
   type: 'object',
   properties: { items: { type: 'array', minItems: 1, maxItems: 50, items: item }, source: str('What I sent, e.g. "Revolut screenshot"') },
   required: ['items'],
 });
-const ITEM_FIELDS = Object.assign({}, INVEST_ITEM.properties, BUDGET_ITEM.properties);
+const ITEM_FIELDS = Object.assign({}, SNAP_POSITION.properties, INVEST_ITEM.properties, BUDGET_ITEM.properties);
 const TOOLS = [
   {
     name: 'get_trackr_context', title: 'Trackr names',
-    description: 'My Trackr categories and sub-categories, accounts with their pockets (the one marked default is the main balance), payment methods, brokers and the assets at each (ids, names, tickers, ISINs), and today\'s date. Names only: no amounts. Call it once per conversation before adding items, and use its ids.',
+    description: 'My Trackr categories and sub-categories, accounts with their pockets (the one marked default is the main balance), payment methods, brokers and the assets at each (ids, names, tickers, ISINs; for what I hold there, the quantity and average buy price), and today\'s date. No balances, values or cash. Call it once per conversation before adding items, and use its ids.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
@@ -353,6 +369,22 @@ const TOOLS = [
     name: 'add_investment_items', title: 'Send trades to Trackr',
     description: 'Send executed buys, sells, dividends, deposits or withdrawals to my Trackr inbox (up to 50 at once). They wait there until I review them in Trackr: nothing changes before I approve it.',
     inputSchema: itemsInput(INVEST_ITEM),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: 'add_position_snapshots', title: 'Send my positions to Trackr',
+    description: 'Send what one broker shows I hold now (a portfolio / positions overview: quantity and average buy price per holding, up to 50), NOT trades. Trackr compares each one with what it holds and asks me, card by card: more than Trackr = a buy of the difference, less = the holding is corrected (never a sale). Nothing changes before I approve it. For executed orders use add_investment_items.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        broker_key: str('The broker key from get_trackr_context (investAccounts[].key)'),
+        broker: str('Broker name if no key fits'),
+        date: str('The day the overview shows, YYYY-MM-DD'),
+        positions: { type: 'array', minItems: 1, maxItems: 50, items: SNAP_POSITION },
+        source: str('What I sent, e.g. "Trading 212 portfolio screenshot"'),
+      },
+      required: ['date', 'positions'],
+    },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
@@ -417,6 +449,18 @@ async function callTool(name, args, key, env, fetchFn) {
     const source = args && typeof args.source === 'string' ? args.source.slice(0, 200) : null;
     return rpc(env, fetchFn, 'inbox_add', { inbox_key: key, items, source, channel: name === 'add_budget_items' ? 'budget' : 'invest' });
   }
+  if (name === 'add_position_snapshots') {
+    const a = args || {}, text = (v, n) => (typeof v === 'string' && v ? v.slice(0, n) : undefined);
+    const list = Array.isArray(a.positions) ? a.positions.filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [];
+    if (!list.length) throw new Error('positions must be a non-empty list of objects');
+    if (list.length > 50) throw new Error('at most 50 positions at once');
+    if (!text(a.broker_key, 120) && !text(a.broker, 80)) throw new Error('broker_key (or broker) is needed: one broker per call');
+    // One id for the whole overview: Trackr lists what you hold there that it doesn't show.
+    const batch = crypto.randomUUID();
+    const items = list.map(p => Object.assign({}, p, { action: 'snapshot', date: text(a.date, 10), broker_key: text(a.broker_key, 120), broker: text(a.broker, 80), batch, batch_size: list.length }));
+    const source = text(a.source, 200) || null;
+    return rpc(env, fetchFn, 'inbox_add', { inbox_key: key, items, source, channel: 'invest' });
+  }
   if (name === 'list_inbox_items') {
     const a = args || {}, text = v => (typeof v === 'string' && v ? v.slice(0, 200) : null);
     return { items: await rpc(env, fetchFn, 'inbox_find', { inbox_key: key, status: text(a.status) || 'new', date_from: text(a.date_from), date_to: text(a.date_to), source: text(a.source), max_items: typeof a.limit === 'number' ? a.limit : 100 }) };
@@ -449,7 +493,7 @@ async function handleMessage(msg, key, env, fetchFn) {
       protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER,
-      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids, then send what you read with add_budget_items or add_investment_items. Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
+      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids (and what I hold at each broker), then send what you read with add_budget_items or add_investment_items (executed trades), or add_position_snapshots (what a broker shows I hold now: quantity and average buy price). Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
     });
   }
   if (msg.method === 'ping') return reply({});
@@ -494,7 +538,7 @@ if (typeof module !== 'undefined') module.exports = { handle, TOOLS };
 `;
 
 const INBOX_BUDGET_KINDS = ['expense', 'income', 'transfer'];
-const INBOX_INVEST_KINDS = ['buy', 'sell', 'dividend', 'deposit', 'withdrawal'];
+const INBOX_INVEST_KINDS = ['buy', 'sell', 'dividend', 'deposit', 'withdrawal', 'snapshot'];
 
 /* One item from Claude → what Trackr would add, and what to check first.
  * ctx: { today, currency, categories: { expense, income }, accounts: [{ id, name }], defaultAccountId,
@@ -548,6 +592,22 @@ function inboxNormalize(raw, channel, ctx) {
     const acc = accs.find(a => brokerId && a.key === brokerId) || accs.find(a => brokerName && low(a.name) === low(brokerName))
       || accs.find(a => brokerName && low(a.name).includes(low(brokerName))) || (accs.length === 1 ? accs[0] : null);
     if (!acc) warn(brokerName ? `No broker called "${brokerName}" in Trackr.` : 'Which broker?', true);
+    /* A position from a broker's overview (add_position_snapshots): compared with the holding by snapshots.js. */
+    function snapshotItem() {
+      const assets = acc ? acc.assets || [] : [];
+      const key = str(it.asset_key, 120), tick = low(it.ticker || it.symbol), isin = low(it.isin), nm = low(it.asset || it.asset_name || '');
+      const asset = assets.find(a => key && a.key === key) || assets.find(a => isin && low(a.isin) === isin) || assets.find(a => tick && low(a.ticker) === tick)
+        || assets.find(a => nm && low(a.name).includes(nm));
+      const label = str(it.ticker || it.symbol || it.asset || it.isin, 60);
+      if (acc && !asset) warn(`${label || 'This asset'} isn't in Trackr yet: add it first, then review this again.`, true);
+      const qty = num(it.quantity), avg = num(it.avg_price != null ? it.avg_price : it.price), alt = num(it.avg_price_alt);
+      if (!(qty >= 0) || !(avg >= 0)) warn('The quantity or the average buy price can\'t be read.', true);
+      const altCcy = /^[A-Za-z]{3}$/.test(str(it.alt_currency, 3)) ? str(it.alt_currency, 3).toUpperCase() : '';
+      return result('snapshot', 'snapshot', { date, broker: acc ? acc.name : brokerName, accountKey: acc ? acc.key : '', from: asset ? asset.key : '',
+        assetLabel: asset ? asset.name : label, ticker: asset ? asset.ticker : label, qty: qty >= 0 ? qty : NaN, avg: avg >= 0 ? avg : NaN, ccy: currency,
+        alt: alt > 0 && altCcy ? { avg: alt, ccy: altCcy } : null, batch: str(it.batch, 80) || `${brokerName || (acc && acc.name) || ''}|${date}`, note });
+    }
+    if (kind === 'snapshot') return snapshotItem();
     const toEur = (v, c) => (c === 'EUR' || !ctx.toEUR ? v : ctx.toEUR(v, c));
     let qty = num(it.quantity), price = num(it.price), amount = num(it.amount != null ? it.amount : it.total), fee = num(it.fee);
     if (!(fee > 0)) fee = 0;
@@ -746,15 +806,19 @@ function inboxParsePasted(text) {
 function inboxInstructions(channel) {
   const invest = channel === 'invest';
   return (invest ? [
-    'You are Trackr Investments. You file my investment activity into my Trackr app with the Trackr connector: I send screenshots or notes from my broker apps (trades, order confirmations, dividends, deposits).',
+    'You are Trackr Investments. You file my investment activity into my Trackr app with the Trackr connector: I send screenshots or notes from my broker apps (trades, order confirmations, dividends, deposits) and overviews of what I hold (Trading 212, Trade Republic…).',
     '',
     'Every time:',
-    '1. Call get_trackr_context once per conversation to get my brokers (investAccounts: key, name), the assets at each one (key, ticker, name, isin), my bank accounts and today\'s date. Use those keys.',
-    '2. Read every executed trade or cash movement: action (buy, sell, dividend, deposit, withdrawal), date (YYYY-MM-DD), broker_key, asset_key (match by ISIN first, then ticker, then name), quantity, price per unit, total amount, fee, currency.',
-    '3. Only executed orders count: skip pending, cancelled or rejected orders, price alerts and portfolio totals. Never invent a number; if one is unreadable, leave it out.',
-    '4. If an asset is not in the context, still send it with ticker / isin / asset name: Trackr will ask me to add the position first.',
-    '5. Send everything with ONE add_investment_items call (up to 50 items), with source saying what I sent (e.g. "Trading 212 screenshot").',
-    '6. Then reply with a short table (date, action, asset, quantity, total) and say it waits in Trackr → Action required for my review. Nothing changes in Trackr until I approve it there.',
+    '1. Call get_trackr_context once per conversation to get my brokers (investAccounts: key, name), the assets at each one (key, ticker, name, isin; for what I hold there also quantity, avg_price and currency), my bank accounts and today\'s date. Use those keys.',
+    '2. First decide what I sent:',
+    '   - Executed trades or cash movements (an order confirmation, a transaction history, a dividend, a deposit) → add_investment_items.',
+    '   - An overview of what I hold now (positions or portfolio: each holding with how many I own and my average buy price, often with its value and gain) → add_position_snapshots, NEVER add_investment_items: a position is not a trade. Trackr compares it with what it holds and asks me, card by card.',
+    '   - Not sure which → ask me before sending anything.',
+    '3. Trades: action (buy, sell, dividend, deposit, withdrawal), date (YYYY-MM-DD), broker_key, asset_key (match by ISIN first, then ticker, then name), quantity, price per unit, total amount, fee, currency. Only executed orders count: skip pending, cancelled or rejected orders and price alerts.',
+    '4. Positions: ONE add_position_snapshots call per broker, with broker_key, date (the day the overview shows; today if none) and every line of the overview: asset_key (ISIN first, then ticker, then name), quantity, avg_price (the AVERAGE BUY price per share or coin, never the current price, the value or the gain) and its currency. If the broker shows the average in two currencies (e.g. €40.00 and $46.50), send the second as avg_price_alt with alt_currency. Leave out values, gains and cash.',
+    '5. Never invent a number; if one is unreadable, leave it out. If an asset is not in the context, still send it with ticker / isin / asset name: Trackr will ask me to add it first.',
+    '6. Send trades with ONE add_investment_items call (up to 50 items) and source saying what I sent (e.g. "Trading 212 screenshot").',
+    '7. Then reply with a short table (trades: date, action, asset, quantity, total; positions: asset, quantity, average buy price) and say it waits in Trackr → Inbox for my review. Nothing changes in Trackr until I approve it there.',
   ] : [
     'You are Trackr Budget. You file my spending into my Trackr app with the Trackr connector: I send receipts, screenshots of my bank or card apps, photos, or plain text ("12,40 bakery yesterday").',
     '',
@@ -768,7 +832,7 @@ function inboxInstructions(channel) {
   ]).concat([
     '',
     'If I correct something you filed: while it still waits, find it with list_inbox_items and fix it with update_inbox_item or delete_inbox_items. Once I have reviewed it you cannot change it: tell me what to change in Trackr.',
-    `If the Trackr connector is off or fails, give me the items as one JSON code block {"trackr": "${invest ? 'invest' : 'budget'}", "items": [...]} with the same fields, so I can paste it in Trackr (Add → Paste from Claude).`,
+    `If the Trackr connector is off or fails, give me the items as one JSON code block {"trackr": "${invest ? 'invest' : 'budget'}", "items": [...]} with the same fields${invest ? ' (a position: action "snapshot", broker_key, date, and its fields)' : ''}, so I can paste it in Trackr (Add → Paste from Claude).`,
     'Reply in the language I write in. Keep answers short.',
   ]).join('\n');
 }
@@ -798,7 +862,7 @@ if (typeof module !== 'undefined' && module.exports) {
       toEUR: (v, c) => toEUR(v, c),
     };
   }
-  /* What Claude may read: names and ids, never an amount. */
+  /* What Claude may read: names and ids, never an amount (holdings: quantity and average buy price). */
   function publicContext() {
     const c = ctxForNormalize();
     const cats = list => (list || []).map(x => ({ id: x.id, name: x.name, subcategories: (x.subcategories || []).map(s => ({ id: s.id, name: s.name })) }));
@@ -810,7 +874,12 @@ if (typeof module !== 'undefined' && module.exports) {
         const pockets = (a.pockets || []).filter(p => !p.finishedAt || +p.amountSaved > 0).map(p => ({ id: p.id, name: p.name }));
         return Object.assign({ id: a.id, name: a.name, currency: a.currency || 'EUR' }, pockets.length || a.mainName ? { pockets: [{ id: 'main', name: mainBalanceName(a), default: true }].concat(pockets) } : {});
       }),
-      paymentMethods: c.paymentMethods, investAccounts: c.investAccounts.map(a => ({ key: a.key, name: a.name, assets: a.assets })),
+      // What you hold at each broker: quantity and average buy price only (your choice, 12 Nov 2026), so
+      // Claude can tell a new buy from a position it already knows. No value, no cash.
+      paymentMethods: c.paymentMethods, investAccounts: c.investAccounts.map(a => {
+        const acc = investAccountByKey(a.key);
+        return { key: a.key, name: a.name, assets: a.assets.map(x => { const h = acc && typeof snapContextHolding === 'function' ? snapContextHolding(acc, x.key) : null; return h ? Object.assign({}, x, h) : x; }) };
+      }),
     };
   }
   async function sha256Hex(s) {
@@ -942,6 +1011,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const rows = openItems().map(x => ({ x, n: normalized(x, ctx) }));
     const keyOf = ({ x, n }) => {
       const d = n.draft, batch = x.created_at;
+      if (n.form === 'snapshot') return { id: x.id, batch, type: 'snap:' + x.id, date: d.date, amount: 0, currency: 'EUR', name: '' };
       if (n.form === 'trade') { const total = +d.amount || (+d.qty * +d.price) || 0; return { id: x.id, batch, type: n.kind + ':' + d.from, date: d.date, amount: total, currency: 'EUR', name: d.from, tol: Math.max(0.01, total * 0.002) }; }
       return { id: x.id, batch, type: d.type, date: d.date, amount: +d.amount || 0, currency: d.currency, name: d.comment, from: d.from, to: d.to };
     };
@@ -961,6 +1031,7 @@ if (typeof module !== 'undefined' && module.exports) {
       r.fail = failed[id] || '';
       r.status = same ? 'same' : !r.n.ok || r.n.problems.length || m || first || r.fail || r.pair ? 'check' : 'new';
     });
+    rows.forEach(r => { if (r.n.form === 'snapshot' && typeof snapReview === 'function') Object.assign(r, snapReview(r, rows)); });
     return rows;
   }
   const signedEUR = n => { const d = n.draft, v = toEUR(+d.amount || 0, d.currency || 'EUR'); return n.form !== 'tx' ? 0 : d.type === 'income' ? v : d.type === 'expense' ? -v : 0; };
@@ -977,6 +1048,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   function itemLine(n) {
     const d = n.draft;
+    if (n.form === 'snapshot') return { title: `${d.assetLabel || '?'} · position`, amount: '', cls: '', meta: [d.broker, isFinite(d.qty) ? `${fmtQty(d.qty)} @ ${fmtMoney(+d.avg || 0, d.ccy)}` : ''].filter(Boolean).join(' · ') };
     if (n.form === 'trade') {
       return { title: `${n.kind === 'buy' ? 'Buy' : 'Sell'} ${d.assetLabel || '?'}`, amount: d.amount ? fmtMoney(+d.amount) : d.qty && d.price ? fmtMoney(+d.qty * +d.price) : '—', cls: '',
         meta: [d.qty ? `${d.qty} × ${d.price ? fmtMoney(+d.price) : '?'}` : '', d.broker, d.fee ? `fee ${fmtMoney(+d.fee)}` : ''].filter(Boolean).join(' · ') };
@@ -1007,6 +1079,7 @@ if (typeof module !== 'undefined' && module.exports) {
     return `<select class="ib-fix" aria-label="Category" onchange="inboxSetCategory('${id}',this.value)"><option value="">Pick a category…</option>${cats.map(c => `<option value="${escHtml(c.id)}">${escHtml(c.name)}</option>${(c.subcategories || []).map(s => `<option value="${escHtml(c.id)}|${escHtml(s.id)}">${escHtml(c.name)} · ${escHtml(s.name)}</option>`).join('')}`).join('')}</select>`;
   };
   function rowHtml(r) {
+    if (r.n.form === 'snapshot' && typeof snapRowHtml === 'function') return snapRowHtml(Object.assign({ picked: isPicked(r), avatar: avatarOf(r.n) }, r));
     const { x, n } = r, id = escHtml(x.id), l = itemLine(n), d = n.draft;
     const needsCat = n.form === 'tx' && d.type !== 'transfer' && !d.categoryId;
     const fixes = (n.unknownPockets || []).map((u, i) => `<button class="ib-act" onclick="inboxFixPocket('${id}',${i},'create')">${ic('plus', 14)} Create pocket ${escHtml(u.name)}</button>${u.mainNamed ? '' : `<button class="ib-act" onclick="inboxFixPocket('${id}',${i},'main')">It's the main balance</button>`}`);
@@ -1097,12 +1170,13 @@ if (typeof module !== 'undefined' && module.exports) {
       ${rows.length || gone.length ? `
       ${rows.length ? `<div class="card bt-summary">
         <div><div class="eyebrow">To add</div><b>${waiting.length}</b></div>
-        <div><div class="eyebrow">In</div><b class="positive">${fmtMoney(sum(1))}</b></div>
-        <div><div class="eyebrow">Out</div><b class="negative">${fmtMoney(sum(-1))}</b></div>
+        ${waiting.some(r => r.n.form !== 'snapshot') ? `<div><div class="eyebrow">In</div><b class="positive">${fmtMoney(sum(1))}</b></div>
+        <div><div class="eyebrow">Out</div><b class="negative">${fmtMoney(sum(-1))}</b></div>` : ''}
         <div><div class="eyebrow">Already in Trackr</div><b>${count('same')}</b></div>
       </div>` : ''}
       <div class="tab-row ib-tabs">${['new', 'check', 'same'].concat(gone.length ? ['rejected'] : []).map(t => `<button class="tab-btn ${tab === t ? 'active' : ''}" onclick="inboxTab('${t}')">${labels[t]} <span class="ib-n">${count(t)}</span></button>`).join('')}</div>
       ${names.length > 1 ? `<div class="ib-sources"><button class="ib-src ${ui.ibSource && names.includes(ui.ibSource) ? '' : 'on'}" onclick="inboxSource('')">All</button>${names.map(s => `<button class="ib-src ${ui.ibSource === s ? 'on' : ''}" onclick="inboxSource('${js(s)}')">${escHtml(s)} <span class="ib-n">${sources[s]}</span></button>`).join('')}</div>` : names.length ? `<div class="ib-from">${escHtml(names[0])}</div>` : ''}
+      ${tab !== 'rejected' && typeof snapBatchNotesHtml === 'function' ? snapBatchNotesHtml(rows) : ''}
       ${tab === 'same' ? '<div class="ib-note">These match transactions you already have, each one only once. Reject them, or add the one that really is new.</div>' : ''}
       ${tab === 'rejected' ? `<div class="ib-note">None of these went into Trackr. They stay here for 30 days, then they're deleted. Put one back to review it again.</div>${daysHtml(gone, rejectedRowHtml)}` : !rows.length ? nothing : `${daysHtml(shown)}
       <div class="ib-bar">
@@ -1190,6 +1264,10 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!isAddable(r)) return inboxOpen(id);
     addRows([r]);
   };
+  /* For snapshots.js: one row with its comparison, close one item, and its copy for Undo. */
+  window.inboxRow = id => reviewRows().find(q => q.x.id === id) || null;
+  window.inboxResolve = id => resolveItem(id, 'added');
+  window.inboxPutBackCopy = id => { const x = findItem(id); return x ? putBack([x]) : null; };
   window.inboxReject = function (id) { const r = reviewRows().find(q => q.x.id === id); if (r) rejectRows([r]); };
   window.inboxCancelPair = function (id) {
     const rows = reviewRows(), r = rows.find(q => q.x.id === id), o = r && rows.find(q => q.x.id === r.pair);
@@ -1216,6 +1294,7 @@ if (typeof module !== 'undefined' && module.exports) {
   window.inboxOpen = function (id) {
     const x = findItem(id); if (!x) return;
     const n = normalized(x, ctxForNormalize());
+    if (n.form === 'snapshot') return;
     if (n.form === 'trade') {
       if (!n.draft.accountKey) return;
       openInvestAccount(n.draft.accountKey);
