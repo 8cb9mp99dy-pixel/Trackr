@@ -1693,7 +1693,9 @@ async function fetchIsinQuotes(isins) {
   return out;
 }
 async function fetchAssetPrices(force, onlyIds) {
-  const toFetch = data.assets.filter(a => (!onlyIds || onlyIds.includes(a.id)) && (force || (a.manualPrice == null && assetPriceIsStale(a))));
+  // A price you typed (manual override, or the current price changed in the holding's window) is
+  // never replaced by the automatic refresh; ↻ (force) fetches it again.
+  const toFetch = data.assets.filter(a => (!onlyIds || onlyIds.includes(a.id)) && (force || (a.manualPrice == null && a.priceSource !== 'you' && assetPriceIsStale(a))));
   const apiKey = data.settings.twelveDataApiKey;
   const withIsin = toFetch.filter(a => /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(String(a.isin || '').toUpperCase()));
   if (!toFetch.length) return { ok: false, updated: [], failed: [], total: 0 };
@@ -5627,15 +5629,15 @@ window.__modalRenderers.position = function (payload) {
 
     <div class="card-nested" style="margin-bottom:16px;">
       <div class="row-flex" style="margin-bottom:0;">
-        <div class="eyebrow" style="margin-bottom:0;">Price <span class="badge" style="background:${a.manualPrice != null ? 'rgba(232,150,60,0.18)' : 'rgba(34,181,115,0.18)'};color:${a.manualPrice != null ? 'var(--manual-accent)' : 'var(--positive)'};margin-left:4px;">${a.manualPrice != null ? 'manual override' : 'auto'}</span></div>
+        <div class="eyebrow" style="margin-bottom:0;">Price <span class="badge" style="background:${a.manualPrice != null ? 'rgba(232,150,60,0.18)' : 'rgba(34,181,115,0.18)'};color:${a.manualPrice != null ? 'var(--manual-accent)' : 'var(--positive)'};margin-left:4px;">${a.manualPrice != null ? 'manual override' : a.priceSource === 'you' ? 'typed by you' : 'auto'}</span></div>
         <button type="button" class="icon-btn-round" style="width:28px;height:28px;background:none;border:none;" title="Fetch the live price again" onclick="refreshAssetPriceNow('${a.id}')">${ui.assetPriceFetching ? '…' : '↻'}</button>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px;">
-        <label class="field" style="max-width:150px;"><span class="label-text">Current price</span><input type="number" step="any" id="pf-current" value="${a.currentPrice != null ? a.currentPrice : ''}"></label>
-        <label class="field" style="max-width:150px;"><span class="label-text">Manual override</span><input type="number" step="any" id="pf-manual" placeholder="Leave blank to use current" value="${a.manualPrice != null ? a.manualPrice : ''}"></label>
+        <label class="field" style="max-width:150px;"><span class="label-text">Current price</span><input type="text" inputmode="decimal" autocomplete="off" id="pf-current" value="${escHtml(payload.cur != null ? payload.cur : a.currentPrice != null ? String(a.currentPrice) : '')}" oninput="ui.modal.payload.cur=this.value"></label>
+        <label class="field" style="max-width:150px;"><span class="label-text">Manual override</span><input type="text" inputmode="decimal" autocomplete="off" id="pf-manual" placeholder="Leave blank to use current" value="${escHtml(payload.manual != null ? payload.manual : a.manualPrice != null ? String(a.manualPrice) : '')}" oninput="ui.modal.payload.manual=this.value"></label>
         ${a.manualPrice != null ? `<button type="button" class="btn small" style="align-self:flex-end;" onclick="clearAssetPriceManual('${a.id}')">Use live instead</button>` : ''}
       </div>
-      <div style="font-size:11px;opacity:.5;margin-top:4px;">${a.priceUpdatedAt ? 'Updated ' + new Date(a.priceUpdatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '. ' : (ui.assetPriceFetchError ? '<span style="color:var(--negative);">Couldn\'t fetch a live price for this ticker — enter one manually below.</span> ' : 'Not fetched yet. ')}If a manual override is set, it's shown instead of the current price — use it when a looked-up price is wrong.</div>
+      <div style="font-size:11px;opacity:.5;margin-top:4px;">${a.priceSource === 'you' && a.priceUpdatedAt ? 'Typed by you ' + new Date(a.priceUpdatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + '. ' : a.priceUpdatedAt ? 'Updated ' + new Date(a.priceUpdatedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '. ' : (ui.assetPriceFetchError ? '<span style="color:var(--negative);">Couldn\'t fetch a live price for this ticker — enter one manually below.</span> ' : 'Not fetched yet. ')}If a manual override is set, it's shown instead of the current price — use it when a looked-up price is wrong.</div>
     </div>
 
     <div style="font-weight:700;margin-bottom:8px;">Holdings by broker</div>
@@ -5712,20 +5714,24 @@ function savePositionForm(id) {
   if (!asset) return;
   const ticker = document.getElementById('pf-ticker').value.trim().toUpperCase();
   if (!ticker) return;
+  // Typed with a comma or a dot ("120,50" = 120.50); a price you change here is yours, dated today.
+  const num = v => { const n = parseFloat(String(v == null ? '' : v).trim().replace(/\s/g, '').replace(',', '.')); return isNaN(n) ? null : n; };
   const manualRaw = document.getElementById('pf-manual').value;
+  const typedNow = num(document.getElementById('pf-current').value);
+  const priceChanged = typedNow != null && typedNow !== asset.currentPrice;
   Object.assign(asset, {
     ticker,
     name: document.getElementById('pf-name').value.trim() || ticker,
     assetType: document.getElementById('pf-assettype').value,
     priceCurrency: document.getElementById('pf-currency').value,
-    currentPrice: parseFloat(document.getElementById('pf-current').value),
-    manualPrice: manualRaw.trim() === '' ? null : parseFloat(manualRaw),
+    currentPrice: typedNow,
+    manualPrice: manualRaw.trim() === '' ? null : num(manualRaw),
     logo: document.getElementById('pf-logo').value.trim(),
     isin: document.getElementById('pf-isin').value.toUpperCase().replace(/[^A-Z0-9]/g, ''),
     group: document.getElementById('pf-group').value.trim(),
     return5y: document.getElementById('pf-return5y').value.trim().replace(',', '.'),
   });
-  if (isNaN(asset.currentPrice)) asset.currentPrice = null;
+  if (priceChanged) { asset.priceSource = 'you'; asset.priceUpdatedAt = new Date().toISOString(); }
   save(); closeModal();
 }
 /* Forces a live refresh of every Stock/ETF/other-asset price (Twelve Data) and every crypto
@@ -6123,7 +6129,7 @@ function cryptoPriceRowHtml(symbol) {
         </div>
       ` : `<div style="opacity:.65;font-size:13px;">No live price yet — enter it manually below.</div>`}
       ${(ui.cryptoPriceMissing || []).includes(symbol) ? `<div style="font-size:11px;color:var(--negative);margin-top:6px;">No live price found for ${escHtml(symbol)} (CoinGecko, Coinbase and exchange-api tried) — check the symbol, or enter the price manually below.</div>` : ''}
-      ${asset.priceSource && price != null ? `<div style="font-size:11px;opacity:.5;margin-top:4px;">Price from ${escHtml(asset.priceSource)}</div>` : ''}
+      ${asset.priceSource && price != null ? `<div style="font-size:11px;opacity:.5;margin-top:4px;">${asset.priceSource === 'you' ? 'Price typed by you' : `Price from ${escHtml(asset.priceSource)}`}</div>` : ''}
       ${manualOpen ? `
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
           <input type="number" step="any" id="manual-price-${symbol}" placeholder="Price" style="max-width:140px;" value="${isManual ? asset.manualPrice : ''}">

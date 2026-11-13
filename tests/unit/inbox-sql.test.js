@@ -74,7 +74,9 @@ test('what was reviewed reads as status, date and name: no amount comes back', a
   await rpc('inbox_resolve', { secret: SECRET, ids: [id], status: 'rejected' });
   const got = (await rpc('inbox_find', { inbox_key: KEY, status: 'rejected' })).find(x => x.id === id);
   assert.deepEqual(got, { id, status: 'rejected', channel: 'budget', date: '2026-09-09', name: 'Demo Reviewed' });
-  assert.ok(!JSON.stringify(await rpc('inbox_find', { inbox_key: KEY, status: 'all', date_to: '2026-09-09' })).includes('77'));
+  // The amount, not "77" anywhere: a random id can hold those two digits.
+  const all = JSON.stringify(await rpc('inbox_find', { inbox_key: KEY, status: 'all', date_to: '2026-09-09' }));
+  assert.ok(!/"amount"|:\s*77\b/.test(all), all);
 });
 
 test('delete_inbox_items: leaves the queue, stays on the server, and Trackr stops listing it', async () => {
