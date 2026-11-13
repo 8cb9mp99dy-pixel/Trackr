@@ -1,12 +1,13 @@
 /* ===================== Safe to spend · Can I afford it? =====================
  * Its own file, loaded after goals.js (uses emergencyState, avgMonthlyExpenses, goalState).
  *
- * Safe to spend (Overview): how much you can spend per day until your next pay, from your main
+ * Safe to spend: how much you can spend per day until your next pay, from your main
  * balances (pockets don't count: that money is put aside), minus the bills and the recurring
  * transfers still to come before payday, minus a buffer you choose. Payday is guessed from your
- * biggest recurring income, or set in the card.
+ * biggest recurring income, or set in its window (palette: "Payday and buffer"). No card on
+ * Overview any more (13 Nov 2026).
  *
- * Can I afford it? (Add menu, palette, the card): type a price and where it would come from.
+ * Can I afford it? (Add menu, palette): type a price and where it would come from.
  * Paid from your main balances: what is left per day until payday. Paid from savings: how many
  * months of spending your emergency savings still cover, and how much later your goals get.
  * Either way: how many days of your usual spending and how many days of your income it is.
@@ -82,36 +83,8 @@ if (typeof module !== 'undefined' && module.exports) {
   };
   const dayName = ymd => spendDate(ymd).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
-  /* ---- Overview card ---- */
-  window.__overviewCards.push(function () {
-    if (!(data.accounts || []).some(a => a.visibleInTotals)) return '';
-    const s = safeSpendNow();
-    const used = s.perDay > 0 ? Math.min(100, s.spentToday / s.perDay * 100) : s.spentToday > 0 ? 100 : 0;
-    const total = Math.max(1, s.available);
-    const seg = v => (Math.max(0, v) / total * 100).toFixed(1);
-    return `
-    <div class="card ss-card">
-      <div class="ss-top">
-        <div>
-          <div class="eyebrow">Safe to spend · until ${escHtml(dayName(s.payday))}</div>
-          <div class="ss-big ${s.free < 0 ? 'negative' : ''}">${fmtMoney(s.perDay)}<span> a day</span></div>
-          <div class="dim">${s.free < 0 ? `Your bills before payday are ${fmtMoney(-s.free)} more than your main balances.` : `${fmtMoney(s.perWeek)} this week · ${s.days} day${s.days === 1 ? '' : 's'} to payday`}</div>
-        </div>
-        <div class="ss-today" title="Spent today, out of today's amount">
-          <svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" class="ss-ring-bg"/>${used > 0 ? `<circle cx="22" cy="22" r="19" class="ss-ring ${used >= 100 ? 'over' : ''}" style="--p:${used.toFixed(1)}" transform="rotate(-90 22 22)" pathLength="100"/>` : ''}</svg>
-          <div><b>${fmtMoney(s.spentToday)}</b><span>today</span></div>
-        </div>
-      </div>
-      <div class="ss-bar" role="img" aria-label="Main balances split into bills to come, the buffer and what is free">
-        <i class="bills" style="width:${seg(s.billsTotal)}%"></i><i class="buffer" style="width:${seg(s.buffer)}%"></i><i class="free" style="width:${seg(s.free)}%"></i>
-      </div>
-      <div class="ss-legend"><span><i class="bills"></i>Bills to come ${fmtMoney(s.billsTotal)}</span>${s.buffer ? `<span><i class="buffer"></i>Buffer ${fmtMoney(s.buffer)}</span>` : ''}<span><i class="free"></i>Free ${fmtMoney(Math.max(0, s.free))}</span></div>
-      <div class="ss-actions">
-        <button class="btn small" onclick="openAfford()">Can I afford it?</button>
-        <button class="link-btn" onclick="openSafeSpendSetup()">${s.pd.guessed ? 'Payday guessed' : 'Payday'}: the ${s.pd.day}${s.pd.day === 31 ? ' (month end)' : ''} · buffer</button>
-      </div>
-    </div>`;
-  });
+  /* The Overview card was removed at the user's request (13 Nov 2026): don't bring it back. Its maths
+     stays for Can I afford it? (left per day until payday). */
 
   /* ---- Payday and buffer ---- */
   window.openSafeSpendSetup = function () { ui.modal = { type: 'safeSpendSetup', payload: {} }; render(); };
@@ -185,5 +158,5 @@ if (typeof module !== 'undefined' && module.exports) {
   };
 
   window.__addMenu.push({ label: 'Can I afford it?', sub: 'What a purchase changes', icon: 'compass', go: 'openAfford()' });
-  window.__palette.push(add => { add('Actions', 'Can I afford it?', 'What a purchase changes', () => openAfford(), 'compass'); add('Pages', 'Safe to spend: payday and buffer', '', () => openSafeSpendSetup(), 'wallet'); });
+  window.__palette.push(add => { add('Actions', 'Can I afford it?', 'What a purchase changes', () => openAfford(), 'compass'); add('Pages', 'Payday and buffer', 'For Can I afford it?', () => openSafeSpendSetup(), 'wallet'); });
 }

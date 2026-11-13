@@ -4,9 +4,9 @@
 const { test, expect } = require('@playwright/test');
 const { openApp, PAGES } = require('./helpers');
 
-const MAP = [['Budget', 'budget', 'Money'], ['Income plan', 'income', 'Money'], ['Freelance', 'freelance', 'Money'],
+const MAP = [['Budget', 'budget', 'Money'], ['Income plan', 'income', 'Money'],
   ['Net worth', 'wealth', 'Wealth'], ['Cash', 'accounts', 'Wealth'], ['Pockets', 'pockets', 'Wealth'], ['Investments', 'investments', 'Wealth'], ['Watchlist', 'watchlist', 'Wealth'], ['Debts', 'wealth', 'Wealth'],
-  ['Goals', 'goals', 'Plan'], ['Yearly bills', 'yearly', 'Plan'], ['Emergency', 'goals', 'Plan'], ['Insights', 'analysis', 'Plan']];
+  ['Goals', 'goals', 'Plan'], ['Emergency', 'goals', 'Plan'], ['Insights', 'analysis', 'Plan']];
 
 test('computer: a short side bar, only the group you are in is open', async ({ page }, info) => {
   test.skip(info.project.name === 'phone');
@@ -16,6 +16,7 @@ test('computer: a short side bar, only the group you are in is open', async ({ p
   await expect(side.locator('.nav-group .label')).toHaveText(['Money', 'Wealth', 'Plan']);
   await expect(side.locator('.nav-sub')).toHaveCount(0); // on Home, nothing is open
   await expect(side.getByRole('button', { name: 'Trading' })).toHaveCount(0);
+  await expect(side.getByRole('button', { name: 'Freelance' })).toHaveCount(0);
   await expect(page.locator('.section-tabs')).toBeHidden();
   for (const [label, id, group] of MAP) {
     await side.locator('.nav-group', { hasText: group }).click();
@@ -41,8 +42,8 @@ test('phone: 5 tabs, section tabs in view, every page in More', async ({ page },
   await expect(page.locator('.nav-bar > li:visible .label')).toHaveText(['Home', 'Money', 'Wealth', 'Plan', 'More']);
   await expect(page.locator('.nav-tree')).toBeHidden();
   await page.evaluate(() => goPage('budget'));
-  await page.locator('.section-tabs button', { hasText: 'Freelance' }).click();
-  expect(await page.evaluate(() => ui.page)).toBe('freelance');
+  await page.locator('.section-tabs button', { hasText: 'Income plan' }).click();
+  expect(await page.evaluate(() => ui.page)).toBe('income');
   await expect(page.locator('.nav-bar .nav-item.active .label')).toHaveText('Money');
   // The last section stays visible after the redraw.
   const inView = await page.locator('.section-tabs').evaluate(el => { const b = el.querySelector('.on').getBoundingClientRect(), r = el.getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1; });
@@ -63,7 +64,10 @@ test('phone: 5 tabs, section tabs in view, every page in More', async ({ page },
 
 test('page ids keep working and the Trading page is gone, data kept', async ({ page }) => {
   const errors = await openApp(page);
-  for (const p of [...PAGES, 'freelance', 'watchlist']) { await page.evaluate(x => goPage(x), p); expect(await page.evaluate(() => ui.page)).toBe(p); }
+  for (const p of [...PAGES, 'watchlist']) { await page.evaluate(x => goPage(x), p); expect(await page.evaluate(() => ui.page)).toBe(p); }
+  // Removed pages (13 Nov 2026) land on Home; their data stays.
+  for (const p of ['freelance', 'yearly']) { await page.evaluate(x => goPage(x), p); expect(await page.evaluate(() => ui.page)).toBe('dashboard'); }
+  expect(await page.evaluate(() => [Array.isArray(data.invoices), Array.isArray(data.yearlyBills), typeof renderFreelance])).toEqual([true, true, 'undefined']);
   expect(await page.evaluate(() => [typeof renderTrading, typeof openTradeForm, typeof openTradeImport, Array.isArray(data.trades)])).toEqual(['undefined', 'undefined', 'undefined', true]);
   expect(errors).toEqual([]);
 });
@@ -74,7 +78,8 @@ test('classic navigation: every page in the side bar, no section tabs', async ({
   await page.evaluate(() => { toggleSetting('classicNav'); goPage('budget'); });
   expect(await page.evaluate(() => newNavOn())).toBe(false);
   const labels = await page.locator('.nav-list .nav-item .label').allInnerTexts();
-  expect(labels).toEqual(expect.arrayContaining(['Overview', 'Budget', 'Income plan', 'Freelance', 'Investments', 'Accounts', 'Analysis']));
+  expect(labels).toEqual(expect.arrayContaining(['Overview', 'Budget', 'Income plan', 'Investments', 'Accounts', 'Analysis']));
+  expect(labels).not.toContain('Freelance');
   await expect(page.locator('.section-tabs')).toHaveCount(0);
   // The pages without their own entry are one button away.
   await page.evaluate(() => goPage('income'));

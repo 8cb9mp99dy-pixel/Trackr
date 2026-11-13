@@ -77,6 +77,24 @@ test('swipe through them: the one in front is flat, the others turned, and it st
   expect(errors).toEqual([]);
 });
 
+test('the arrows go from card to card, even when a redraw comes while it slides', async ({ page }, info) => {
+  test.skip(info.project.name === 'phone'); // a phone swipes: no arrows
+  const errors = await openApp(page);
+  await page.evaluate(() => { data.cards = ['Revolut', 'bunq', 'ING'].map((b, i) => ({ id: 'card_' + i, bank: b, network: 'visa', finish: ['black', 'silver', 'white'][i], link: '' })); ui.cardIndex = 0; goPage('budget'); render(); });
+  await page.getByRole('button', { name: 'Next card' }).click();
+  await page.evaluate(() => render()); // prices or sync redraw in the middle of the slide
+  await expect.poll(() => page.evaluate(() => ui.cardIndex)).toBe(1);
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => ui.cardIndex)).toBe(1);
+  await page.getByRole('button', { name: 'Next card' }).click();
+  await expect.poll(() => page.evaluate(() => ui.cardIndex)).toBe(2);
+  await page.getByRole('button', { name: 'Previous card' }).click();
+  await expect.poll(() => page.evaluate(() => ui.cardIndex)).toBe(1);
+  await page.waitForTimeout(800);
+  await expect.poll(() => page.evaluate(() => { const t = document.querySelector('.cw-track'), s = t.children[1]; return Math.abs(t.scrollLeft - (s.offsetLeft - (t.clientWidth - s.offsetWidth) / 2)) < 3; })).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('reduced motion: flat cards; the eye hides the amounts', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const errors = await openApp(page);

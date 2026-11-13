@@ -293,14 +293,5 @@ test('the real buttons: close a pocket, count the cash, record a deposit, apply 
   await page.evaluate(() => saveTxForm());
   expect(await page.evaluate(() => brokerCash(brokerById('brk_demo1')))).toBeCloseTo(cash0 + 30, 2);
 
-  // Apply a buy to holdings: the cash never moves by itself; "and record the cash" fills in Budget.
-  await page.evaluate(() => { Object.assign(data.investmentTransactions.find(t => t.id === 'it_1'), { assetKey: 'a:as_world', quantity: 1, unitPrice: 101.5, amount: 101.5 }); save(); openApplyTrade('it_1'); });
-  await expect(page.getByRole('button', { name: 'Apply and record the cash in Budget' })).toBeVisible();
-  await page.getByRole('button', { name: 'Apply and record the cash in Budget' }).click();
-  expect(await page.evaluate(() => data.investmentTransactions.find(t => t.id === 'it_1').applied)).toBe(true);
-  expect(await page.evaluate(() => [ui.modal.type, ui.modal.payload.from, ui.modal.payload.to, ui.modal.payload.amount, ui.modal.payload.comment])).toEqual(['tx', 'brk:brk_demo1', 'adj:correction', '101.5', 'Buy WRLD']);
-  expect(await page.evaluate(() => brokerCash(brokerById('brk_demo1')))).toBeCloseTo(cash0 + 30, 2);
-  await page.evaluate(() => saveTxForm());
-  expect(await page.evaluate(() => brokerCash(brokerById('brk_demo1')))).toBeCloseTo(cash0 + 30 - 101.5, 2);
   expect(errors).toEqual([]);
 });

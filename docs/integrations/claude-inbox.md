@@ -83,39 +83,43 @@ happens in the app: Claude sees names, plus the quantity and average buy price o
 
 - **Edit** (or a tap on the row) opens the transaction form, filled in. **Save changes** keeps your
   version in review to add later; **Save and add** adds it now.
-- Investments: a buy or sell opens the broker's trade panel filled in. Recording it there settles
-  the item. An asset that isn't in Trackr yet must be added first. A dividend, deposit or
+- Investments: a positions screenshot is one card of its own (below). Buys and sells are no longer
+  recorded (13 Nov 2026): one that still waits can only be rejected. A dividend, deposit or
   withdrawal opens the transaction form.
 - Connector off or failing: Claude gives a JSON block. Paste it in **Add → Paste from Claude**.
 
 ## Positions (what a broker shows you hold)
 
-A positions or portfolio overview (Trading 212, Trade Republic…) is not a list of trades: filed as
-buys it would count everything twice. *Trackr Investments* sends it with
-**add_position_snapshots**: one broker per call, the day it shows, and per line the quantity and
-the average buy price (and the average in a second currency when the broker shows two). Each line
-becomes one card in the inbox, compared with what Trackr holds there:
+A positions or portfolio overview (Trading 212, Trade Republic…) is an **update** of what you hold
+at that broker, never a list of trades. *Trackr Investments* sends it with
+**add_position_snapshots**: one broker per call with every line (all the screenshots of that broker
+together), the day it shows, and per line the quantity and the average buy price (and the average in
+a second currency when the broker shows two). A holding Trackr doesn't know comes with its ticker,
+ISIN, name and type.
 
-| Trackr: X @ A → Broker: Y @ B | What the card offers |
+In the inbox it is **one card per screenshot**, above the other items:
+
+| Line | On the card |
 |---|---|
-| the same (quantity within 0.000001, average within 0.01) | **Already in Trackr**: *Done* closes it, nothing changes |
-| Y > X | **Record the buy**: a buy of Y − X at (Y·B − X·A) / (Y − X), dated on the screenshot, already applied (the holding becomes Y @ B). *Overwrite instead* is offered too |
-| Y > X, but that price is ≤ 0, over 3 × B or under B / 3 | **To check**: only *Overwrite* |
-| Y < X, or the same quantity with another average | **Overwrite**: the holding becomes Y @ B, recorded as an *Adjustment*. Never a sale, no gain or loss |
-| an asset Trackr doesn't have | **To check**: add it first |
-| two different lines for one holding | **To check**: reject the wrong one (two identical lines count once) |
+| an asset you don't hold there yet | **New** (*New in Trackr* when the asset is made too) |
+| another quantity or average (Trackr X @ A → broker Y @ B) | **Changed** |
+| the same (quantity within 0.000001, average within 0.01 or total cost within a cent) | **Unchanged** (folded) |
+| held in Trackr, not in the screenshot | **In Trackr, not in this screenshot**: ticked, so removed. Untick what you still hold when the screenshot was cut off |
+| two different lines for one holding | **To check**: leave the wrong one out (✕); two identical lines count once |
 
-Above the cards, one line per screenshot lists what you hold at that broker that the screenshot
-doesn't show. Nothing is proposed for those. The average is compared in the holding's own currency:
-the broker's own figure in that currency when it shows one, otherwise converted at today's rate (the
-card says so and waits under To check). Cash is never touched. Each card is applied on its own, after
-a window that says exactly what changes. The record on the broker page → Transactions keeps what was
-there before: **Undo** puts it back, as long as the holding hasn't changed since. Coins kept as dated
-purchases get one more purchase for a buy; an overwrite turns their purchases at that place into one,
-dated on the screenshot.
+The ✕ on a line leaves it out: Trackr keeps that holding as it is. **Update positions** writes the
+whole card at once: quantity, average buy price and its currency (the broker's own figure, in the
+holding's currency when it shows two; never converted) and the date ("updated 17 Oct" on the broker
+page). Coins kept as dated purchases become one purchase at that place, dated on the screenshot. No
+buy or sale is recorded, there's no gain or loss, and cash is never touched. **Reject** turns the
+whole screenshot down.
 
-After this update: replace the function in Supabase (step 2 above) and paste the *Trackr
-Investments* instructions again. No SQL change.
+Every update is kept with its date: broker page → **History** (what was new, changed and removed,
+and what you held). The latest one has **Undo** while nothing has changed since; right after
+updating, the 10-second **Undo** does the same.
+
+After this update (connector 1.3.0): replace the function in Supabase (step 2 above) and paste the
+*Trackr Investments* instructions again. No SQL change.
 
 ## Pockets
 

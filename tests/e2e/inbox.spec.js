@@ -1,6 +1,6 @@
 /* Claude inbox: a key is made (only its hash goes to Supabase), what Claude sent waits on its page,
-   and nothing is in Trackr until it's added: an expense straight away, a buy through the broker's
-   trade panel, a pasted answer, a whole statement at once. Supabase is faked here, in memory: no
+   and nothing is in Trackr until it's added: an expense straight away, a buy only rejected (buys
+   and sells aren't recorded), a pasted answer, a whole statement at once. Supabase is faked here, in memory: no
    request leaves the machine. */
 const { test, expect } = require('@playwright/test');
 const { openApp } = require('./helpers');
@@ -65,8 +65,8 @@ test('Claude inbox: make a key, review, add an expense and a buy, reject, paste'
   await expect.poll(() => page.evaluate(() => (actionItems().attention.find(x => /in your inbox/.test(x.name)) || {}).name || '')).toBe('3 in your inbox to review');
   await page.evaluate(() => openInbox());
   expect(await page.evaluate(() => ui.page)).toBe('inbox');
-  await expect(page.locator('.ib-item')).toHaveCount(2); // New: the bakery and the buy
-  await expect(page.locator('.ib-tabs .tab-btn', { hasText: 'To check' })).toContainText('1');
+  await expect(page.locator('.ib-item')).toHaveCount(1); // New: the bakery
+  await expect(page.locator('.ib-tabs .tab-btn', { hasText: 'To check' })).toContainText('2'); // no category; a buy
   // Nothing is in Trackr yet.
   expect(await page.evaluate(() => data.budgetTransactions.some(t => t.comment === 'Demo Bakery'))).toBe(false);
 
@@ -87,16 +87,14 @@ test('Claude inbox: make a key, review, add an expense and a buy, reject, paste'
   await expect.poll(() => sb.items[1].status).toBe('rejected');
   await page.evaluate(() => { ui.ibTab = 'new'; render(); });
 
-  // The buy opens the broker's trade panel, filled in; recording it there settles the item.
-  const t0 = await page.evaluate(() => (data.investmentTransactions || []).length);
-  await page.locator('.ib-item', { hasText: 'Buy' }).getByRole('button', { name: 'Review the trade' }).click();
-  await expect(page.locator('#tr-confirm')).toBeEnabled();
-  expect(await page.evaluate(() => [ui.page, ui.trade.qty, ui.trade.price])).toEqual(['investAccount', '2', '104.2']);
-  await page.locator('#tr-confirm').click();
-  await expect.poll(() => page.evaluate(() => (data.investmentTransactions || []).length)).toBe(t0 + 1);
-  const trade = await page.evaluate(() => data.investmentTransactions[data.investmentTransactions.length - 1]);
-  expect([trade.action, trade.quantity, trade.date]).toEqual(['Buy', 2, '2026-10-16']);
-  await expect.poll(() => sb.items[2].status).toBe('added');
+  // Buys and sells aren't recorded any more: the buy can only be rejected.
+  await page.locator('.ib-tabs .tab-btn', { hasText: 'To check' }).click();
+  const buy = page.locator('.ib-item', { hasText: 'Buy' });
+  await expect(buy).toContainText('aren\'t recorded any more');
+  await expect(buy.getByRole('button', { name: /Add|Review the trade/ })).toHaveCount(0);
+  await buy.getByRole('button', { name: 'Reject' }).click();
+  await expect.poll(() => sb.items[2].status).toBe('rejected');
+  await page.evaluate(() => { ui.ibTab = 'new'; render(); });
 
   // No connector: paste Claude's JSON answer instead.
   await page.evaluate(() => { goPage('inbox'); openInboxPaste(); });

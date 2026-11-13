@@ -49,8 +49,6 @@ if (typeof module !== 'undefined' && module.exports) {
       toReview: typeof toReviewList === 'function' ? toReviewList().length : 0,
       recurringExpected: typeof recurringMonthState === 'function' ? activeRecurringSeries().map(x => recurringMonthState(x, ym)).filter(st => st && st.state === 'expected').length : 0,
       stalePrices: att.filter(x => /^(a|c|lp):/.test(x.key || '')).length,
-      overdueInvoices: typeof invoiceList === 'function' ? invoiceList().filter(i => typeof invoiceState === 'function' && invoiceState(i) === 'late').length : 0,
-      hasInvoices: typeof invoiceList === 'function' && invoiceList().length > 0,
     };
   }
   const STEP = {
@@ -58,7 +56,6 @@ if (typeof module !== 'undefined' && module.exports) {
     review: ['Every category checked', n => `${n} transaction${n === 1 ? '' : 's'} to review`, "closeModal();openToReview()"],
     recurring: ['Recurring payments confirmed', n => `${n} added by the app and not confirmed`, "closeModal();goPage('budget');setBudgetTab('recurring')"],
     prices: ['Prices and values up to date', n => `${n} typed by hand a while ago`, "closeModal();openActionRequired('attention')"],
-    invoices: ['No invoice overdue', n => `${n} invoice${n === 1 ? '' : 's'} past due`, "closeModal();goPage('freelance')"],
   };
   function monthNumbers(ym) {
     const d = ymDate(ym), prev = new Date(d.getFullYear(), d.getMonth() - 1, 1);

@@ -57,3 +57,22 @@ test('Put money in opens a transfer from the main balance; the Cash page moves o
   expect(await page.evaluate(() => [ui.page, ui.pocketsSel])).toEqual(['pockets', 'pk:acc_demo1:pk_demo1']);
   expect(errors).toEqual([]);
 });
+
+test('Change the amount of a pocket: a Balance correction filled in Budget (balances from transactions), or the pocket form', async ({ page }) => {
+  const errors = await setUp(page);
+  await page.evaluate(() => goPage('pockets'));
+  // Balances not from transactions yet: the pocket form, where the amount is typed.
+  await page.getByRole('button', { name: 'Change the amount in Trip fund' }).click();
+  expect(await page.evaluate(() => ui.modal && ui.modal.type)).toBe('pocket');
+  await page.evaluate(() => { closeModal(); data.settings.balanceModel = 'tx'; data.balanceRepair = { switchedAt: 'test', reviewedAt: 'test' }; balancesAfterLoad(); save(); render(); });
+  const before = await trip(page);
+  await page.getByRole('button', { name: 'Change the amount in Trip fund' }).click();
+  await page.locator('#bf-real').fill(String(before + 40));
+  await page.getByRole('button', { name: 'Continue in Budget' }).click();
+  const p = await page.evaluate(() => ui.modal.payload);
+  expect([p.type, p.to, +p.amount]).toEqual(['transfer', 'pk:acc_demo1:pk_demo1', 40]);
+  expect(await trip(page)).toBe(before); // nothing moves before it's saved in Budget
+  await page.evaluate(() => saveTxForm());
+  expect(await trip(page)).toBe(before + 40);
+  expect(errors).toEqual([]);
+});

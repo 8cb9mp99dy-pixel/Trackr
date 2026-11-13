@@ -1,54 +1,47 @@
 /* ===================== Position snapshots =====================
  * Its own file, loaded after inbox.js (uses its review page) and before safety.js.
  *
- * A broker's positions overview (Trading 212, Trade Republic…) says, for each holding, how many
- * you hold and your average buy price. Claude reads the screenshot and sends it with the
- * connector tool add_position_snapshots: one inbox item per position (action 'snapshot', the
- * same batch id for the whole screenshot). Nothing changes until you look at each card:
+ * Once a month you send Claude a screenshot of what a broker shows you hold (Trading 212, Trade
+ * Republic…). Claude sends it with the connector tool add_position_snapshots: one inbox item per
+ * line, the same batch id for the whole overview. A screenshot is an UPDATE of what you hold
+ * there, not trades (the user's choice, 13 Nov 2026):
  *
- *   Trackr: X @ A  →  Broker: Y @ B
- *   - the same (quantity within 1e-6, average within 0.01 or total cost within a cent): in sync;
- *   - Y > X: you bought (Y − X) at (Y·B − X·A) / (Y − X), recorded as a Buy dated on the
- *     snapshot. A price that makes no sense (≤ 0, over 3 × B or under B / 3) is flagged and only
- *     "Overwrite" is offered;
- *   - Y < X (or the same quantity, another average): the holding is set to Y @ B, recorded as an
- *     "Adjustment", never as a sale;
- *   - held in Trackr but not in the screenshot: only listed, nothing is proposed.
- * Compared in the holding's own currency: when the broker shows two averages (€ and $), the one in
- * the holding's currency is used; otherwise it's converted at today's rate and said so.
- * Card by card, never all at once. Cash is never touched (only Budget moves cash). Each change
- * keeps what was there before, so "Undo" on the record (broker page → Transactions) puts it back.
+ *   - one card per screenshot in Inbox: new positions, changed ones (Trackr X @ A → broker Y @ B),
+ *     unchanged ones, and what Trackr holds there that the screenshot doesn't show (to remove,
+ *     ticked; untick one if the screenshot was only cut off);
+ *   - "Update positions" replaces them all at once: quantity, average buy price, its currency and
+ *     the date ("updated 12 Nov"). A position not in Trackr yet is added (the asset is made too).
+ *     No buy or sell is ever recorded, no gain or loss, and cash is never touched;
+ *   - every update is kept with its date (data.positionSnapshots), shown on the broker page →
+ *     History; the latest one can be undone there while nothing has changed since.
+ * The average is kept in the currency the broker shows (the holding's own currency first when the
+ * broker shows two), never converted.
  *
- * snapCompare(), snapPickAvg(), snapDupes(), snapMissing() are pure (Node-tested).
+ * snapFigure(), snapDiff(), snapDupes(), snapBatchPlan() are pure (Node-tested).
  */
 const SNAP_QTY_TOL = 1e-6, SNAP_AVG_TOL = 0.01;
 
-/* have: { qty, avg } (qty 0 = not held), got: { qty, avg }, both in one currency.
- * → { status: 'same' } | { status: 'buy', qty, price, flagged } | { status: 'overwrite', reason } */
-function snapCompare(have, got) {
-  const X = +have.qty || 0, A = +have.avg || 0, Y = +got.qty, B = +got.avg;
-  if (!(Y >= 0) || !(B >= 0) || !isFinite(Y) || !isFinite(B)) return { status: 'bad' };
-  const sameQty = Math.abs(Y - X) <= SNAP_QTY_TOL;
-  // A cent of total cost is no difference either (coins kept as dated purchases store whole cents).
-  if (sameQty && (Y <= SNAP_QTY_TOL || Math.abs(B - A) <= SNAP_AVG_TOL || Math.abs(Y * B - X * A) <= 0.01)) return { status: 'same' };
-  if (sameQty) return { status: 'overwrite', reason: 'avg' };
-  if (Y < X) return { status: 'overwrite', reason: 'less' };
-  const qty = Y - X, price = (Y * B - X * A) / qty;
-  const flagged = !(price > 0) || price > 3 * B || price < B / 3;
-  return { status: 'buy', qty, price, flagged };
-}
-
-/* The average in the holding's currency: the broker's own figure when it shows one in that
- * currency, else converted (convert(amount, from, to)) and marked so. */
-function snapPickAvg(got, ccy, convert) {
+/* The broker's average in the holding's currency when it shows one, else its first figure. */
+function snapFigure(got, ccy) {
   const figs = [{ avg: +got.avg, ccy: got.ccy }].concat(got.alt && +got.alt.avg > 0 ? [{ avg: +got.alt.avg, ccy: got.alt.ccy }] : []);
-  const hit = figs.find(f => f.ccy === ccy);
-  if (hit) return { avg: hit.avg, ccy, converted: false };
-  return { avg: convert ? convert(figs[0].avg, figs[0].ccy, ccy) : figs[0].avg, ccy, converted: true, from: figs[0].ccy };
+  return Object.assign({}, figs.find(f => f.ccy && f.ccy === ccy) || figs[0]);
 }
 
-/* Lines of one batch about the same holding: identical → the later ones are 'same' (kept once);
- * different → all of them 'conflict'. lines: [{ id, key, qty, avg }] → { id: 'same' | 'conflict' } */
+/* have: { qty, avg, ccy } (qty 0 = not held), got: { qty, avg, ccy }.
+ * → 'same' | 'new' | 'update' | 'remove' (the broker shows 0) | 'bad' (unreadable) */
+function snapDiff(have, got) {
+  const X = +have.qty || 0, A = +have.avg || 0, Y = +got.qty, B = +got.avg;
+  if (!isFinite(Y) || !isFinite(B) || Y < 0 || B < 0) return 'bad';
+  const held = X > SNAP_QTY_TOL, shows = Y > SNAP_QTY_TOL;
+  if (!held) return shows ? 'new' : 'same';
+  if (!shows) return 'remove';
+  if (have.ccy && got.ccy && have.ccy !== got.ccy) return 'update';
+  // A cent of total cost is no difference (coins kept as dated purchases store whole cents).
+  return Math.abs(Y - X) <= SNAP_QTY_TOL && (Math.abs(B - A) <= SNAP_AVG_TOL || Math.abs(Y * B - X * A) <= 0.01) ? 'same' : 'update';
+}
+
+/* Lines about the same holding in one screenshot: identical → the later ones are 'same' (kept
+ * once); different → all of them 'conflict'. lines: [{ id, key, qty, avg }] → { id: 'same' | 'conflict' } */
 function snapDupes(lines) {
   const by = {}, out = {};
   lines.forEach(l => { if (l.key) (by[l.key] = by[l.key] || []).push(l); });
@@ -61,157 +54,152 @@ function snapDupes(lines) {
   return out;
 }
 
-/* What you hold there that the screenshot doesn't show (listed only). */
-function snapMissing(heldKeys, batchKeys) {
-  const seen = new Set(batchKeys);
-  return heldKeys.filter(k => !seen.has(k));
+/* One screenshot as a whole.
+ * held: [{ key, qty }] what Trackr holds at that broker; lines: [{ id, key ('' = not in Trackr yet),
+ * dkey (what says two lines are the same holding), qty, avg, status (its snapDiff, or 'create'),
+ * skip (you left it out) }]
+ * → { status: { id: 'new' | 'create' | 'update' | 'remove' | 'same' | 'dupe' | 'conflict' | 'bad' | 'skip' },
+ *     missing: [keys held but not shown], blocked (a conflict is left) } */
+function snapBatchPlan(held, lines) {
+  const status = {};
+  lines.forEach(l => { status[l.id] = l.skip ? 'skip' : l.status; });
+  const live = lines.filter(l => !l.skip && l.status !== 'bad');
+  const dup = snapDupes(live.map(l => ({ id: l.id, key: l.dkey || l.key, qty: l.qty, avg: l.avg })));
+  Object.keys(dup).forEach(id => { status[id] = dup[id] === 'same' ? 'dupe' : 'conflict'; });
+  // A line you left out still says the holding is there: it is kept as it is, not removed.
+  const shown = new Set(lines.map(l => l.key).filter(Boolean));
+  const missing = held.filter(h => +h.qty > SNAP_QTY_TOL && !shown.has(h.key)).map(h => h.key);
+  return { status, missing, blocked: Object.keys(status).some(id => status[id] === 'conflict') };
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { snapCompare, snapPickAvg, snapDupes, snapMissing, SNAP_QTY_TOL, SNAP_AVG_TOL };
+  module.exports = { snapFigure, snapDiff, snapDupes, snapBatchPlan, SNAP_QTY_TOL, SNAP_AVG_TOL };
 } else {
-  /* ---- What Trackr holds at one account, for one asset key ('a:<id>' at a broker, 'c:<symbol>') ----
-   * → { qty, avg, ccy, mode: 'entry' | 'snap' | 'lots', asset?, coin? } (qty 0 when not held). */
   const sameName = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  /* ---- What Trackr holds at one account, for one asset key ('a:<id>' at a broker, 'c:<symbol>') ----
+   * → { qty, avg, ccy, mode: 'entry' | 'snap' | 'lots', asOf, none } (qty 0 when not held). */
   window.snapHoldingAt = function (acc, key) {
     const i = String(key || '').indexOf(':'), k = key.slice(0, i), ref = key.slice(i + 1);
     if (k === 'a') {
       const a = assetById(ref), e = acc.kind === 'broker' ? data.assetEntries.find(x => x.assetId === ref && x.broker === acc.id) : null;
-      return e ? { qty: +e.quantity || 0, avg: +e.price || 0, ccy: e.currency || 'EUR', mode: 'entry', asset: a } : { qty: 0, avg: 0, ccy: (a && a.priceCurrency) || 'EUR', mode: 'entry', asset: a, none: true };
+      return e ? { qty: +e.quantity || 0, avg: +e.price || 0, ccy: e.currency || 'EUR', mode: 'entry', asOf: e.asOf || '' } : { qty: 0, avg: 0, ccy: (a && a.priceCurrency) || 'EUR', mode: 'entry', none: true };
     }
     const c = cryptoAssetBySymbol(ref);
     if (!c) return null;
     if (c.mode === 'snapshot') {
       const r = (c.snapshots || []).find(x => sameName(x.broker, acc.name));
-      return r ? { qty: +r.quantity || 0, avg: +r.price || 0, ccy: r.currency || 'EUR', mode: 'snap', coin: c } : { qty: 0, avg: 0, ccy: 'EUR', mode: 'snap', coin: c, none: true };
+      return r ? { qty: +r.quantity || 0, avg: +r.price || 0, ccy: r.currency || 'EUR', mode: 'snap', asOf: r.asOf || '' } : { qty: 0, avg: 0, ccy: 'EUR', mode: 'snap', none: true };
     }
     const lots = lotsFor(c.symbol).filter(l => sameName(l.broker, acc.name));
     const qty = lots.reduce((s, l) => s + (+l.quantity || 0), 0), paid = lots.reduce((s, l) => s + toEUR(+l.amountPaid || 0, l.currency || 'EUR'), 0);
-    return { qty, avg: qty > 0 ? paid / qty : 0, ccy: 'EUR', mode: 'lots', coin: c, none: !lots.length };
+    const one = lots.length === 1 ? lots[0] : null;
+    // One purchase: its own currency. Several: their cost in EUR.
+    return one ? { qty, avg: qty > 0 ? (+one.amountPaid || 0) / qty : 0, ccy: one.currency || 'EUR', mode: 'lots', asOf: one.fromSnapshot ? one.date : '' }
+      : { qty, avg: qty > 0 ? paid / qty : 0, ccy: 'EUR', mode: 'lots', none: !lots.length, asOf: '' };
   };
   /* Quantity and average buy price per held asset, for get_trackr_context (no value, no cash). */
   window.snapContextHolding = function (acc, key) {
     const h = snapHoldingAt(acc, key);
     return h && h.qty > 0 ? { quantity: +h.qty.toFixed(10), avg_price: +h.avg.toFixed(6), currency: h.ccy } : null;
   };
+  /* "updated 12 Nov" on the broker page. */
+  window.snapAsOf = function (acc, key) { const h = snapHoldingAt(acc, key); return h && h.qty > 0 ? h.asOf || '' : ''; };
 
-  /* Overviews seen, so "not in this screenshot" stays right once some cards are done. Device only. */
-  const BATCH_KEY = 'trackr-snap-batches';
-  const readBatches = () => { try { return JSON.parse(localStorage.getItem(BATCH_KEY) || '{}'); } catch (e) { return {}; } };
-  const writeBatches = b => { try { localStorage.setItem(BATCH_KEY, JSON.stringify(b)); } catch (e) { /* in memory only */ } };
-  function rememberBatches(rows) {
-    const b = readBatches(), old = Date.now() - 60 * 86400000;
-    let changed = false;
-    rows.forEach(r => {
-      const d = r.n.draft, id = d.batch; if (!id || !d.from) return;
-      const x = b[id] = b[id] || { accountKey: d.accountKey, date: d.date, broker: d.broker, keys: [], at: Date.now() };
-      if (!x.keys.includes(d.from)) { x.keys.push(d.from); changed = true; }
-    });
-    Object.keys(b).forEach(id => { if (b[id].at < old) { delete b[id]; changed = true; } });
-    if (changed) writeBatches(b);
-    return b;
-  }
-
-  /* One card's comparison: what Trackr holds, what the broker shows, what would change. */
-  function snapPlan(n) {
-    const d = n.draft, acc = d.accountKey ? investAccountByKey(d.accountKey) : null;
-    if (!acc || !d.from) return null;
-    const have = snapHoldingAt(acc, d.from);
-    if (!have) return null;
-    const got = { avg: +d.avg, ccy: d.ccy, alt: d.alt };
-    // Not held yet: the broker's figure in the asset's price currency if it shows one, else its first.
-    const ccy = have.none && !(have.mode === 'entry' && [d.ccy, d.alt && d.alt.ccy].includes(have.ccy)) && have.mode !== 'lots' ? d.ccy : have.ccy;
-    const pick = snapPickAvg(got, ccy, (v, f, t) => convertCurrency(v, f, t));
-    return { acc, have, pick, ccy, cmp: snapCompare(have, { qty: +d.qty, avg: pick.avg }) };
-  }
-  /* For inbox.js reviewRows: 'same' (in sync), 'check' or 'new', and the plan. */
-  window.snapReview = function (r, rows) {
-    const plan = snapPlan(r.n);
-    const mates = rows.filter(q => q.n.form === 'snapshot' && q.n.draft.batch && q.n.draft.batch === r.n.draft.batch);
-    const dupe = snapDupes(mates.map(q => ({ id: q.x.id, key: q.n.draft.from, qty: +q.n.draft.qty, avg: +q.n.draft.avg })))[r.x.id] || '';
-    const bad = !plan || plan.cmp.status === 'bad';
-    const status = !r.n.ok || bad || dupe === 'conflict' ? 'check' : plan.cmp.status === 'same' || dupe === 'same' ? 'same'
-      : (plan.cmp.status === 'buy' && plan.cmp.flagged) || plan.pick.converted ? 'check' : 'new';
-    return { status, snap: plan, dupe };
-  };
+  /* ---- One card per screenshot ---- */
   const money = (v, c) => fmtMoney(v, c);
-  const posText = (q, avg, c) => (q > 0 ? `${fmtQty(q)} @ ${money(avg, c)}` : 'none');
-  function whatText(p, d) {
-    const c = p.cmp;
-    if (c.status === 'same') return 'In sync: nothing to do.';
-    if (c.status === 'buy') return c.flagged ? `The buy this implies (${fmtQty(c.qty)} at ${money(c.price, p.ccy)}) makes no sense: overwrite instead?` : `You bought ${fmtQty(c.qty)} at ${money(c.price, p.ccy)}: recorded as a buy on ${shortDay(d.date)}.`;
-    if (c.status === 'overwrite') return c.reason === 'avg' ? 'Same quantity, another average: the holding is corrected (an adjustment).' : 'Less at the broker: the holding is corrected (an adjustment, not a sale).';
-    return 'The numbers can\'t be read.';
+  const posText = (q, avg, c) => (q > SNAP_QTY_TOL ? `${fmtQty(+(+q).toFixed(8))} @ ${money(avg, c)}` : 'none');
+  function lineOf(r, acc) {
+    const d = r.n.draft, key = d.from || '';
+    const have = acc && key ? snapHoldingAt(acc, key) : null;
+    const fig = snapFigure({ avg: +d.avg, ccy: d.ccy, alt: d.alt }, have ? have.ccy : d.ccy);
+    const status = !acc || !r.n.ok || (key && !have) ? 'bad' : !key ? (snapDiff({ qty: 0 }, { qty: +d.qty, avg: fig.avg }) === 'new' ? 'create' : snapDiff({ qty: 0 }, { qty: +d.qty, avg: fig.avg })) : snapDiff(have, { qty: +d.qty, avg: fig.avg, ccy: fig.ccy });
+    const label = String(d.isin || d.ticker || d.assetLabel || '').toLowerCase();
+    return { id: r.x.id, r, d, key, dkey: key || (label ? 'new:' + label : ''), have, fig, qty: +d.qty, avg: fig.avg, status, skip: !!(ui.snapSkip || {})[r.x.id] };
   }
-  /* For inbox.js rowHtml. */
-  window.snapRowHtml = function (r) {
-    const { x, n } = r, d = n.draft, p = r.snap, id = escHtml(x.id);
-    const hints = n.problems.map(q => `<li class="${q.block ? 'block' : ''}">${escHtml(q.text)}</li>`);
-    if (r.dupe === 'conflict') hints.unshift('<li class="block">This screenshot has two different lines for this holding: reject the wrong one.</li>');
-    if (r.dupe === 'same') hints.unshift('<li>The same line twice in this screenshot: kept once.</li>');
-    if (p && p.pick.converted) hints.push(`<li>The broker showed the average in ${escHtml(p.pick.from)}: converted to ${escHtml(p.ccy)} at today's rate.</li>`);
-    const can = p && n.ok && r.dupe !== 'conflict' && r.dupe !== 'same' && p.cmp.status !== 'same' && p.cmp.status !== 'bad';
-    const buy = can && p.cmp.status === 'buy' && !p.cmp.flagged;
-    return `<div class="ib-item ib-snap ${n.ok ? '' : 'blocked'}" title="${escHtml(x.source || '')}">
-      <input class="ib-tick" type="checkbox" aria-label="Select ${escHtml(d.assetLabel)}" ${r.picked ? 'checked' : ''} onchange="inboxPick('${id}',this.checked)">
-      <div class="ib-mid">
-        <div class="ib-open">${r.avatar}<span class="ib-txt"><b>${escHtml(d.assetLabel || '?')}</b><span>${escHtml(d.broker || '')} · positions on ${escHtml(shortDay(d.date))}</span></span></div>
-        ${p ? `<div class="snap-cmp num"><span>Trackr: ${posText(p.have.qty, p.have.avg, p.ccy)}</span><span aria-hidden="true">→</span><span><b>${escHtml(d.broker || 'Broker')}: ${posText(+d.qty, p.pick.avg, p.ccy)}</b></span></div>
-        <div class="snap-what">${escHtml(whatText(p, d))}</div>` : ''}
-        ${hints.length ? `<ul class="ib-probs">${hints.join('')}</ul>` : ''}
-      </div>
-      <div class="ib-end">
-        <span class="ib-btns">
-          ${buy ? `<button class="ib-act on" onclick="snapOpen('${id}','buy')">${ic('check', 14)} Record the buy</button>` : ''}
-          ${can ? `<button class="ib-act ${buy ? '' : 'on'}" onclick="snapOpen('${id}','overwrite')">${buy ? 'Overwrite instead' : `${ic('check', 14)} Overwrite`}</button>` : ''}
-          ${p && n.ok && (p.cmp.status === 'same' || r.dupe === 'same') ? `<button class="ib-act on" title="Nothing to change: it leaves the inbox." onclick="snapDone('${id}')">${ic('check', 14)} Done</button>` : `<button class="ib-act" title="Change nothing. It moves to the Rejected tab." onclick="inboxReject('${id}')">${ic('x', 14)} Reject</button>`}
-        </span>
+  /* rows: the inbox's review rows → the screenshots waiting, each with its plan. */
+  function batchesOf(rows) {
+    const by = {}, order = [];
+    rows.filter(r => r.n.form === 'snapshot').forEach(r => {
+      const id = r.n.draft.batch || r.x.id;
+      if (!by[id]) { by[id] = []; order.push(id); }
+      by[id].push(r);
+    });
+    return order.map(id => {
+      const mine = by[id], d0 = mine[0].n.draft, acc = d0.accountKey ? investAccountByKey(d0.accountKey) : null;
+      const lines = mine.map(r => lineOf(r, acc));
+      const holdings = acc ? investHoldings(acc).filter(h => h.quantity > SNAP_QTY_TOL) : [];
+      const plan = snapBatchPlan(holdings.map(h => ({ key: h.key, qty: h.quantity })), lines);
+      const keep = ui.snapKeep || {};
+      const removals = plan.missing.map(k => ({ key: k, h: holdings.find(h => h.key === k), have: snapHoldingAt(acc, k), keep: !!keep[id + '|' + k] }));
+      return { id, acc, date: d0.date, broker: d0.broker, source: mine[0].x.source || '', lines, plan, removals };
+    });
+  }
+  const stOf = (b, l) => b.plan.status[l.id];
+  function counts(b) {
+    const n = s => b.lines.filter(l => s.includes(stOf(b, l))).length;
+    return { add: n(['new', 'create']), change: n(['update']), same: n(['same', 'dupe']), remove: n(['remove']) + b.removals.filter(x => !x.keep).length, problems: n(['bad', 'conflict']), skip: n(['skip']) };
+  }
+  const canApply = b => b.acc && !b.plan.blocked && b.lines.some(l => ['new', 'create', 'update', 'remove', 'same', 'dupe'].includes(stOf(b, l)));
+  window.snapBatchCount = rows => batchesOf(rows).length;
+
+  function lineHtml(b, l) {
+    const st = stOf(b, l), d = l.d, js = escHtml(l.id);
+    const title = (!l.key && d.name) || d.assetLabel || d.ticker || '?';
+    const name = `<b>${escHtml(title)}</b>${d.ticker && d.ticker !== title ? ` <span class="dim">${escHtml(d.ticker)}</span>` : ''}`;
+    const now = l.have && l.have.qty > SNAP_QTY_TOL ? posText(l.have.qty, l.have.avg, l.have.ccy) : '';
+    const to = isFinite(l.qty) ? posText(l.qty, l.avg, l.fig.ccy) : '?';
+    const what = { new: 'New here', create: 'New in Trackr', update: '', remove: 'Removed: the broker shows 0', same: 'Unchanged', dupe: 'Twice in the screenshot: kept once', skip: 'Left out: Trackr keeps it as it is',
+      conflict: 'Two different lines for this one: leave the wrong one out', bad: !b.acc ? '' : (l.r.n.problems.find(p => p.block) || {}).text || 'The numbers can\'t be read' }[st];
+    const nums = st === 'update' || st === 'remove' ? `${now} <span aria-hidden="true">→</span> <b>${st === 'remove' ? 'none' : to}</b>` : st === 'skip' ? now || to : `<b>${to}</b>`;
+    const btn = st === 'skip' ? `<button class="ib-act" onclick="snapSkip('${js}',false)">Put back</button>`
+      : ['new', 'create', 'update', 'remove', 'conflict'].includes(st) ? `<button class="snap-x" aria-label="Leave ${escHtml(d.ticker || d.assetLabel || 'it')} out" title="Leave it out: Trackr keeps it as it is" onclick="snapSkip('${js}',true)">${ic('x', 13)}</button>` : '';
+    return `<div class="snap-line ${st}"><span class="snap-nm">${name}${what ? `<span class="snap-tag">${escHtml(what)}</span>` : ''}</span><span class="snap-nums num">${nums}</span>${btn}</div>`;
+  }
+  function batchHtml(b) {
+    const c = counts(b), id = escHtml(b.id), group = s => b.lines.filter(l => s.includes(stOf(b, l)));
+    const section = (title, list) => (list.length ? `<div class="snap-sec"><div class="eyebrow">${title}</div>${list.map(l => lineHtml(b, l)).join('')}</div>` : '');
+    const gone = b.removals.map(x => {
+      const nm = x.h ? x.h.name : x.key.slice(2), k = escHtml(x.key).replace(/'/g, '&#39;');
+      return `<label class="snap-line remove ${x.keep ? 'kept' : ''}"><input type="checkbox" aria-label="Remove ${escHtml(nm)}" ${x.keep ? '' : 'checked'} onchange="snapKeep('${id}','${k}',!this.checked)">
+        <span class="snap-nm"><b>${escHtml(nm)}</b>${x.h && x.h.ticker !== nm ? ` <span class="dim">${escHtml(x.h.ticker)}</span>` : ''}<span class="snap-tag">${x.keep ? 'Kept: untick was your choice' : 'Not in the screenshot: removed'}</span></span>
+        <span class="snap-nums num">${x.have ? posText(x.have.qty, x.have.avg, x.have.ccy) : ''}</span></label>`;
+    }).join('');
+    const sameList = group(['same', 'dupe']);
+    const summary = [c.add ? `${c.add} new` : '', c.change ? `${c.change} changed` : '', c.remove ? `${c.remove} removed` : '', c.same ? `${c.same} unchanged` : ''].filter(Boolean).join(' · ') || 'Nothing changes';
+    return `<div class="card snap-card">
+      <div class="snap-head">${b.acc ? logoImg(b.acc.logo, 32) : ''}<div><b>${escHtml(b.acc ? b.acc.name : b.broker || 'Unknown broker')}</b><div class="dim">Positions on ${escHtml(shortDay(b.date))}${b.source ? ' · ' + escHtml(b.source) : ''}</div></div></div>
+      ${!b.acc ? `<div class="ib-warn">No broker called "${escHtml(b.broker || '?')}" in Trackr: add it, or reject this screenshot.</div>` : ''}
+      <div class="snap-sum num">${summary}</div>
+      ${section('To check', group(['conflict', 'bad']))}
+      ${section('New', group(['new', 'create']))}
+      ${section('Changed', group(['update', 'remove']))}
+      ${gone ? `<div class="snap-sec"><div class="eyebrow">In Trackr, not in this screenshot</div>${gone}<div class="dim snap-hint">If the screenshot was cut off, untick what you still hold.</div></div>` : ''}
+      ${section('Left out', group(['skip']))}
+      ${sameList.length ? `<details class="snap-sec"><summary class="eyebrow">Unchanged (${sameList.length})</summary>${sameList.map(l => lineHtml(b, l)).join('')}</details>` : ''}
+      <div class="snap-acts">
+        <span class="dim">Quantities and average prices only: no buy or sale is recorded, cash isn't touched.</span>
+        <button class="btn" onclick="snapRejectBatch('${id}')">${ic('x', 14)} Reject</button>
+        <button class="btn primary" ${canApply(b) ? '' : 'disabled'} onclick="snapApplyBatch('${id}')">${ic('check', 15)} Update positions</button>
       </div>
     </div>`;
-  };
-  /* Above the cards: one line per screenshot, with what you hold there that it doesn't show. */
-  window.snapBatchNotesHtml = function (rows) {
-    const snaps = rows.filter(r => r.n.form === 'snapshot');
-    if (!snaps.length) return '';
-    const b = rememberBatches(snaps), ids = Array.from(new Set(snaps.map(r => r.n.draft.batch).filter(Boolean)));
-    return ids.map(id => {
-      const x = b[id], acc = x && investAccountByKey(x.accountKey);
-      if (!acc) return '';
-      const mine = snaps.filter(r => r.n.draft.batch === id), held = investHoldings(acc).filter(h => h.quantity > 0);
-      const missing = snapMissing(held.map(h => h.key), x.keys).map(k => held.find(h => h.key === k)).filter(Boolean);
-      const same = mine.filter(r => r.status === 'same').length;
-      return `<div class="ib-note snap-batch"><b>${escHtml(acc.name)} positions, ${escHtml(shortDay(x.date))}</b>: ${mine.length} waiting${same ? `, ${same} already in sync` : ''}. Each card is applied on its own; cash isn't touched.
-        ${missing.length ? `<div>In Trackr but not in this screenshot (nothing is changed): ${missing.map(h => escHtml(h.ticker || h.name)).join(', ')}.</div>` : ''}</div>`;
-    }).join('');
+  }
+  /* For inbox.js: the screenshot cards at the top of the Inbox page. */
+  window.snapBatchesHtml = rows => batchesOf(rows).map(batchHtml).join('');
+
+  window.snapSkip = function (id, on) { ui.snapSkip = Object.assign({}, ui.snapSkip, { [id]: on }); render(); };
+  window.snapKeep = function (batch, key, on) { ui.snapKeep = Object.assign({}, ui.snapKeep, { [batch + '|' + key]: on }); render(); };
+  const batchById = id => batchesOf(typeof inboxReviewRows === 'function' ? inboxReviewRows() : []).find(b => b.id === id) || null;
+  window.snapRejectBatch = function (id) {
+    const b = batchById(id);
+    if (b && typeof inboxRejectIds === 'function') inboxRejectIds(b.lines.map(l => l.id));
   };
 
-  /* In sync: nothing to change, it just leaves the inbox. */
-  window.snapDone = function (id) {
-    if (typeof inboxResolve === 'function') inboxResolve(id);
-    render();
-    safetyToast('<span>In sync: nothing changed</span>', { ms: 2500 });
-  };
-  /* ---- Apply one card: a window says exactly what changes ---- */
-  window.snapOpen = function (id, how) { ui.modal = { type: 'snapApply', payload: { id, how } }; render(); };
-  window.__modalRenderers.snapApply = function (pl) {
-    const r = typeof inboxRow === 'function' ? inboxRow(pl.id) : null, p = r && r.snap;
-    const head = t => `<div class="modal-head"><div class="modal-title">${t}</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>`;
-    if (!p) return head('Not found') + '<div class="modal-actions"><button class="btn" onclick="closeModal()">Close</button></div>';
-    const d = r.n.draft, buy = pl.how === 'buy';
-    return `${head(buy ? 'Record the buy?' : 'Overwrite the holding?')}
-      <div class="snap-cmp num" style="margin-bottom:10px;"><span>${escHtml(d.assetLabel)} at ${escHtml(p.acc.name)}: ${posText(p.have.qty, p.have.avg, p.ccy)}</span><span aria-hidden="true">→</span><b>${posText(+d.qty, p.pick.avg, p.ccy)}</b></div>
-      <div style="font-size:13px;opacity:.75;">${buy
-        ? `Adds a buy of ${fmtQty(p.cmp.qty)} ${escHtml(d.ticker || '')} at ${money(p.cmp.price, p.ccy)} on ${escHtml(shortDay(d.date))} to ${escHtml(p.acc.name)}'s transactions, already applied to the holding.`
-        : `Adds an adjustment to ${escHtml(p.acc.name)}'s transactions. No sale is recorded and no gain or loss.${p.have.mode === 'lots' && !p.have.none ? ' Your dated purchases there become one line, dated on the screenshot.' : ''}`}
-        Cash isn't touched. Undo: the record's Undo button on ${escHtml(p.acc.name)} → Transactions.</div>
-      <div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="snapApply('${escHtml(pl.id)}','${buy ? 'buy' : 'overwrite'}')">${buy ? 'Record the buy' : 'Overwrite'}</button></div>`;
-  };
-  /* The holding as it is now, kept on the record so Undo can put it back. */
+  /* ---- Holdings: what is there now, and set it ---- */
   function stateOf(acc, key) {
     const h = snapHoldingAt(acc, key);
-    const sym = key.slice(2);
-    return h.mode === 'lots' ? { mode: 'lots', lots: lotsFor(sym).filter(l => sameName(l.broker, acc.name)).map(l => Object.assign({}, l)) }
-      : { mode: h.mode, none: !!h.none, qty: h.qty, avg: h.avg, ccy: h.ccy };
+    if (!h) return null;
+    return h.mode === 'lots' ? { mode: 'lots', lots: lotsFor(key.slice(2)).filter(l => sameName(l.broker, acc.name)).map(l => Object.assign({}, l)) }
+      : { mode: h.mode, none: !!h.none, qty: h.qty, avg: h.avg, ccy: h.ccy, asOf: h.asOf || '' };
   }
   function setHolding(acc, key, st) {
     const ref = key.slice(2);
@@ -220,49 +208,134 @@ if (typeof module !== 'undefined' && module.exports) {
       if (st.none || !(st.qty > 0)) { data.assetEntries = data.assetEntries.filter(x => x !== e); return; }
       if (!e) { e = { id: uid('ae'), assetId: ref, broker: acc.id, quantity: 0, price: 0, currency: st.ccy }; data.assetEntries.push(e); }
       Object.assign(e, { quantity: +(+st.qty).toFixed(8), price: +(+st.avg).toFixed(6), currency: st.ccy });
+      if (st.asOf) e.asOf = st.asOf; else delete e.asOf;
     } else if (st.mode === 'snap') {
       const c = cryptoAssetBySymbol(ref); c.snapshots = c.snapshots || [];
       let row = c.snapshots.find(x => sameName(x.broker, acc.name));
       if (st.none || !(st.qty > 0)) { c.snapshots = c.snapshots.filter(x => x !== row); return; }
       if (!row) { row = { id: uid('snap'), broker: acc.name, quantity: 0, price: 0, currency: st.ccy }; c.snapshots.push(row); }
       Object.assign(row, { quantity: +(+st.qty).toFixed(10), price: +(+st.avg).toFixed(6), currency: st.ccy });
+      if (st.asOf) row.asOf = st.asOf; else delete row.asOf;
     } else {
       data.cryptoLots = data.cryptoLots.filter(l => !(l.symbol === ref && sameName(l.broker, acc.name))).concat(st.lots.map(l => Object.assign({}, l)));
     }
   }
-  const sameState = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  window.snapApply = function (id, how) {
-    const r = typeof inboxRow === 'function' ? inboxRow(id) : null, p = r && r.snap;
-    if (!p || !r.n.ok || p.cmp.status === 'same' || p.cmp.status === 'bad') { closeModal(); return; }
-    const d = r.n.draft, acc = p.acc, key = d.from, buy = how === 'buy' && p.cmp.status === 'buy' && !p.cmp.flagged;
-    const before = JSON.stringify(data), was = stateOf(acc, key), Y = +d.qty, B = p.pick.avg;
+  /* What the broker shows, written over what Trackr held there. Coins kept as dated purchases
+     become one purchase there, dated on the screenshot. */
+  function writeHolding(acc, key, qty, avg, ccy, date) {
+    const was = stateOf(acc, key);
     if (was.mode === 'lots') {
-      const keep = buy ? was.lots : [];
-      const add = buy ? { qty: p.cmp.qty, paid: p.cmp.qty * p.cmp.price } : { qty: Y, paid: Y * B };
-      setHolding(acc, key, { mode: 'lots', lots: keep.concat(add.qty > 0 ? [{ id: uid('lot'), symbol: key.slice(2), broker: acc.name, date: d.date, quantity: +add.qty.toFixed(10), amountPaid: +add.paid.toFixed(2), currency: p.ccy }] : []) });
-    } else setHolding(acc, key, { mode: was.mode, none: !(Y > 0), qty: Y, avg: B, ccy: p.ccy });
-    const now = stateOf(acc, key), toE = v => toEUR(v, p.ccy);
-    const rec = { id: uid('itx'), recordedAt: new Date().toISOString(), account: acc.name, accountKey: acc.kind + ':' + acc.id, date: d.date, currency: 'EUR', ticker: d.ticker || d.assetLabel, assetKey: key, applied: true,
-      snapshot: { batch: d.batch || '', ccy: p.ccy, before: was, after: now }, note: 'From a positions screenshot' };
-    if (buy) Object.assign(rec, { action: 'Buy', quantity: +p.cmp.qty.toFixed(8), unitPrice: +toE(p.cmp.price).toFixed(6), amount: Math.round(toE(p.cmp.qty * p.cmp.price) * 100) / 100 });
-    else Object.assign(rec, { action: 'Adjustment', quantity: +Y.toFixed(8), unitPrice: +toE(B).toFixed(6), amount: Math.round(toE(Y * B) * 100) / 100 });
-    if (!Array.isArray(data.investmentTransactions)) data.investmentTransactions = [];
-    data.investmentTransactions.push(rec);
-    if (typeof inboxResolve === 'function') inboxResolve(id);
-    save(); closeModal(); render();
-    offerUndo(`${d.assetLabel}: ${buy ? 'buy recorded' : 'holding corrected'}`, before, typeof inboxPutBackCopy === 'function' ? inboxPutBackCopy(id) : null);
-  };
-  /* Undo from the record: only while the holding is still as the snapshot left it. */
-  window.snapUndo = function (recId) {
-    const rec = (data.investmentTransactions || []).find(x => x.id === recId), s = rec && rec.snapshot;
-    const acc = rec && investAccountByKey(rec.accountKey);
-    if (!s || !acc) return;
-    if (!sameState(stateOf(acc, rec.assetKey), s.after)) { alert(`${rec.ticker} changed at ${acc.name} since: undo it by hand.`); return; }
-    if (!confirm(`Put ${rec.ticker} at ${acc.name} back as it was, and remove this ${rec.action === 'Buy' ? 'buy' : 'adjustment'}?`)) return;
-    const before = JSON.stringify(data);
-    setHolding(acc, rec.assetKey, s.before);
-    data.investmentTransactions = data.investmentTransactions.filter(x => x !== rec);
+      setHolding(acc, key, { mode: 'lots', lots: qty > SNAP_QTY_TOL ? [{ id: uid('lot'), symbol: key.slice(2), broker: acc.name, date, quantity: +(+qty).toFixed(10), amountPaid: Math.round(qty * avg * 100) / 100, currency: ccy, fromSnapshot: true }] : [] });
+    } else setHolding(acc, key, { mode: was.mode, none: !(qty > SNAP_QTY_TOL), qty, avg, ccy, asOf: date });
+  }
+  /* A position not in Trackr yet: its asset is made (a coin at an exchange, or when Claude says crypto). */
+  function guessType(d) {
+    const t = String(d.type || '').toLowerCase(), names = (data.categories.asset || []).map(c => c.name);
+    const find = re => names.find(n => re.test(n));
+    if (/etf|fund|tracker/.test(t)) return find(/etf/i);
+    if (/stock|share|equity|action/.test(t)) return find(/stock/i);
+    if (/bond|oblig/.test(t)) return find(/bond/i);
+    if (/gold|commod|metal/.test(t)) return find(/commod|gold|metal/i);
+    return /\b(etf|ucits|ishares|vanguard|xtrackers|amundi|spdr|lyxor|invesco|vaneck|wisdomtree)\b/i.test(`${d.name || ''} ${d.assetLabel || ''}`) ? find(/etf/i) : find(/stock/i);
+  }
+  function createAsset(acc, l) {
+    const d = l.d, ticker = String(d.ticker || d.assetLabel || d.isin || '?').trim().toUpperCase().slice(0, 20);
+    const crypto = acc.kind === 'exchange' || /crypto|coin/i.test(String(d.type || ''));
+    if (crypto) {
+      let c = cryptoAssetBySymbol(ticker);
+      if (!c) {
+        c = { symbol: ticker, name: d.name || d.assetLabel || ticker, coingeckoId: (typeof COMMON_COINGECKO_IDS !== 'undefined' && COMMON_COINGECKO_IDS[ticker]) || null, mode: 'snapshot', snapshots: [],
+          // Until a live price comes: its average buy price, so its value isn't 0.
+          currentPriceUSD: l.fig.ccy === 'USD' ? l.avg : null, currentPriceEUR: l.fig.ccy === 'EUR' ? l.avg : null, manualPrice: null, manualPriceCurrency: 'USD', priceAuto: true, priceUpdatedAt: null, logo: '', stakes: [] };
+        data.cryptoAssets.push(c);
+      }
+      return { key: 'c:' + c.symbol, made: true };
+    }
+    const isin = String(d.isin || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    let a = (isin && data.assets.find(x => String(x.isin || '').toUpperCase() === isin)) || data.assets.find(x => x.ticker === ticker);
+    if (!a) {
+      a = { id: uid('asset'), ticker, name: d.name || d.assetLabel || ticker, assetType: guessType(d) || 'Stocks', isin, logo: '', priceCurrency: l.fig.ccy || 'EUR', currentPrice: l.avg, manualPrice: null, priceUpdatedAt: null };
+      data.assets.push(a);
+      return { key: 'a:' + a.id, made: true };
+    }
+    return { key: 'a:' + a.id, made: false };
+  }
+
+  /* ---- Update positions: the whole screenshot at once ---- */
+  window.snapApplyBatch = function (id) {
+    const b = batchById(id);
+    if (!b || !canApply(b)) return;
+    const before = JSON.stringify(data), acc = b.acc, date = b.date, changes = [], positions = [], made = [];
+    if (!Array.isArray(data.positionSnapshots)) data.positionSnapshots = [];
+    b.lines.forEach(l => {
+      const st = stOf(b, l), d = l.d;
+      if (!['new', 'create', 'update', 'remove', 'same'].includes(st)) return;
+      let key = l.key;
+      if (st === 'create') { const c = createAsset(acc, l); key = c.key; if (c.made) made.push(key); }
+      const name = (st === 'create' && d.name) || d.assetLabel || d.ticker || '', ticker = d.ticker || '';
+      if (st !== 'remove') positions.push({ key, ticker, name, qty: l.qty, avg: l.avg, ccy: l.fig.ccy });
+      // Unchanged: only its date moves on (dated purchases are left as they are).
+      const was = stateOf(acc, key);
+      if (st === 'same' && was.mode === 'lots') return;
+      writeHolding(acc, key, st === 'remove' ? 0 : l.qty, l.avg, l.fig.ccy, date);
+      if (st !== 'same') changes.push({ key, ticker, name, kind: st === 'create' ? 'new' : st, before: was, after: stateOf(acc, key), qty: st === 'remove' ? 0 : l.qty, avg: l.avg, ccy: l.fig.ccy });
+      else changes.push({ key, ticker, name, kind: 'date', before: was, after: stateOf(acc, key) });
+    });
+    b.removals.filter(x => !x.keep).forEach(x => {
+      const was = stateOf(acc, x.key);
+      writeHolding(acc, x.key, 0, 0, '', date);
+      changes.push({ key: x.key, ticker: x.h ? x.h.ticker : '', name: x.h ? x.h.name : '', kind: 'remove', before: was, after: stateOf(acc, x.key), qty: 0 });
+    });
+    data.positionSnapshots.push({ id: uid('psnap'), accountKey: acc.kind + ':' + acc.id, account: acc.name, date, at: new Date().toISOString(), source: b.source, positions, changes, made });
+    const ids = b.lines.map(l => l.id), back = ids.map(i => (typeof inboxPutBackCopy === 'function' ? inboxPutBackCopy(i) : null)).filter(Boolean);
+    window.__quietBatch = true;
+    try { ids.forEach(i => inboxResolve(i)); } finally { window.__quietBatch = false; }
     save(); render();
-    offerUndo(`${rec.ticker} put back`, before);
+    if (typeof inboxRefresh === 'function') inboxRefresh();
+    const k = changes.reduce((m, c) => { m[c.kind] = (m[c.kind] || 0) + 1; return m; }, {});
+    const news = changes.filter(c => c.kind === 'new').map(c => c.ticker || c.name);
+    offerUndo(`${acc.name} updated: ${[k.new ? `${k.new} new${news.length <= 3 ? ` (${news.join(', ')})` : ''}` : '', k.update ? `${k.update} changed` : '', k.remove ? `${k.remove} removed` : ''].filter(Boolean).join(', ') || 'nothing changed'}`, before, () => back.forEach(f => f()));
+    // Prices for what was just made (best effort: the next refresh does it otherwise).
+    const assets = made.filter(x => x.startsWith('a:')).map(x => x.slice(2)), coins = made.filter(x => x.startsWith('c:')).map(x => x.slice(2));
+    if (assets.length && typeof fetchAssetPrices === 'function') fetchAssetPrices(true, assets).then(() => renderWhenIdle()).catch(() => {});
+    if (coins.length && typeof fetchCryptoPrices === 'function') fetchCryptoPrices(true, coins).then(() => renderWhenIdle()).catch(() => {});
+  };
+
+  /* ---- Broker page → History: every update, with its date ---- */
+  const historyOf = acc => (data.positionSnapshots || []).filter(s => s.accountKey === acc.kind + ':' + acc.id).slice().sort((a, b) => (a.at < b.at ? 1 : -1));
+  const sameState = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const undoable = (acc, s) => s.changes.every(c => sameState(stateOf(acc, c.key), c.after));
+  window.snapHistoryHtml = function (acc) {
+    const list = historyOf(acc);
+    if (!list.length) return `<div class="card"><div class="empty-state"><div class="title">No update yet</div><div class="sub">Send a screenshot of what ${escHtml(acc.name)} shows you hold to your Trackr Investments project in Claude. It comes to Inbox, and each update is kept here with its date.</div></div></div>`;
+    return `<div class="card stack-gap-8">${list.map((s, i) => {
+      const k = s.changes.reduce((m, c) => { m[c.kind] = (m[c.kind] || 0) + 1; return m; }, {});
+      const sum = [`${s.positions.length} position${s.positions.length === 1 ? '' : 's'}`, k.new ? `${k.new} new` : '', k.update ? `${k.update} changed` : '', k.remove ? `${k.remove} removed` : ''].filter(Boolean).join(' · ');
+      const moved = s.changes.filter(c => c.kind !== 'date');
+      return `<details class="snap-hist" ${i === 0 ? 'open' : ''}>
+        <summary><span><b>${escHtml(shortDay(s.date))}</b> <span class="dim">${escHtml(sum)}</span></span>${i === 0 && undoable(acc, s) ? `<button class="btn small" onclick="event.preventDefault();snapUndoUpdate('${escHtml(s.id)}')">Undo</button>` : ''}</summary>
+        ${moved.length ? moved.map(c => `<div class="snap-line ${c.kind}"><span class="snap-nm"><b>${escHtml(c.name || c.ticker)}</b><span class="snap-tag">${{ new: 'New', update: 'Changed', remove: 'Removed' }[c.kind]}</span></span>
+          <span class="snap-nums num">${c.before && c.before.qty > SNAP_QTY_TOL ? `${posText(c.before.qty, c.before.avg, c.before.ccy)} → ` : ''}<b>${c.kind === 'remove' ? 'none' : posText(c.qty, c.avg, c.ccy)}</b></span></div>`).join('') : '<div class="dim">Nothing changed: the dates moved on.</div>'}
+        <div class="snap-sec"><div class="eyebrow">What you held</div>${s.positions.map(p => `<div class="snap-line"><span class="snap-nm">${escHtml(p.name || p.ticker)}</span><span class="snap-nums num">${posText(p.qty, p.avg, p.ccy)}</span></div>`).join('') || '<div class="dim">Nothing</div>'}</div>
+      </details>`;
+    }).join('')}</div>`;
+  };
+  /* The latest update, put back, while nothing has changed since. */
+  window.snapUndoUpdate = function (id) {
+    const s = (data.positionSnapshots || []).find(x => x.id === id), acc = s && investAccountByKey(s.accountKey);
+    if (!s || !acc) return;
+    if (!undoable(acc, s)) { alert(`${acc.name} changed since this update: change the positions by hand.`); return; }
+    if (!confirm(`Put ${acc.name}'s positions back as they were before the update of ${shortDay(s.date)}?`)) return;
+    const before = JSON.stringify(data);
+    s.changes.slice().reverse().forEach(c => setHolding(acc, c.key, c.before));
+    // Assets made by that update and held nowhere now go too.
+    (s.made || []).forEach(k => {
+      const ref = k.slice(2);
+      if (k.startsWith('a:') && !data.assetEntries.some(e => e.assetId === ref)) data.assets = data.assets.filter(a => a.id !== ref);
+      if (k.startsWith('c:')) { const c = cryptoAssetBySymbol(ref); if (c && !(c.snapshots || []).length && !lotsFor(ref).length) data.cryptoAssets = data.cryptoAssets.filter(x => x !== c); }
+    });
+    data.positionSnapshots = data.positionSnapshots.filter(x => x !== s);
+    save(); render();
+    offerUndo(`${acc.name}: positions put back`, before);
   };
 }

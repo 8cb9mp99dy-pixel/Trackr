@@ -248,10 +248,18 @@ if (typeof module !== 'undefined' && module.exports) {
     track.scrollLeft = trackLeft(track, Math.min(ui.cardIndex || 0, track.children.length - 1));
     paint(track);
   };
+  /* The arrows: the card you're going to is the one in front at once, so a redraw while it
+     slides (prices, sync) lands there instead of putting the carousel back. */
   window.cardGo = function (delta) {
     const track = document.querySelector('.cw-track'); if (!track) return;
     const i = Math.max(0, Math.min(track.children.length - 1, (ui.cardIndex || 0) + delta));
-    track.settleUntil = 0; // you moved it
+    if (i !== (ui.cardIndex || 0) && ui.cardFlip) {
+      ui.cardFlip = null;
+      track.querySelectorAll('.cw-inner.flipped').forEach(el => el.classList.remove('flipped'));
+      showDetail(track);
+    }
+    ui.cardIndex = i;
+    track.settleUntil = Date.now() + 700; // while it slides, the one in front is i
     track.scrollTo({ left: trackLeft(track, i), behavior: reduced() ? 'auto' : 'smooth' });
   };
   /* Tap the one in front: it turns over and its details open below. Tap one beside it to bring it

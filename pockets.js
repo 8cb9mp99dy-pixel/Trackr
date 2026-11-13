@@ -73,14 +73,21 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   function cardHtml(x, on) {
     const { a, p, ref } = x, pct = +p.targetAmount > 0 ? Math.min(100, (+p.amountSaved || 0) / p.targetAmount * 100) : null;
-    return `<button class="pkp-card ${on ? 'on' : ''}" aria-pressed="${on}" onclick="ui.pocketsSel=${on ? "''" : `'${q(ref)}'`};render()">
+    return `<div class="pkp-cell"><button class="pkp-card ${on ? 'on' : ''}" aria-pressed="${on}" onclick="ui.pocketsSel=${on ? "''" : `'${q(ref)}'`};render()">
       <span class="pkp-icon">${escHtml(p.icon || '🎯')}</span>
       <span class="pkp-name">${escHtml(p.name)}</span>
       <span class="dim pkp-acc">${escHtml(a.name)}${p.finishedAt ? ' · Finished' : ''}</span>
       <span class="num pkp-val">${fmtMoney(+p.amountSaved || 0, a.currency)}${pct !== null ? `<span class="dim"> / ${fmtMoney(+p.targetAmount, a.currency)}</span>` : ''}</span>
       ${pct !== null ? `<span class="pkp-bar"><i style="width:${pct}%;background:${escHtml(p.color || 'var(--fx-ink)')};"></i></span>` : ''}
-    </button>`;
+    </button><button class="pkp-amt" aria-label="Change the amount in ${escHtml(p.name)}" title="Change the amount" onclick="pocketSetAmount('${q(ref)}')">${ic('edit', 13)}</button></div>`;
   }
+  /* Change what a pocket holds (asked for on 13 Nov 2026). Only Budget moves balances: the
+     difference becomes a "Balance correction" filled in the Budget form. */
+  window.pocketSetAmount = function (ref) {
+    const x = pocketByRef(ref); if (!x) return;
+    if (typeof balancesFromTx === 'function' && balancesFromTx() && typeof openBalanceFix === 'function') openBalanceFix(ref, +x.p.amountSaved || 0);
+    else openPocketForm(x.a.id, x.p.id);
+  };
 
   window.__pageRenderers.pockets = function () {
     const all = allPockets(), done = all.filter(x => x.p.finishedAt).length;
@@ -115,6 +122,7 @@ if (typeof module !== 'undefined' && module.exports) {
           ${pk ? `<div class="pkp-acts">
             <button class="btn small" onclick="pocketMoveIn('${q(pk.ref)}')">${ic('plus', 14)} Put money in</button>
             <button class="btn small" onclick="pocketMoveOut('${q(pk.ref)}')">Take out</button>
+            <button class="btn small" onclick="pocketSetAmount('${q(pk.ref)}')">Change the amount</button>
             <button class="btn small" onclick="openPocketForm('${q(pk.a.id)}','${q(pk.p.id)}')">${ic('edit', 14)} Edit pocket</button>
           </div>` : '<div class="dim">Tap a pocket to see only its moves</div>'}
         </div>

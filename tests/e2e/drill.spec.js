@@ -86,14 +86,6 @@ test('accounts and pockets open from the bank total; the loan stays out of Wealt
   expect(errors).toEqual([]);
 });
 
-test('freelance tiles lead on', async ({ page }) => {
-  const errors = await openApp(page);
-  await page.evaluate(() => { ui.freelanceTab = 'invoices'; goPage('freelance'); });
-  await page.locator('.card.drill', { hasText: 'so far' }).click();
-  expect(await page.evaluate(() => ui.freelanceTab)).toBe('vat');
-  expect(errors).toEqual([]);
-});
-
 test('Enter and Space work on rows and tiles; amounts follow the eye', async ({ page }) => {
   const errors = await openApp(page, { privacy: true });
   await openBudget(page, 'transactions');

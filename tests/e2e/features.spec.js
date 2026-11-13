@@ -1,31 +1,17 @@
-/* Feature pages: Safe to spend and Can I afford it, yearly bills, the month-end check,
+/* Feature pages: Can I afford it (Safe to spend has no card on Home any more), the month-end check,
    and scanning a receipt
    (Claude faked). Invented data only; the clock is 18 Oct 2026. */
 const { test, expect } = require('@playwright/test');
 const { openApp, goPage } = require('./helpers');
 
-async function seed(page) {
-  await page.evaluate(() => {
-    data.yearlyBills.push({ id: 'yb_t1', name: 'Demo car insurance', amount: 640, currency: 'EUR', due: '2026-11-01', everyMonths: 12, pocketRef: '' });
-    save(); render();
-  });
-}
-
 test('pages, Action required lines, and the eye', async ({ page }) => {
   const errors = await openApp(page);
-  await seed(page);
-  for (const p of ['yearly']) {
-    await goPage(page, p);
-    await expect(page.locator('.main .page')).toBeVisible();
-  }
-  const att = await page.evaluate(() => actionItems().attention.map(x => x.key));
-  expect(att).toEqual(expect.arrayContaining(['yearly:yb_t1:2026-11-01']));
-  // Trips, IOUs and Contracts are gone (2 Nov 2026), Patterns too (3 Nov 2026).
-  expect(await page.evaluate(() => ['trips', 'ious', 'contracts', 'receipts', 'patterns'].filter(p => window.__pageRenderers[p]))).toEqual([]);
+  // Trips, IOUs and Contracts are gone (2 Nov 2026), Patterns too (3 Nov 2026), Yearly bills and Freelance (13 Nov 2026).
+  expect(await page.evaluate(() => ['trips', 'ious', 'contracts', 'receipts', 'patterns', 'yearly', 'freelance'].filter(p => window.__pageRenderers[p]))).toEqual([]);
   expect(await page.evaluate(() => typeof dailySpend)).toBe('undefined');
   // The eye hides the amounts of every new page and card.
   await page.evaluate(() => togglePrivacy());
-  for (const p of ['dashboard', 'income', 'yearly', 'pockets']) {
+  for (const p of ['dashboard', 'income', 'pockets']) {
     await goPage(page, p);
     const txt = await page.locator('.main').evaluate(el => { const c = el.cloneNode(true); c.querySelectorAll('.ticker').forEach(t => t.remove()); return c.innerText; });
     const hits = (txt.match(/[€£$]\s?\d[\d,.]*/g) || []).filter(m => !/^\$?\d/.test(m));
@@ -34,10 +20,11 @@ test('pages, Action required lines, and the eye', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('safe to spend and can I afford it', async ({ page }) => {
+test('can I afford it; no Safe to spend or loan card on Home', async ({ page }) => {
   const errors = await openApp(page);
-  await expect(page.locator('.ss-card')).toContainText('a day');
-  await page.locator('.ss-card').getByRole('button', { name: 'Can I afford it?' }).click();
+  await expect(page.locator('.ss-card')).toHaveCount(0);
+  await expect(page.locator('.main')).not.toContainText('Demo study loan');
+  await page.evaluate(() => openAfford());
   await page.locator('#af-amt').fill('350');
   await expect(page.locator('.af-verdict')).toBeVisible();
   await expect(page.locator('.af-lines')).toContainText('Left per day until payday');
@@ -50,16 +37,6 @@ test('safe to spend and can I afford it', async ({ page }) => {
   await page.locator('#ss-buf').fill('200');
   await page.locator('.modal').getByRole('button', { name: 'Save' }).click();
   expect(await page.evaluate(() => [data.settings.payday, data.settings.spendBuffer, safeSpendNow().payday])).toEqual([25, 200, '2026-10-25']);
-  await expect(page.locator('.ss-legend')).toContainText('Buffer');
-  expect(errors).toEqual([]);
-});
-
-test('yearly bills: paid opens the expense and moves the date', async ({ page }) => {
-  const errors = await openApp(page);
-  await seed(page);
-  await page.evaluate(() => yearlyBillPaid('yb_t1'));
-  expect(await page.evaluate(() => [ui.modal.type, ui.modal.payload.amount, data.yearlyBills[0].due])).toEqual(['tx', '640', '2027-11-01']);
-  await page.evaluate(() => closeModal());
   expect(errors).toEqual([]);
 });
 

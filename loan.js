@@ -734,23 +734,5 @@ function deleteLoan(id) {
   save(); render();
 }
 
-/* ---------- Dashboard: the loan, gross and net ----------
-   Your net worth is your own money only. The loan shows next to it: what the borrowed money is
-   worth (gross), what you owe, and the difference (net) — which is what the loan adds to (or
-   takes from) your wealth. */
-function loanDashboardHtml(netWorth) {
-  const list = loanList().filter(l => loanPositions(l).length || (l.holdings || []).length);
-  if (!list.length) return '';
-  const rows = list.map(L => { const M = loanModel(L); return { L, gross: M.valueNow - M.cash, cash: M.cash, owed: M.debtNow }; });
-  const gross = rows.reduce((s, r) => s + r.gross + r.cash, 0), owed = rows.reduce((s, r) => s + r.owed, 0), net = gross - owed;
-  return `
-    <div class="card" style="margin-bottom:20px;cursor:pointer;" onclick="ui.page='investments';ui.investmentsTab='loan';render();">
-      <div class="row-flex" style="margin-bottom:10px;"><div class="eyebrow">Loan — not your money</div><span style="font-size:12px;opacity:.65;">see details ›</span></div>
-      <div class="grid-3">
-        <div class="card-nested"><div class="eyebrow">Invested (gross)</div><div style="font-size:19px;font-weight:700;">${fmtMoney(gross)}</div></div>
-        <div class="card-nested"><div class="eyebrow">Owed to the bank</div><div style="font-size:19px;font-weight:700;" class="negative">${fmtMoney(owed)}</div></div>
-        <div class="card-nested"><div class="eyebrow">Net</div><div style="font-size:19px;font-weight:700;" class="${net >= 0 ? 'positive' : 'negative'}">${net >= 0 ? '+' : '−'}${fmtMoney(Math.abs(net))}</div></div>
-      </div>
-      <div style="font-size:12.5px;opacity:.6;margin-top:10px;">Your net worth above is your own money only. Including the loan's net: <strong>${fmtMoney(netWorth + net)}</strong>.</div>
-    </div>`;
-}
+/* The loan's card on Overview was removed at the user's request (13 Nov 2026): the loan shows on
+   Investments → Loan only. */

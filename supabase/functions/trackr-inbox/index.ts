@@ -10,7 +10,7 @@
 // Deploy: Supabase → Edge Functions → Deploy a new function → Via editor → name "trackr-inbox",
 // paste this file, Deploy. Then in its settings turn OFF "Verify JWT" (Claude has no Supabase login).
 
-const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.2.0' };
+const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.3.0' };
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, authorization' };
 
@@ -40,18 +40,15 @@ const BUDGET_ITEM = {
 const INVEST_ITEM = {
   type: 'object',
   properties: {
-    action: { type: 'string', enum: ['buy', 'sell', 'dividend', 'deposit', 'withdrawal'], description: 'buy / sell a position; dividend received; deposit (cash from a bank account to the broker) or withdrawal (back to the bank)' },
-    date: str('Trade or payment date, YYYY-MM-DD'),
+    action: { type: 'string', enum: ['dividend', 'deposit', 'withdrawal'], description: 'dividend received; deposit (cash from a bank account to the broker) or withdrawal (back to the bank). Buys and sells are not recorded: send what I hold with add_position_snapshots' },
+    date: str('Payment date, YYYY-MM-DD'),
     broker_key: str('The broker key from get_trackr_context (investAccounts[].key)'),
     broker: str('Broker name if no key fits'),
     asset_key: str('The asset key from get_trackr_context (investAccounts[].assets[].key)'),
     ticker: str('Ticker or coin symbol'),
     isin: str('ISIN when shown'),
     asset: str('Asset name'),
-    quantity: num('Number of shares / coins'),
-    price: num('Price per share / coin'),
-    amount: num('Total value of the trade, or the cash amount of a dividend / deposit / withdrawal'),
-    fee: num('Fees paid, if any'),
+    amount: num('The cash amount of the dividend / deposit / withdrawal'),
     currency: str('ISO code, e.g. EUR, USD'),
     bank_account: str('Deposit / withdrawal: the bank account name (accounts[].name)'),
     note: str('Short note'),
@@ -70,6 +67,7 @@ const SNAP_POSITION = {
     currency: str('Currency of avg_price, ISO code, e.g. EUR'),
     avg_price_alt: num('A second average buy price when the broker shows one in another currency (e.g. the $ figure next to the € one)'),
     alt_currency: str('Currency of avg_price_alt, e.g. USD'),
+    asset_type: str('For a holding not in get_trackr_context: ETF, stock, bond, commodity or crypto'),
   },
   required: ['quantity', 'avg_price'],
 };
@@ -93,14 +91,14 @@ const TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
-    name: 'add_investment_items', title: 'Send trades to Trackr',
-    description: 'Send executed buys, sells, dividends, deposits or withdrawals to my Trackr inbox (up to 50 at once). They wait there until I review them in Trackr: nothing changes before I approve it.',
+    name: 'add_investment_items', title: 'Send dividends and deposits to Trackr',
+    description: 'Send dividends, deposits or withdrawals to my Trackr inbox (up to 50 at once). They wait there until I review them in Trackr. Buys and sells are NOT recorded: for what I hold, use add_position_snapshots.',
     inputSchema: itemsInput(INVEST_ITEM),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: 'add_position_snapshots', title: 'Send my positions to Trackr',
-    description: 'Send what one broker shows I hold now (a portfolio / positions overview: quantity and average buy price per holding, up to 50), NOT trades. Trackr compares each one with what it holds and asks me, card by card: more than Trackr = a buy of the difference, less = the holding is corrected (never a sale). Nothing changes before I approve it. For executed orders use add_investment_items.',
+    description: 'Send EVERYTHING one broker shows I hold now (a portfolio / positions overview: quantity and average buy price per holding, up to 50) in ONE call. When I approve it in Trackr it REPLACES what Trackr holds at that broker: new positions are added, quantities and averages updated, and positions missing from the list are removed. So never send a partial list: if the overview spans several screenshots, send all their lines together. No buy or sale is recorded.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -220,7 +218,7 @@ async function handleMessage(msg, key, env, fetchFn) {
       protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER,
-      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids (and what I hold at each broker), then send what you read with add_budget_items or add_investment_items (executed trades), or add_position_snapshots (what a broker shows I hold now: quantity and average buy price). Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
+      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids (and what I hold at each broker), then send what you read with add_budget_items, add_position_snapshots (everything a broker shows I hold now: quantity and average buy price; it replaces what Trackr holds there once I approve) or add_investment_items (dividends, deposits, withdrawals; buys and sells are not recorded). Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
     });
   }
   if (msg.method === 'ping') return reply({});

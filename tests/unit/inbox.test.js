@@ -51,18 +51,12 @@ test('transfers between own accounts and brokers', () => {
   assert.equal(inboxNormalize({ type: 'transfer', date: '2026-10-17', amount: 100, from_account: 'Demo Bank' }, 'budget', ctx).ok, false);
 });
 
-test('investments: a buy matched by ISIN, ticker or key; unknown assets wait', () => {
+test('investments: buys and sells are not recorded any more: they can only be rejected', () => {
   const n = inboxNormalize({ action: 'buy', date: '2026-10-16', broker: 'Sample Broker', isin: 'IE00B4L5Y983', quantity: 2, price: 104.2 }, 'invest', ctx);
   assert.equal(n.form, 'trade');
-  assert.equal(n.ok, true);
-  assert.deepEqual([n.draft.accountKey, n.draft.from, n.draft.qty, n.draft.price, n.draft.locks.join()], ['broker:brk_1', 'a:as_world', '2', '104.2', 'qty,price']);
-  const byTicker = inboxNormalize({ action: 'sell', date: '2026-10-16', ticker: 'wrld', quantity: 1, amount: 105 }, 'invest', ctx); // one broker: that one
-  assert.deepEqual([byTicker.draft.from, byTicker.draft.locks.join()], ['a:as_world', 'qty,amount']);
-  const unknown = inboxNormalize({ action: 'buy', date: '2026-10-16', broker: 'Sample Broker', ticker: 'NEW', quantity: 1, price: 10 }, 'invest', ctx);
-  assert.equal(unknown.ok, false);
-  const usd = inboxNormalize({ action: 'buy', date: '2026-10-16', ticker: 'WRLD', quantity: 1, price: 100, currency: 'USD' }, 'invest', ctx);
-  assert.equal(usd.draft.price, '90');
-  assert.equal(inboxNormalize({ action: 'buy', date: '2026-10-16', ticker: 'WRLD', quantity: 1 }, 'invest', ctx).ok, false); // one number isn't enough
+  assert.equal(n.ok, false);
+  assert.match(n.problems[0].text, /aren't recorded any more/);
+  assert.equal(inboxNormalize({ action: 'sell', date: '2026-10-16', ticker: 'wrld', quantity: 1, amount: 105 }, 'invest', ctx).ok, false);
 });
 
 test('investments: dividends are income, deposits are transfers to the broker', () => {
@@ -130,7 +124,7 @@ test('connector: initialize, tools, and calls that go to the inbox with the key'
   assert.deepEqual(ctx.calls.map(c => [c.name, c.args.inbox_key, c.headers.apikey]), [['inbox_context', KEY, 'test-anon-not-real']]);
   assert.match(ctx.body.result.content[0].text, /2026-10-18/);
 
-  const add = await call(fn, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'add_investment_items', arguments: { items: [{ action: 'buy', ticker: 'WRLD' }], source: 'screenshot' } } }, { inbox_add: a => ({ added: a.items.length }) });
+  const add = await call(fn, { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'add_investment_items', arguments: { items: [{ action: 'dividend', ticker: 'WRLD', amount: 4.2 }], source: 'screenshot' } } }, { inbox_add: a => ({ added: a.items.length }) });
   assert.deepEqual([add.calls[0].name, add.calls[0].args.channel, add.calls[0].args.source], ['inbox_add', 'invest', 'screenshot']);
   assert.equal(add.body.result.structuredContent.added, 1);
   const budget = await call(fn, { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'add_budget_items', arguments: { items: [{ type: 'expense' }] } } }, { inbox_add: { added: 1 } });
@@ -156,12 +150,14 @@ test('a position from a broker overview: matched to the asset at that broker, ne
   assert.equal(n.form, 'snapshot');
   assert.equal(n.ok, true);
   assert.deepEqual([n.draft.accountKey, n.draft.from, n.draft.qty, n.draft.avg, n.draft.ccy, n.draft.alt.ccy, n.draft.batch], ['broker:b1', 'a:w', 26, 93.5, 'EUR', 'USD', 'b']);
-  const unknown = inboxNormalize({ action: 'snapshot', date: '2026-10-17', broker: 'Sample Broker', ticker: 'NOPE', quantity: 1, avg_price: 1 }, 'invest', ctx);
-  assert.equal(unknown.ok, false);
-  assert.match(unknown.problems[0].text, /isn't in Trackr yet/);
+  // Not in Trackr yet: a new position (made when you update), with what Claude said about it.
+  const unknown = inboxNormalize({ action: 'snapshot', date: '2026-10-17', broker: 'Sample Broker', ticker: 'NOPE', isin: 'IE0000000001', asset: 'Nope ETF', asset_type: 'ETF', quantity: 1, avg_price: 1 }, 'invest', ctx);
+  assert.equal(unknown.ok, true);
+  assert.deepEqual([unknown.draft.from, unknown.draft.ticker, unknown.draft.isin, unknown.draft.name, unknown.draft.type], ['', 'NOPE', 'IE0000000001', 'Nope ETF', 'ETF']);
   const unread = inboxNormalize({ action: 'snapshot', date: '2026-10-17', broker: 'Sample Broker', ticker: 'WRLD', quantity: 'abc', avg_price: 1 }, 'invest', ctx);
   assert.equal(unread.ok, false);
   assert.equal(inboxInstructions('invest').includes('add_position_snapshots'), true);
+  assert.match(inboxInstructions('invest'), /replaces what it holds/);
 });
 
 test('connector: errors come back to Claude, nothing is sent without a key or items', async () => {

@@ -80,7 +80,16 @@ function goalImpact(before, add, target) {
   const more = already || completes ? 0 : a > 0 ? Math.ceil((t - after) / a - 1e-9) : null;
   return { after, target: t, before: b, shareBefore: Math.min(1, b / t), shareAfter: Math.min(1, after / t), already, completes, more };
 }
-if (typeof module !== 'undefined' && module.exports) module.exports = { incomeSplit, vatSplit, largestRemainder, capPercents, goalImpact };
+/* Quarter q (1–4) of a year: its first and last day, and the Dutch return deadline (end of the
+   next month). Was in freelance.js (removed 13 Nov 2026); the VAT line uses it for "this quarter". */
+function vatQuarterRange(year, q) {
+  const pad = n => String(n).padStart(2, '0');
+  const m0 = (q - 1) * 3 + 1, m2 = m0 + 2;
+  const last = new Date(year, m2, 0).getDate();
+  const dl = new Date(year, m2 + 1, 0);
+  return { key: `${year}-Q${q}`, from: `${year}-${pad(m0)}-01`, to: `${year}-${pad(m2)}-${pad(last)}`, deadline: `${dl.getFullYear()}-${pad(dl.getMonth() + 1)}-${pad(dl.getDate())}` };
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = { incomeSplit, vatSplit, largestRemainder, capPercents, goalImpact, vatQuarterRange };
 
 if (typeof window !== 'undefined') {
   window.incomePlan = function () {

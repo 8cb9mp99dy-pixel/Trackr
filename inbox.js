@@ -1,5 +1,5 @@
 /* ===================== Claude inbox =====================
- * Its own file, loaded after invest.js (uses the trade panel) and before safety.js.
+ * Its own file, loaded after invest.js and before safety.js.
  *
  * Two Claude projects ("Trackr Budget", "Trackr Investments") read what you send them (receipts,
  * screenshots of a bank or broker app, plain text) and, through a custom connector, drop each
@@ -11,8 +11,10 @@
  * Apple Pay payments land in the same inbox (channel 'applepay', sent by an iPhone Shortcut with
  * its own write-only token: applepay.js reads them with walletItem()).
  *   - Budget items: "Add" (ready ones), "Edit" (the expense form, filled in) or "Reject".
- *   - Investment items: buy / sell open the broker's trade panel filled in (you press Buy / Sell
- *     there, as usual); dividend, deposit and withdrawal open the transaction form filled in.
+ *   - Investment items: a positions screenshot is one card (snapshots.js) that replaces what you
+ *     hold at that broker; dividend, deposit and withdrawal open the transaction form filled in.
+ *     Buys and sells are no longer recorded (the user's choice, 13 Nov 2026): one still waiting
+ *     can only be rejected.
  *   - No connector, or it failed: Claude gives a JSON block you paste in Add → Paste from Claude.
  *
  * The key: one per connector, made here; Supabase only keeps its hash. It can add items to the
@@ -283,7 +285,7 @@ const INBOX_FUNCTION_TEXT = String.raw`// @ts-nocheck
 // Deploy: Supabase → Edge Functions → Deploy a new function → Via editor → name "trackr-inbox",
 // paste this file, Deploy. Then in its settings turn OFF "Verify JWT" (Claude has no Supabase login).
 
-const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.2.0' };
+const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.3.0' };
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, authorization' };
 
@@ -313,18 +315,15 @@ const BUDGET_ITEM = {
 const INVEST_ITEM = {
   type: 'object',
   properties: {
-    action: { type: 'string', enum: ['buy', 'sell', 'dividend', 'deposit', 'withdrawal'], description: 'buy / sell a position; dividend received; deposit (cash from a bank account to the broker) or withdrawal (back to the bank)' },
-    date: str('Trade or payment date, YYYY-MM-DD'),
+    action: { type: 'string', enum: ['dividend', 'deposit', 'withdrawal'], description: 'dividend received; deposit (cash from a bank account to the broker) or withdrawal (back to the bank). Buys and sells are not recorded: send what I hold with add_position_snapshots' },
+    date: str('Payment date, YYYY-MM-DD'),
     broker_key: str('The broker key from get_trackr_context (investAccounts[].key)'),
     broker: str('Broker name if no key fits'),
     asset_key: str('The asset key from get_trackr_context (investAccounts[].assets[].key)'),
     ticker: str('Ticker or coin symbol'),
     isin: str('ISIN when shown'),
     asset: str('Asset name'),
-    quantity: num('Number of shares / coins'),
-    price: num('Price per share / coin'),
-    amount: num('Total value of the trade, or the cash amount of a dividend / deposit / withdrawal'),
-    fee: num('Fees paid, if any'),
+    amount: num('The cash amount of the dividend / deposit / withdrawal'),
     currency: str('ISO code, e.g. EUR, USD'),
     bank_account: str('Deposit / withdrawal: the bank account name (accounts[].name)'),
     note: str('Short note'),
@@ -343,6 +342,7 @@ const SNAP_POSITION = {
     currency: str('Currency of avg_price, ISO code, e.g. EUR'),
     avg_price_alt: num('A second average buy price when the broker shows one in another currency (e.g. the $ figure next to the € one)'),
     alt_currency: str('Currency of avg_price_alt, e.g. USD'),
+    asset_type: str('For a holding not in get_trackr_context: ETF, stock, bond, commodity or crypto'),
   },
   required: ['quantity', 'avg_price'],
 };
@@ -366,14 +366,14 @@ const TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
-    name: 'add_investment_items', title: 'Send trades to Trackr',
-    description: 'Send executed buys, sells, dividends, deposits or withdrawals to my Trackr inbox (up to 50 at once). They wait there until I review them in Trackr: nothing changes before I approve it.',
+    name: 'add_investment_items', title: 'Send dividends and deposits to Trackr',
+    description: 'Send dividends, deposits or withdrawals to my Trackr inbox (up to 50 at once). They wait there until I review them in Trackr. Buys and sells are NOT recorded: for what I hold, use add_position_snapshots.',
     inputSchema: itemsInput(INVEST_ITEM),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   {
     name: 'add_position_snapshots', title: 'Send my positions to Trackr',
-    description: 'Send what one broker shows I hold now (a portfolio / positions overview: quantity and average buy price per holding, up to 50), NOT trades. Trackr compares each one with what it holds and asks me, card by card: more than Trackr = a buy of the difference, less = the holding is corrected (never a sale). Nothing changes before I approve it. For executed orders use add_investment_items.',
+    description: 'Send EVERYTHING one broker shows I hold now (a portfolio / positions overview: quantity and average buy price per holding, up to 50) in ONE call. When I approve it in Trackr it REPLACES what Trackr holds at that broker: new positions are added, quantities and averages updated, and positions missing from the list are removed. So never send a partial list: if the overview spans several screenshots, send all their lines together. No buy or sale is recorded.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -493,7 +493,7 @@ async function handleMessage(msg, key, env, fetchFn) {
       protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
       capabilities: { tools: { listChanged: false } },
       serverInfo: SERVER,
-      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids (and what I hold at each broker), then send what you read with add_budget_items or add_investment_items (executed trades), or add_position_snapshots (what a broker shows I hold now: quantity and average buy price). Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
+      instructions: 'Trackr is my personal finance app. Use get_trackr_context for my category, account and broker ids (and what I hold at each broker), then send what you read with add_budget_items, add_position_snapshots (everything a broker shows I hold now: quantity and average buy price; it replaces what Trackr holds there once I approve) or add_investment_items (dividends, deposits, withdrawals; buys and sells are not recorded). Items wait for my review in Trackr. To correct what still waits, use list_inbox_items, then update_inbox_item or delete_inbox_items. What I already reviewed can only be changed by me, in Trackr.',
     });
   }
   if (msg.method === 'ping') return reply({});
@@ -599,13 +599,13 @@ function inboxNormalize(raw, channel, ctx) {
       const asset = assets.find(a => key && a.key === key) || assets.find(a => isin && low(a.isin) === isin) || assets.find(a => tick && low(a.ticker) === tick)
         || assets.find(a => nm && low(a.name).includes(nm));
       const label = str(it.ticker || it.symbol || it.asset || it.isin, 60);
-      if (acc && !asset) warn(`${label || 'This asset'} isn't in Trackr yet: add it first, then review this again.`, true);
+      // Not in Trackr yet: a new position, made when you update (snapshots.js).
       const qty = num(it.quantity), avg = num(it.avg_price != null ? it.avg_price : it.price), alt = num(it.avg_price_alt);
       if (!(qty >= 0) || !(avg >= 0)) warn('The quantity or the average buy price can\'t be read.', true);
       const altCcy = /^[A-Za-z]{3}$/.test(str(it.alt_currency, 3)) ? str(it.alt_currency, 3).toUpperCase() : '';
       return result('snapshot', 'snapshot', { date, broker: acc ? acc.name : brokerName, accountKey: acc ? acc.key : '', from: asset ? asset.key : '',
         assetLabel: asset ? asset.name : label, ticker: asset ? asset.ticker : label, qty: qty >= 0 ? qty : NaN, avg: avg >= 0 ? avg : NaN, ccy: currency,
-        alt: alt > 0 && altCcy ? { avg: alt, ccy: altCcy } : null, batch: str(it.batch, 80) || `${brokerName || (acc && acc.name) || ''}|${date}`, note });
+        alt: alt > 0 && altCcy ? { avg: alt, ccy: altCcy } : null, isin: str(it.isin, 20), name: str(it.asset || it.asset_name, 80), type: str(it.asset_type, 30), batch: str(it.batch, 80) || `${brokerName || (acc && acc.name) || ''}|${date}`, note });
     }
     if (kind === 'snapshot') return snapshotItem();
     const toEur = (v, c) => (c === 'EUR' || !ctx.toEUR ? v : ctx.toEUR(v, c));
@@ -617,6 +617,7 @@ function inboxNormalize(raw, channel, ctx) {
     }
     const base = { date, note: [name, note].filter(Boolean).join(' · ').slice(0, 200), broker: acc ? acc.name : brokerName };
     if (kind === 'buy' || kind === 'sell') {
+      warn('Buys and sells aren\'t recorded any more: send a screenshot of your positions instead. Reject this one.', true);
       const assets = acc ? acc.assets || [] : [];
       const key = str(it.asset_key, 120), tick = low(it.ticker || it.symbol), isin = low(it.isin), nm = low(it.asset || it.asset_name || it.security || '');
       const asset = assets.find(a => key && a.key === key) || assets.find(a => isin && low(a.isin) === isin) || assets.find(a => tick && low(a.ticker) === tick)
@@ -806,19 +807,15 @@ function inboxParsePasted(text) {
 function inboxInstructions(channel) {
   const invest = channel === 'invest';
   return (invest ? [
-    'You are Trackr Investments. You file my investment activity into my Trackr app with the Trackr connector: I send screenshots or notes from my broker apps (trades, order confirmations, dividends, deposits) and overviews of what I hold (Trading 212, Trade Republic…).',
+    'You are Trackr Investments. You keep what I hold in my Trackr app up to date with the Trackr connector. About once a month I send screenshots of what a broker shows I hold (Trading 212, Trade Republic…): each one is an UPDATE of my positions there, never trades.',
     '',
     'Every time:',
     '1. Call get_trackr_context once per conversation to get my brokers (investAccounts: key, name), the assets at each one (key, ticker, name, isin; for what I hold there also quantity, avg_price and currency), my bank accounts and today\'s date. Use those keys.',
-    '2. First decide what I sent:',
-    '   - Executed trades or cash movements (an order confirmation, a transaction history, a dividend, a deposit) → add_investment_items.',
-    '   - An overview of what I hold now (positions or portfolio: each holding with how many I own and my average buy price, often with its value and gain) → add_position_snapshots, NEVER add_investment_items: a position is not a trade. Trackr compares it with what it holds and asks me, card by card.',
-    '   - Not sure which → ask me before sending anything.',
-    '3. Trades: action (buy, sell, dividend, deposit, withdrawal), date (YYYY-MM-DD), broker_key, asset_key (match by ISIN first, then ticker, then name), quantity, price per unit, total amount, fee, currency. Only executed orders count: skip pending, cancelled or rejected orders and price alerts.',
-    '4. Positions: ONE add_position_snapshots call per broker, with broker_key, date (the day the overview shows; today if none) and every line of the overview: asset_key (ISIN first, then ticker, then name), quantity, avg_price (the AVERAGE BUY price per share or coin, never the current price, the value or the gain) and its currency. If the broker shows the average in two currencies (e.g. €40.00 and $46.50), send the second as avg_price_alt with alt_currency. Leave out values, gains and cash.',
-    '5. Never invent a number; if one is unreadable, leave it out. If an asset is not in the context, still send it with ticker / isin / asset name: Trackr will ask me to add it first.',
-    '6. Send trades with ONE add_investment_items call (up to 50 items) and source saying what I sent (e.g. "Trading 212 screenshot").',
-    '7. Then reply with a short table (trades: date, action, asset, quantity, total; positions: asset, quantity, average buy price) and say it waits in Trackr → Inbox for my review. Nothing changes in Trackr until I approve it there.',
+    '2. An overview of what I hold (positions or portfolio: each holding with how many I own and my average buy price, often with its value and gain) → add_position_snapshots. ONE call per broker with EVERY line: once I approve it, Trackr replaces what it holds at that broker with this list (new positions added, quantities and averages updated, positions not in the list removed). If the overview spans several screenshots, wait until I have sent them all, then send all their lines in that one call. If you think a screenshot is cut off, ask me before sending.',
+    '3. Each line: asset_key (match by ISIN first, then ticker, then name), quantity, avg_price (the AVERAGE BUY price per share or coin, never the current price, the value or the gain) and its currency; date = the day the overview shows (today if none). If the broker shows the average in two currencies (e.g. €40.00 and $46.50), send the second as avg_price_alt with alt_currency. A holding not in the context: send its ticker, isin, asset name and asset_type (ETF, stock, bond, commodity or crypto): Trackr adds it as a new position. Leave out values, gains and cash.',
+    '4. Buys and sells are NOT recorded in Trackr: if I send an order confirmation or a transaction history, tell me to send a screenshot of my positions instead. Dividends, deposits and withdrawals (cash) can go with add_investment_items: action, date, broker_key, amount, currency, bank_account.',
+    '5. Never invent a number; if one is unreadable, leave it out and tell me.',
+    '6. Then reply with a short table (asset, quantity, average buy price) and say it waits in Trackr → Inbox: one card for that broker, with what is new, changed and removed. Nothing changes in Trackr until I press Update positions there.',
   ] : [
     'You are Trackr Budget. You file my spending into my Trackr app with the Trackr connector: I send receipts, screenshots of my bank or card apps, photos, or plain text ("12,40 bakery yesterday").',
     '',
@@ -936,7 +933,12 @@ if (typeof module !== 'undefined' && module.exports) {
 
   /* ---- Review: a page like Budget, day by day ---- */
   window.openInbox = function () { goPage('inbox'); inboxRefresh(); };
-  window.inboxCount = () => openItems().length;
+  // A positions screenshot counts once, however many lines it has.
+  window.inboxCount = () => {
+    const o = openItems(), snap = x => x.item && x.item.action === 'snapshot';
+    const batch = x => x.item.batch || `${x.item.broker_key || x.item.broker || ''}|${x.item.date || ''}`; // as inboxNormalize groups them
+    return o.filter(x => !snap(x)).length + new Set(o.filter(snap).map(batch)).size;
+  };
   /* The Wallet card names payments came with (for Settings → Apple Pay). */
   window.inboxWalletCards = () => Array.from(new Set(state.items.filter(x => x.channel === 'applepay' && x.item && x.item.card).map(x => String(x.item.card).trim())));
   window.inboxTabOn = () => openItems().length > 0 || channelsOn().length > 0 || ui.page === 'inbox' || rejectedNow().length > 0;
@@ -1031,7 +1033,6 @@ if (typeof module !== 'undefined' && module.exports) {
       r.fail = failed[id] || '';
       r.status = same ? 'same' : !r.n.ok || r.n.problems.length || m || first || r.fail || r.pair ? 'check' : 'new';
     });
-    rows.forEach(r => { if (r.n.form === 'snapshot' && typeof snapReview === 'function') Object.assign(r, snapReview(r, rows)); });
     return rows;
   }
   const signedEUR = n => { const d = n.draft, v = toEUR(+d.amount || 0, d.currency || 'EUR'); return n.form !== 'tx' ? 0 : d.type === 'income' ? v : d.type === 'expense' ? -v : 0; };
@@ -1039,11 +1040,12 @@ if (typeof module !== 'undefined' && module.exports) {
   const isAddable = r => r.n.form === 'tx' && r.n.ok;
   const isPicked = r => ((ui.ibPick || {})[r.x.id] !== undefined ? ui.ibPick[r.x.id] : r.status !== 'check');
   function tabOf(rows) {
-    const has = t => rows.some(r => r.status === t);
+    const has = t => rows.some(r => r.status === t && r.n.form !== 'snapshot');
     return has(ui.ibTab) ? ui.ibTab : ['new', 'check', 'same'].find(has) || 'new';
   }
   function shownRows(rows) {
-    const tab = tabOf(rows), inTab = rows.filter(r => r.status === tab);
+    // Positions screenshots are cards of their own (snapshots.js), never in a tab.
+    const tab = tabOf(rows), inTab = rows.filter(r => r.status === tab && r.n.form !== 'snapshot');
     return ui.ibSource && inTab.some(r => sourceName(r.x.source) === ui.ibSource) ? inTab.filter(r => sourceName(r.x.source) === ui.ibSource) : inTab;
   }
   function itemLine(n) {
@@ -1079,7 +1081,6 @@ if (typeof module !== 'undefined' && module.exports) {
     return `<select class="ib-fix" aria-label="Category" onchange="inboxSetCategory('${id}',this.value)"><option value="">Pick a category…</option>${cats.map(c => `<option value="${escHtml(c.id)}">${escHtml(c.name)}</option>${(c.subcategories || []).map(s => `<option value="${escHtml(c.id)}|${escHtml(s.id)}">${escHtml(c.name)} · ${escHtml(s.name)}</option>`).join('')}`).join('')}</select>`;
   };
   function rowHtml(r) {
-    if (r.n.form === 'snapshot' && typeof snapRowHtml === 'function') return snapRowHtml(Object.assign({ picked: isPicked(r), avatar: avatarOf(r.n) }, r));
     const { x, n } = r, id = escHtml(x.id), l = itemLine(n), d = n.draft;
     const needsCat = n.form === 'tx' && d.type !== 'transfer' && !d.categoryId;
     const fixes = (n.unknownPockets || []).map((u, i) => `<button class="ib-act" onclick="inboxFixPocket('${id}',${i},'create')">${ic('plus', 14)} Create pocket ${escHtml(u.name)}</button>${u.mainNamed ? '' : `<button class="ib-act" onclick="inboxFixPocket('${id}',${i},'main')">It's the main balance</button>`}`);
@@ -1095,11 +1096,10 @@ if (typeof module !== 'undefined' && module.exports) {
     if (r.fail) hints.unshift(`<li class="block">${escHtml(r.fail)}</li>`);
     if (n.edited) hints.push('<li>Edited by you.</li>');
     const addLabel = r.status === 'new' || !isAddable(r) ? 'Add' : 'Add anyway';
-    const tradeBtn = n.ok ? 'Review the trade' : 'Open the broker';
     return `<div class="ib-item ${n.ok ? '' : 'blocked'}" title="${escHtml(x.local ? 'Pasted' : x.source || '')}">
       <input class="ib-tick" type="checkbox" aria-label="Select ${escHtml(l.title)}" ${isPicked(r) ? 'checked' : ''} onchange="inboxPick('${id}',this.checked)">
       <div class="ib-mid">
-        <button class="ib-open" onclick="inboxOpen('${id}')" ${n.form === 'trade' && !d.accountKey ? 'disabled' : ''}>${avatarOf(n)}<span class="ib-txt"><b>${escHtml(l.title)}</b><span>${escHtml(l.meta || '—')}</span></span></button>
+        <button class="ib-open" onclick="inboxOpen('${id}')" ${n.form === 'trade' ? 'disabled' : ''}>${avatarOf(n)}<span class="ib-txt"><b>${escHtml(l.title)}</b><span>${escHtml(l.meta || '—')}</span></span></button>
         ${n.wallet ? walletLineHtml(n) : ''}
         ${needsCat ? categoryPicker(r, id) : ''}
         ${hints.length ? `<ul class="ib-probs">${hints.join('')}</ul>` : ''}
@@ -1109,7 +1109,7 @@ if (typeof module !== 'undefined' && module.exports) {
         <b class="num ${l.cls}">${l.amount}</b>
         <span class="ib-btns">
           ${n.form === 'tx' ? `<button class="ib-act on" ${isAddable(r) ? '' : 'disabled title="Fill in what\'s missing first"'} onclick="inboxAdd('${id}')">${ic('check', 14)} ${addLabel}</button>
-          <button class="ib-act" title="Change it before it goes in" onclick="inboxOpen('${id}')">${ic('edit', 14)} Edit</button>` : d.accountKey ? `<button class="ib-act on" onclick="inboxOpen('${id}')">${tradeBtn}</button>` : ''}
+          <button class="ib-act" title="Change it before it goes in" onclick="inboxOpen('${id}')">${ic('edit', 14)} Edit</button>` : ''}
           <button class="ib-act" title="Don't add it. It moves to the Rejected tab." onclick="inboxReject('${id}')">${ic('x', 14)} Reject</button>
         </span>
       </div>
@@ -1142,7 +1142,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }).join('');
   }
   window.__pageRenderers.inbox = function () {
-    const rows = reviewRows(), shown = shownRows(rows), on = channelsOn();
+    const all = reviewRows(), rows = all.filter(r => r.n.form !== 'snapshot'), shown = shownRows(rows), on = channelsOn();
+    const cards = typeof snapBatchesHtml === 'function' ? snapBatchesHtml(all) : '', waitingN = rows.length + (typeof snapBatchCount === 'function' ? snapBatchCount(all) : 0);
     const ctx = ctxForNormalize(), gone = rejectedNow().map(x => ({ x, n: normalized(x, ctx) }));
     const tab = ui.ibTab === 'rejected' && gone.length ? 'rejected' : tabOf(rows);
     const count = t => (t === 'rejected' ? gone.length : rows.filter(r => r.status === t).length);
@@ -1159,7 +1160,7 @@ if (typeof module !== 'undefined' && module.exports) {
     return `
     <div class="page surface-light">
       <div class="page-head">
-        <div><h1 class="page-title">Inbox</h1><div class="page-subtitle">${rows.length ? `${rows.length} waiting · nothing is in Trackr until you add it` : 'Your Apple Pay payments, and what Claude reads from your screenshots'}</div></div>
+        <div><h1 class="page-title">Inbox</h1><div class="page-subtitle">${waitingN ? `${waitingN} waiting · nothing is in Trackr until you add it` : 'Your Apple Pay payments, and what Claude reads from your screenshots'}</div></div>
         <div class="row-flex" style="gap:8px;">
           ${ready.length ? `<button class="btn primary" onclick="inboxAddReady()">${ic('check', 15)} Add all ready (${ready.length})</button>` : ''}
           <button class="btn" onclick="openInboxPaste()">${ic('copy', 15)} Paste</button>
@@ -1167,25 +1168,25 @@ if (typeof module !== 'undefined' && module.exports) {
         </div>
       </div>
       ${state.missing ? '<div class="ib-warn">The inbox isn\'t in your Supabase yet: Settings → Claude inbox → step 1.</div>' : lastError ? `<div class="ib-warn">${escHtml(lastError)}</div>` : ''}
+      ${cards}
       ${rows.length || gone.length ? `
       ${rows.length ? `<div class="card bt-summary">
         <div><div class="eyebrow">To add</div><b>${waiting.length}</b></div>
-        ${waiting.some(r => r.n.form !== 'snapshot') ? `<div><div class="eyebrow">In</div><b class="positive">${fmtMoney(sum(1))}</b></div>
-        <div><div class="eyebrow">Out</div><b class="negative">${fmtMoney(sum(-1))}</b></div>` : ''}
+        <div><div class="eyebrow">In</div><b class="positive">${fmtMoney(sum(1))}</b></div>
+        <div><div class="eyebrow">Out</div><b class="negative">${fmtMoney(sum(-1))}</b></div>
         <div><div class="eyebrow">Already in Trackr</div><b>${count('same')}</b></div>
       </div>` : ''}
       <div class="tab-row ib-tabs">${['new', 'check', 'same'].concat(gone.length ? ['rejected'] : []).map(t => `<button class="tab-btn ${tab === t ? 'active' : ''}" onclick="inboxTab('${t}')">${labels[t]} <span class="ib-n">${count(t)}</span></button>`).join('')}</div>
       ${names.length > 1 ? `<div class="ib-sources"><button class="ib-src ${ui.ibSource && names.includes(ui.ibSource) ? '' : 'on'}" onclick="inboxSource('')">All</button>${names.map(s => `<button class="ib-src ${ui.ibSource === s ? 'on' : ''}" onclick="inboxSource('${js(s)}')">${escHtml(s)} <span class="ib-n">${sources[s]}</span></button>`).join('')}</div>` : names.length ? `<div class="ib-from">${escHtml(names[0])}</div>` : ''}
-      ${tab !== 'rejected' && typeof snapBatchNotesHtml === 'function' ? snapBatchNotesHtml(rows) : ''}
       ${tab === 'same' ? '<div class="ib-note">These match transactions you already have, each one only once. Reject them, or add the one that really is new.</div>' : ''}
-      ${tab === 'rejected' ? `<div class="ib-note">None of these went into Trackr. They stay here for 30 days, then they're deleted. Put one back to review it again.</div>${daysHtml(gone, rejectedRowHtml)}` : !rows.length ? nothing : `${daysHtml(shown)}
+      ${tab === 'rejected' ? `<div class="ib-note">None of these went into Trackr. They stay here for 30 days, then they're deleted. Put one back to review it again.</div>${daysHtml(gone, rejectedRowHtml)}` : !rows.length ? (cards ? '' : nothing) : `${daysHtml(shown)}
       <div class="ib-bar">
         <label class="ib-all"><input class="ib-tick" type="checkbox" aria-label="Select all" ${picked.length === shown.length ? 'checked' : ''} onchange="inboxPickAll(this.checked)"><span>${picked.length} selected</span></label>
         <span class="ib-sum">${adds.length ? [net(1) ? `<span class="positive">+${fmtMoney(net(1))}</span>` : '', net(-1) ? `<span class="negative">-${fmtMoney(net(-1))}</span>` : ''].filter(Boolean).join(' ') : ''}</span>
         <span class="ib-bar-acts">${tab === 'same'
           ? `${adds.length ? `<button class="btn small" onclick="inboxAddPicked()">Add anyway</button>` : ''}<button class="btn small primary" ${picked.length ? '' : 'disabled'} onclick="inboxRejectPicked()">Reject ${picked.length}</button>`
           : `<button class="btn small" ${picked.length ? '' : 'disabled'} onclick="inboxRejectPicked()">Reject ${picked.length}</button><button class="btn small primary" ${adds.length ? '' : 'disabled'} onclick="inboxAddPicked()">Add ${adds.length}</button>`}</span>
-      </div>`}` : nothing}
+      </div>`}` : cards ? '' : nothing}
     </div>`;
   };
   window.inboxTab = function (t) { ui.ibTab = t; render(); };
@@ -1264,8 +1265,9 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!isAddable(r)) return inboxOpen(id);
     addRows([r]);
   };
-  /* For snapshots.js: one row with its comparison, close one item, and its copy for Undo. */
-  window.inboxRow = id => reviewRows().find(q => q.x.id === id) || null;
+  /* For snapshots.js: the rows, close one item, reject several, and a copy for Undo. */
+  window.inboxReviewRows = () => reviewRows();
+  window.inboxRejectIds = ids => rejectRows(reviewRows().filter(r => ids.includes(r.x.id)));
   window.inboxResolve = id => resolveItem(id, 'added');
   window.inboxPutBackCopy = id => { const x = findItem(id); return x ? putBack([x]) : null; };
   window.inboxReject = function (id) { const r = reviewRows().find(q => q.x.id === id); if (r) rejectRows([r]); };
@@ -1294,17 +1296,7 @@ if (typeof module !== 'undefined' && module.exports) {
   window.inboxOpen = function (id) {
     const x = findItem(id); if (!x) return;
     const n = normalized(x, ctxForNormalize());
-    if (n.form === 'snapshot') return;
-    if (n.form === 'trade') {
-      if (!n.draft.accountKey) return;
-      openInvestAccount(n.draft.accountKey);
-      if (n.draft.from) {
-        ui.trade = Object.assign(tradeBlank(), { side: n.draft.side, from: n.draft.from, to: '', qty: n.draft.qty, price: n.draft.price, amount: n.draft.amount, fee: n.draft.fee, date: n.draft.date, note: n.draft.note, locks: n.draft.locks, details: true, _inboxId: id });
-        ui.investTab = 'trade';
-      }
-      render();
-      return;
-    }
+    if (n.form === 'snapshot' || n.form === 'trade') return;
     openTxForm(null, Object.assign({}, n.draft, { _inboxId: id }));
   };
   /* In the form: keep your changes here to add later, or add it now. */
@@ -1318,23 +1310,13 @@ if (typeof module !== 'undefined' && module.exports) {
     const r = reviewRows().find(q => q.x.id === id);
     safetyToast(`<span>Changes saved${r ? `, under ${{ new: 'New', check: 'To check', same: 'Already in Trackr' }[r.status]}` : ''}. Not in Trackr until you add it.</span>`, { ms: 4000 });
   };
-  // Saved through the form or the trade panel: that item is done.
+  // Saved through the form: that item is done.
   const origSaveTx = window.saveTxForm;
   window.saveTxForm = function () {
     const p = ui.modal && ui.modal.type === 'tx' ? ui.modal.payload : null;
     const id = p && p._inboxId, n0 = (data.budgetTransactions || []).length;
     const r = origSaveTx.apply(this, arguments);
     if (id && (data.budgetTransactions || []).length > n0 && !(ui.modal && ui.modal.payload === p)) resolveItem(id, 'added');
-    return r;
-  };
-  const origConfirmTrade = window.confirmTrade;
-  window.confirmTrade = function () {
-    const id = ui.trade && ui.trade._inboxId, n0 = (data.investmentTransactions || []).length;
-    const r = origConfirmTrade.apply(this, arguments);
-    if (id && (data.investmentTransactions || []).length > n0) {
-      resolveItem(id, 'added');
-      if (!ui.modal && openItems().length) openInbox();
-    }
     return r;
   };
 
@@ -1438,7 +1420,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   /* ---- Where it shows ---- */
   window.__attention.push(() => {
-    const n = openItems().length;
+    const n = inboxCount();
     return n ? [{ key: 'inbox:' + n, icon: `<span class="add-ic" style="width:30px;height:30px;">${ic('receipt', 16)}</span>`,
       name: `${n} in your inbox to review`, detail: 'From Apple Pay and Claude. Nothing is in Trackr until you add it.',
       actions: [{ label: 'Review', onclick: 'closeModal();openInbox()', primary: true }] }] : [];

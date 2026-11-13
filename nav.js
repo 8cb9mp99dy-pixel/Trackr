@@ -4,11 +4,11 @@
  * goPage('…') id stays the same — only how they're grouped changes:
  *
  *   Home      Overview
- *   Money     Budget (Transactions · Totals · Recurring · Forecast · Budgets · Categories · Import) · Income plan · Freelance · Inbox (once Apple Pay or Claude is set up, with the count waiting)
- *             (Receipts, Trips, IOUs and Contracts were removed at the user's request, 2 Nov 2026: don't bring them back)
+ *   Money     Budget (Transactions · Totals · Recurring · Forecast · Budgets · Categories · Import) · Income plan · Inbox (once Apple Pay or Claude is set up, with the count waiting)
+ *             (Receipts, Trips, IOUs and Contracts were removed at the user's request, 2 Nov 2026, Freelance on 13 Nov 2026: don't bring them back)
  *   Wealth    Overview · Cash (the old Accounts page) · Pockets (pockets.js) · Investments (+ each account) · Watchlist · Debts
- *   Plan      Goals · Yearly bills · Emergency · Insights (the old Analysis page)
- *             (Patterns was removed at the user's request, 3 Nov 2026: don't bring it back)
+ *   Plan      Goals · Emergency · Insights (the old Analysis page)
+ *             (Patterns was removed at the user's request, 3 Nov 2026, Yearly bills on 13 Nov 2026: don't bring them back)
  *   Settings
  *
  * On a computer the side bar stays short: Home, the three groups with their icons, Settings. The
@@ -22,9 +22,9 @@
  */
 const NEW_NAV = [
   { id: 'dashboard', label: 'Home', icon: 'home', phone: true, pages: ['dashboard'] },
-  { id: 'budget', label: 'Money', icon: 'receipt', phone: true, pages: ['budget', 'income', 'freelance', 'inbox'] },
+  { id: 'budget', label: 'Money', icon: 'receipt', phone: true, pages: ['budget', 'income', 'inbox'] },
   { id: 'wealth', label: 'Wealth', icon: 'pie', phone: true, pages: ['wealth', 'accounts', 'pockets', 'investments', 'investAccount', 'manual-prices', 'positions-import', 'watchlist'] },
-  { id: 'goals', label: 'Plan', icon: 'target', phone: true, pages: ['goals', 'yearly', 'analysis'] },
+  { id: 'goals', label: 'Plan', icon: 'target', phone: true, pages: ['goals', 'analysis'] },
   { id: 'settings', label: 'Settings', icon: 'settings', pages: ['settings'] },
 ];
 function newNavOn() { return !(typeof data !== 'undefined' && data && data.settings && data.settings.classicNav); }
@@ -39,7 +39,6 @@ const SECTION_TABS = {
   budget: [
     ['Budget', "goPage('budget')", () => ui.page === 'budget'],
     ['Income plan', "goPage('income')", () => ui.page === 'income'],
-    ['Freelance', "goPage('freelance')", () => ui.page === 'freelance'],
     ['Inbox', "goPage('inbox')", () => ui.page === 'inbox', () => typeof inboxTabOn === 'function' && inboxTabOn(), () => (typeof inboxCount === 'function' ? inboxCount() : 0)],
   ],
   wealth: [
@@ -52,7 +51,6 @@ const SECTION_TABS = {
   ],
   goals: [
     ['Goals', "goPlanSection('goals')", () => ui.page === 'goals' && ui.goalsTab !== 'emergency'],
-    ['Yearly bills', "goPage('yearly')", () => ui.page === 'yearly'],
     ['Emergency', "goPlanSection('emergency')", () => ui.page === 'goals' && ui.goalsTab === 'emergency'],
     ['Insights', "goPage('analysis')", () => ui.page === 'analysis'],
   ],

@@ -178,7 +178,6 @@ const NAV_ITEMS = [
   { id: 'analysis', label: 'Analysis', icon: 'compass' },
   { id: 'budget', label: 'Budget', icon: 'receipt', phone: true },
   { id: 'income', label: 'Income plan', icon: 'swap' },
-  { id: 'freelance', label: 'Freelance', icon: 'briefcase' },
   { id: 'investments', label: 'Investments', icon: 'trend', phone: true },
   { id: 'accounts', label: 'Accounts', icon: 'bank' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
@@ -443,7 +442,7 @@ function defaultData() {
       payday: null, // day of the month the salary arrives (spend.js); null = guessed from the biggest recurring income
       spendBuffer: 0, // kept aside in "Safe to spend" (spend.js)
       classicNav: false, // Settings → Display → "Classic navigation": every page in the side bar (nav.js)
-      applyTradesToHoldings: false, // Investments → an account → Buy: "Also update my holdings and cash"
+      applyTradesToHoldings: false, // no longer used: buys and sells aren't recorded (13 Nov 2026); kept for older data
       inboxChannels: {}, // Inbox (inbox.js): { claude: 'YYYY-MM-DD', applepay: 'YYYY-MM-DD' } when its connector / token is on
       balanceModel: '', // 'tx' once switched (balances.js): a balance = its starting point + its transactions
       walletCards: [], // Settings → Apple Pay (applepay.js): [{ name: 'Wallet card name', ref: 'acc:ID' | 'pk:ACC:POCKET' }]
@@ -502,12 +501,12 @@ function defaultData() {
       // Phase 6 (2 Nov 2026): your birth date (typed by you, for your age on the axis), amounts and
       // returns per kind of asset, debts, yearly raise of the saving, scenario spread, phases, events.
       birthDate: '', returns: {}, start: {}, debts: null, growth: 0, spread: 2, phases: [], events: [] },
-    // Freelance (freelance.js): invoices you send, and VAT per quarter.
+    // The Freelance page (invoices, VAT per quarter) was removed at the user's request (13 Nov 2026): kept for older data.
     invoices: [],
     watchlist: [],
     ious: [], // money lent / borrowed / split (the IOUs page was removed, 2 Nov 2026; kept so old data stays)
     contracts: [], // subscriptions with a notice period (the Contracts page was removed, 2 Nov 2026; kept)
-    yearlyBills: [], // irregular bills set aside for every month (setaside.js)
+    yearlyBills: [], // the removed Yearly bills page (13 Nov 2026): kept for older data and backups
     cards: [], // the bank cards on the Accounts page: a picture and a link, no card data (cards.js)
     photoThumbs: {}, // photo id → a very small copy of a goal's cover, for your other devices (photos.js)
     images: {},      // photo id → { path, w, h, type, createdAt } in the private image storage (images.js); never the picture or a link
@@ -548,8 +547,11 @@ function defaultData() {
     goals: [],
     // Goals → Emergency savings: a cushion in months of your real spending.
     emergencyFund: { enabled: false, months: 6, links: null, excludeCats: [] },
-    // Recurring buys (Investments → an account → Plans) — never real orders, see invest.js.
+    // Recurring buys (the removed Plans tab, 13 Nov 2026): kept for older data and backups.
     investPlans: [],
+    // Positions updates from broker screenshots (snapshots.js): [{ id, accountKey, account, date, at, source,
+    // positions: [{ key, ticker, name, qty, avg, ccy }], changes: [{ key, kind, before, after, … }], made: [keys] }].
+    positionSnapshots: [],
     // Logos chosen for crypto exchanges (Investments → an exchange → Edit): { 'name in lower case': url }.
     exchangeLogos: {},
     // Budget → Forecast: what-if scenarios [{ id, name, amount, direction 'in'|'out', date, repeat 'once'|'monthly', active, accountId }].
@@ -2479,13 +2481,14 @@ function renderApp(app) {
     wealth: () => (typeof renderWealth === 'function' ? renderWealth() : ''),
     goals: () => (typeof renderGoals === 'function' ? renderGoals() : ''),
     analysis: () => (typeof renderAnalysis === 'function' ? renderAnalysis() : ''),
-    freelance: () => (typeof renderFreelance === 'function' ? renderFreelance() : ''),
     watchlist: () => (typeof renderWatchlist === 'function' ? renderWatchlist() : ''),
     investAccount: () => (typeof renderInvestAccount === 'function' ? renderInvestAccount() : renderInvestments()),
     'manual-prices': renderManualPrices,
     'positions-import': () => (typeof renderPositionsImport === 'function' ? renderPositionsImport() : ''),
   };
   // Pages from their own files register in window.__pageRenderers (allocation.js, inbox.js…).
+  // A page that was removed (Freelance, Yearly bills…): Home instead of an empty screen.
+  if (!pageRenderers[ui.page] && !(window.__pageRenderers && window.__pageRenderers[ui.page])) ui.page = 'dashboard';
   const extraPage = window.__pageRenderers && window.__pageRenderers[ui.page];
   const pageHtml = pageRenderers[ui.page] ? pageRenderers[ui.page]() : extraPage ? extraPage() : '';
   // Settings → Display → "New navigation (beta)" groups the same pages differently (nav.js).
@@ -2648,7 +2651,6 @@ function renderDashboard() {
     ${typeof overviewHeroHtml === 'function' ? `${overviewHeroHtml()}${accountChips ? `<div class="chip-scroll ov-accounts" tabindex="0" role="group" aria-label="Your accounts">${accountChips}</div>` : ''}` : classicNetWorthCard}
 
     ${(() => { let h = ''; runHooks('__overviewCards', f => { h += f() || ''; }); return h; })()}
-    ${typeof loanDashboardHtml === 'function' ? loanDashboardHtml(netWorth) : ''}
 
     ${typeof overviewMonthHtml === 'function' ? overviewMonthHtml() : classicMonthCards}
 
@@ -6719,8 +6721,7 @@ function settingsDisplayHtml() {
       ${boolSettingRow('Compact mode', 'compactMode', 'Tighter spacing and smaller headline numbers, so more fits on the screen.')}
       <div class="row-flex"><div><div style="font-size:13.5px;">Dutch box 3 estimate</div><div style="font-size:12px;opacity:.65;margin-top:2px;">A card in Analysis estimating the Dutch wealth tax from your 1 January figures (2026 rules, editable). An estimate, not tax advice.</div></div><div class="toggle ${data.settings.box3 && data.settings.box3.enabled ? 'on' : ''}" style="flex:none;" onclick="setBox3('enabled', !(data.settings.box3 && data.settings.box3.enabled))"></div></div>
       ${typeof appearanceSettingHtml === 'function' ? appearanceSettingHtml() : ''}
-      ${boolSettingRow('Classic navigation', 'classicNav', 'Every page in the side bar, as before. Off: Home · Money (budget, income plan, freelance) · Wealth (overview, cash, pockets, investments, watchlist, debts) · Plan (goals, emergency, insights). Same pages, grouped differently.')}
-      ${boolSettingRow('Update holdings when I record a trade', 'applyTradesToHoldings', 'After Buy / Sell / Convert (or a plan) on an account page, show how quantities, average price and cash would change, and apply it if you confirm. Never places a real order.')}
+      ${boolSettingRow('Classic navigation', 'classicNav', 'Every page in the side bar, as before. Off: Home · Money (budget, income plan, inbox) · Wealth (overview, cash, pockets, investments, watchlist, debts) · Plan (goals, emergency, insights). Same pages, grouped differently.')}
       ${boolSettingRow('Category budgets', 'categoryBudgets', 'A monthly limit per spending category: the Budgets tab in Budget, how much is left, and alerts at 80 % and 100 %. Your limits stay saved when it\'s off.')}
       <div class="row-flex"><span style="font-size:13.5px;">Hide amounts <span style="opacity:.65;">(this device only)</span></span><div class="toggle ${privacyOn() ? 'on' : ''}" onclick="togglePrivacy()"></div></div>
       <label class="field"><span class="label-text">Twelve Data API key <span style="opacity:.6;">(ticker search &amp; live prices)</span></span>

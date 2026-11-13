@@ -81,3 +81,9 @@ test('goal impact: before / after, the payment that reaches it, how many more', 
   assert.strictEqual(goalImpact(0, 0, 1000).more, null);
   assert.deepStrictEqual(goalImpact(10, 5, 0), { after: 15, target: 0 });
 });
+
+test('a VAT quarter: its days and the Dutch deadline', () => {
+  const { vatQuarterRange } = require('../../allocation.js');
+  assert.deepStrictEqual(vatQuarterRange(2026, 4), { key: '2026-Q4', from: '2026-10-01', to: '2026-12-31', deadline: '2027-01-31' });
+  assert.deepStrictEqual(vatQuarterRange(2026, 1).to, '2026-03-31');
+});

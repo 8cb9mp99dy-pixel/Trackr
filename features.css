@@ -178,12 +178,36 @@
 }
 .ib-note { font-size: 12.5px; line-height: 1.5; color: var(--fx-dim); margin-bottom: 12px; }
 .ib-note b { color: var(--fx-ink); }
-/* Position snapshots (snapshots.js): Trackr → broker, and what would change. */
-.snap-cmp { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 13px; margin-top: 6px; }
-.snap-cmp > span:first-child { color: var(--fx-dim); }
-.snap-what { font-size: 12.5px; color: var(--fx-dim); margin-top: 4px; }
-.snap-batch div { margin-top: 4px; }
-.ib-snap .ib-btns { flex-wrap: wrap; }
+/* Position snapshots (snapshots.js): one card per screenshot, and the broker page's History. */
+.snap-card { margin-bottom: 14px; }
+.snap-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.snap-head .dim, .snap-hint { font-size: 12.5px; }
+.snap-sum { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+.snap-sec { margin-top: 12px; }
+.snap-sec > .eyebrow { margin-bottom: 4px; }
+details.snap-sec > summary { cursor: pointer; list-style: none; }
+details.snap-sec > summary::-webkit-details-marker { display: none; }
+details.snap-sec > summary::before { content: '▸ '; }
+details.snap-sec[open] > summary::before { content: '▾ '; }
+.snap-line { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--fx-line); font-size: 13.5px; }
+label.snap-line { display: flex; cursor: pointer; margin: 0; }
+.snap-line > input[type="checkbox"] { margin: 0; flex: none; width: 18px; height: 18px; accent-color: var(--fx-ink); }
+.snap-nm { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.snap-tag { font-size: 11.5px; color: var(--fx-dim); }
+.snap-nums { text-align: right; white-space: nowrap; }
+.snap-line.remove .snap-nums, .snap-line.skip, .snap-line.kept, .snap-line.same, .snap-line.dupe { color: var(--fx-dim); }
+.snap-line.remove:not(.kept) .snap-nm b { text-decoration: line-through; }
+.snap-line.conflict .snap-tag, .snap-line.bad .snap-tag { color: var(--fx-ink); font-weight: 600; }
+.snap-x { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--fx-line); background: none; color: inherit; cursor: pointer; }
+.snap-acts { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.snap-acts > .dim { flex: 1 1 220px; font-size: 12px; }
+.snap-hist > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; padding: 6px 0; }
+.snap-hist + .snap-hist { border-top: 1px solid var(--fx-line); padding-top: 4px; }
+@media (max-width: 520px) {
+  .snap-line { flex-wrap: wrap; }
+  .snap-nm { flex: 1 1 calc(100% - 40px); }
+  .snap-nums { flex: 1 1 auto; text-align: left; }
+}
 /* Apple Pay (applepay.js): the line under a payment, the cards table, the counts in the menu. */
 .ib-wallet { display: block; margin: 2px 0 0 50px; font-size: 12px; overflow-wrap: anywhere; }
 .ap-cards { display: flex; flex-direction: column; gap: 6px; }
@@ -630,6 +654,10 @@ html.tx-dragging, html.tx-dragging * { cursor: grabbing !important; }
 .pkp-sum .dim { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pkp-sum b { font-size: 19px; font-weight: 700; }
 .pkp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.pkp-cell { position: relative; display: flex; min-width: 0; }
+.pkp-cell > .pkp-card { flex: 1; min-width: 0; padding-right: 40px; }
+.pkp-amt { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--fx-line); background: var(--fx-paper); color: inherit; cursor: pointer; }
+.pkp-amt:hover { border-color: var(--fx-line-strong); }
 .pkp-card { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: center; text-align: left; padding: 12px 14px; border-radius: var(--radius-lg); border: 1px solid var(--fx-line); background: var(--fx-paper); color: inherit; font: inherit; cursor: pointer; transition: border-color var(--dur-fast); }
 .pkp-card:hover { border-color: var(--fx-line-strong); }
 .pkp-card.on { border-color: var(--fx-ink); box-shadow: inset 0 0 0 1px var(--fx-ink); }

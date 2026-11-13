@@ -1,9 +1,7 @@
-/* The ten new features' pure maths: safe to spend and affordability, IOUs, contracts, yearly
-   bills, trips, the month-end check and the receipt scan. */
+/* Feature pure maths: safe to spend and affordability, the month-end check and the receipt scan. */
 const test = require('node:test');
 const assert = require('node:assert');
 const { nextPayday, safeToSpend, affordCheck } = require('../../spend.js');
-const { nextDueDate, setAsideState } = require('../../setaside.js');
 const { monthToClose, closeChecklist } = require('../../monthclose.js');
 const { snapSchema, snapClean } = require('../../snap.js');
 
@@ -40,21 +38,6 @@ test('can I afford it: from the main balances, and from savings', () => {
   assert.strictEqual(sav.verdict, 'yes');
   assert.deepStrictEqual(sav.goalDelays, [{ name: 'Trip', months: 4 }]);
   assert.strictEqual(affordCheck({ amount: 5500, from: 'savings', emergency: { current: 6000, monthly: 1000 } }).verdict, 'no');
-});
-
-test('yearly bills: next date, per month, on track or behind', () => {
-  assert.strictEqual(nextDueDate('2025-03-15', 12, '2026-10-18'), '2027-03-15');
-  const b = { amount: 1200, due: '2027-04-18', everyMonths: 12 };
-  const none = setAsideState(b, '2026-10-18', null);
-  assert.strictEqual(none.steady, 100);
-  assert.strictEqual(none.status, 'none');
-  assert.ok(Math.abs(none.expected - 600) < 10, 'half way: about half saved');
-  const behind = setAsideState(b, '2026-10-18', 300);
-  assert.strictEqual(behind.status, 'behind');
-  assert.ok(behind.perMonth > 140 && behind.perMonth < 160, 'catch up: 900 over about 6 months');
-  assert.strictEqual(setAsideState(b, '2026-10-18', 700).status, 'on');
-  assert.strictEqual(setAsideState(b, '2026-10-18', 1200).status, 'ready');
-  assert.strictEqual(setAsideState({ amount: 500, due: '2026-10-28', everyMonths: 12 }, '2026-10-18', 100).perMonth, 400, 'due within a month: all of it now');
 });
 
 test('month-end check: which month, and the steps', () => {
