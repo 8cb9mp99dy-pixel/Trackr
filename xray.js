@@ -132,7 +132,7 @@ if (typeof window !== 'undefined') {
       positions: Object.values(byGroup).sort((a, b) => b.value - a.value),
       institutions: Object.keys(byInst).map(k => ({ name: k, value: byInst[k] })).sort((a, b) => b.value - a.value),
       currencies, currencyTotal: Object.values(currencies).reduce((s, v) => s + v, 0),
-      netWorth: netWorthTotal(),
+      netWorth: typeof financialNetWorth === 'function' ? financialNetWorth() : netWorthTotal(), // without a car or other things you own
       cryptoValue: holdings.filter(r => r.type === 'Crypto').reduce((s, r) => s + r.value, 0),
       brokerCash: invRows.filter(r => r.type === 'Cash').reduce((s, r) => s + r.value, 0),
       emergency: ef.enabled && typeof emergencyState === 'function' ? emergencyState() : null,

@@ -12,7 +12,10 @@
  * Wealth simulator: today's net worth + a monthly amount over 1 to 60 years (chips, or type any
  * number) at three yearly returns (3/5/7 % by default): pick a ready-made set (savings account,
  * cautious, balanced, all stocks, or from the returns you typed on your positions) or nudge each
- * one with − / +. An assumption, not a forecast.
+ * one with − / +. An assumption, not a forecast. Amounts in today's euros by default (13 Nov 2026):
+ * inflation (2 % a year unless you change it) is taken off, so €100 means what €100 buys today.
+ * Financial independence: your yearly spending ÷ a safe withdrawal rate (4 % by default), against
+ * your net worth without the things you own, and how long until you get there at the median return.
  * Investor profile: risk profile, emergency cushion in months, debt ratio, tracking since.
  */
 
@@ -144,6 +147,8 @@ function renderAnalysis() {
     ${typeof xrayCardHtml === 'function' ? xrayCardHtml() : ''}
     ${typeof returnsCardHtml === 'function' ? returnsCardHtml() : ''}
     ${simulatorCardHtml()}
+    ${fiCardHtml()}
+    ${typeof merchantsCardHtml === 'function' ? merchantsCardHtml() : ''}
     ${typeof box3CardHtml === 'function' ? box3CardHtml() : ''}
     ${profileCardHtml()}
   </div>`;
@@ -234,7 +239,9 @@ function simSettings() {
     for (let i = 1; i <= 3; i++) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); if (d < budgetMinMonth()) break; sum += monthIncome(d) - monthExpenses(d); n++; }
     return n ? Math.max(0, sum / n) : 0;
   })();
-  return { monthly: s.monthly != null ? +s.monthly : Math.round(flow), years: Math.min(SIM_MAX_YEARS, Math.max(1, Math.round(+s.years) || 30)), rates: Array.isArray(s.rates) && s.rates.length === 3 ? s.rates.map(Number) : [3, 5, 7], realFlow: flow, typedMonthly: s.monthly != null };
+  const inflation = s.inflation != null && isFinite(+s.inflation) ? +s.inflation : 2;
+  return { monthly: s.monthly != null ? +s.monthly : Math.round(flow), years: Math.min(SIM_MAX_YEARS, Math.max(1, Math.round(+s.years) || 30)), rates: Array.isArray(s.rates) && s.rates.length === 3 ? s.rates.map(Number) : [3, 5, 7], realFlow: flow, typedMonthly: s.monthly != null,
+    real: s.real !== false, inflation, deflate: s.real !== false ? inflation : 0 };
 }
 const SIM_MAX_YEARS = 60;
 const SIM_YEARS = [1, 3, 5, 10, 15, 20, 25, 30, 40, 50];
@@ -256,18 +263,45 @@ function setSim(key, v) {
   const s = data.settings.simulator = Object.assign({}, data.settings.simulator);
   if (key === 'monthly') { const n = parseFloat(String(v).replace(',', '.')); if (isNaN(n)) delete s.monthly; else s.monthly = Math.max(0, n); }
   else if (key === 'years') { const n = Math.round(parseFloat(String(v).replace(',', '.'))); if (!(n >= 1)) return render(); s.years = Math.min(SIM_MAX_YEARS, n); }
+  else if (key === 'real') s.real = !!v;
+  else if (key === 'inflation') { const n = parseFloat(String(v).replace(',', '.')); if (!isNaN(n)) s.inflation = Math.max(0, Math.min(15, Math.round(n * 10) / 10)); }
   else if (key.startsWith('rate')) { const i = +key.slice(4), r = simSettings().rates; const n = parseFloat(String(v).replace(',', '.')); if (!isNaN(n)) { r[i] = Math.max(-20, Math.min(30, n)); s.rates = r; } }
   save(); render();
 }
-function simulate(start, monthly, rate, years) {
-  const pts = [], r = Math.pow(1 + rate / 100, 1 / 12) - 1, now = new Date();
+/* The path of your wealth: the monthly amount stays the same in euros; with inflation (% a year),
+   each point is shown in today's euros (what it would buy today). */
+function simulate(start, monthly, rate, years, inflation, now) {
+  const pts = [], r = Math.pow(1 + rate / 100, 1 / 12) - 1, i = Math.pow(1 + (inflation || 0) / 100, 1 / 12);
+  now = now || new Date();
   let v = start;
   pts.push({ x: now.getTime(), y: v });
   for (let m = 1; m <= years * 12; m++) {
     v = v * (1 + r) + monthly;
-    if (m % 12 === 0 || years <= 5) pts.push({ x: new Date(now.getFullYear(), now.getMonth() + m, 1).getTime(), y: v });
+    if (m % 12 === 0 || years <= 5) pts.push({ x: new Date(now.getFullYear(), now.getMonth() + m, 1).getTime(), y: v / Math.pow(i, m) });
   }
   return pts;
+}
+/* What you put in over the years, in today's euros when inflation is given. */
+function simContrib(monthly, years, inflation) {
+  const i = Math.pow(1 + (inflation || 0) / 100, 1 / 12);
+  let s = 0;
+  for (let m = 1; m <= years * 12; m++) s += monthly / Math.pow(i, m);
+  return s;
+}
+/* Financial independence: what you need = yearly spending ÷ withdrawal rate. Months until your
+   money reaches it (today's euros: inflation taken off), at a yearly return and a monthly amount;
+   0 if you're there, null if not within maxYears. */
+function fiNumber(yearlySpend, ratePct) { return ratePct > 0 ? yearlySpend / (ratePct / 100) : 0; }
+function fiMonthsToGo(start, monthly, rate, inflation, target, maxYears) {
+  if (!(target > 0)) return null;
+  if (start >= target) return 0;
+  const r = Math.pow(1 + rate / 100, 1 / 12) - 1, i = Math.pow(1 + (inflation || 0) / 100, 1 / 12);
+  let v = start;
+  for (let m = 1; m <= (maxYears || SIM_MAX_YEARS) * 12; m++) {
+    v = v * (1 + r) + monthly;
+    if (v / Math.pow(i, m) >= target) return m;
+  }
+  return null;
 }
 function weightedTypedReturn() {
   let w = 0, v = 0, tot = 0;
@@ -275,15 +309,15 @@ function weightedTypedReturn() {
   return v ? { rate: w / v, coverage: tot ? v / tot : 0 } : null;
 }
 function simulatorCardHtml() {
-  const S = simSettings(), start = netWorthTotal();
+  const S = simSettings(), start = typeof financialNetWorth === 'function' ? financialNetWorth() : netWorthTotal();
   const [lo, mid, hi] = S.rates;
   const series = [
-    { label: `Optimistic ${hi}%`, color: chartColor(0), points: simulate(start, S.monthly, hi, S.years) },
-    { label: `Median ${mid}%`, color: 'var(--fx-ink, currentColor)', points: simulate(start, S.monthly, mid, S.years), width: 2.5 },
-    { label: `Pessimistic ${lo}%`, color: chartColor(1), points: simulate(start, S.monthly, lo, S.years) },
+    { label: `Optimistic ${hi}%`, color: chartColor(0), points: simulate(start, S.monthly, hi, S.years, S.deflate) },
+    { label: `Median ${mid}%`, color: 'var(--fx-ink, currentColor)', points: simulate(start, S.monthly, mid, S.years, S.deflate), width: 2.5 },
+    { label: `Pessimistic ${lo}%`, color: chartColor(1), points: simulate(start, S.monthly, lo, S.years, S.deflate) },
   ];
   const final = series[1].points[series[1].points.length - 1].y;
-  const contrib = S.monthly * 12 * S.years;
+  const contrib = simContrib(S.monthly, S.years, S.deflate);
   const gains = final - start - contrib;
   const typed = weightedTypedReturn();
   const presets = SIM_PRESETS.slice();
@@ -295,7 +329,16 @@ function simulatorCardHtml() {
         <div><div class="eyebrow">Wealth simulator</div><div style="font-weight:700;font-size:18px;margin-top:2px;">My future wealth</div></div>
         <button class="link-btn" onclick="ui.simInfo=!ui.simInfo;render()">${ic('info', 14)} ${ui.simInfo ? 'Hide' : 'How it works'}</button>
       </div>
-      ${ui.simInfo ? `<div class="info-box">Starts from today's net worth (${fmtMoney(start)}), adds the monthly amount at the end of each month, and grows everything at a fixed yearly return. Three returns give three paths. These are <b>assumptions, not a forecast</b>: real markets go up and down, and inflation isn't taken off. Default monthly amount: what you really kept on average over your last 3 full months (${fmtMoney(S.realFlow)}).</div>` : ''}
+      ${ui.simInfo ? `<div class="info-box">Starts from today's net worth without the things you own (${fmtMoney(start)}), adds the monthly amount at the end of each month, and grows everything at a fixed yearly return. Three returns give three paths. These are <b>assumptions, not a forecast</b>: real markets go up and down. ${S.real ? `<b>In today's euros:</b> prices rise ${S.inflation}% a year, so each amount is shown as what it would buy today. The monthly amount stays the same in euros, so it buys a little less each year.` : `<b>In future euros:</b> the amounts on the day, inflation not taken off. ${S.inflation}% a year would make ${fmtMoney(final)} worth about ${fmtMoney(final / Math.pow(1 + S.inflation / 100, S.years))} in today's money.`} Default monthly amount: what you really kept on average over your last 3 full months (${fmtMoney(S.realFlow)}).</div>` : ''}
+      <div class="sim-real" role="group" aria-label="Amounts in">
+        <span class="label-text">Amounts in</span>
+        <button class="seg ${S.real ? 'on' : ''}" onclick="setSim('real', true)">Today's euros</button>
+        <button class="seg ${S.real ? '' : 'on'}" onclick="setSim('real', false)">Future euros</button>
+        ${S.real ? `<span class="sim-rate sim-infl"><span>Inflation</span>
+          <button class="icon-btn-round" onclick="setSim('inflation', ${S.inflation} - 0.5)" aria-label="Inflation lower">−</button>
+          <input type="number" step="0.5" min="0" max="15" inputmode="decimal" value="${S.inflation}" aria-label="Inflation in % a year" onchange="setSim('inflation', this.value)"><span class="sim-pct">%</span>
+          <button class="icon-btn-round" onclick="setSim('inflation', ${S.inflation} + 0.5)" aria-label="Inflation higher">+</button></span>` : ''}
+      </div>
       <div class="sim-inputs">
         <label class="field"><span class="label-text">Monthly savings (€)</span><input type="number" min="0" step="10" inputmode="decimal" value="${S.monthly}" onchange="setSim('monthly', this.value)"></label>
         <div class="field sim-period"><span class="label-text">How long</span>
@@ -316,12 +359,58 @@ function simulatorCardHtml() {
       ${multiLineChartHtml(series, { h: 260 })}
       <div class="sim-legend">${series.map(s => `<span><span class="donut-swatch" style="background:${s.color};"></span>${escHtml(s.label)} · <b>${fmtMoney(s.points[s.points.length - 1].y)}</b></span>`).join('')}</div>
       <div class="sim-kpis">
-        <div><span class="eyebrow">Total contributions</span><b>${fmtMoney(contrib)}</b></div>
+        <div><span class="eyebrow">Total contributions${S.real ? ' (today\'s €)' : ''}</span><b>${fmtMoney(contrib)}</b></div>
         <div><span class="eyebrow">Gains generated</span><b class="${gains >= 0 ? 'positive' : 'negative'}">${fmtMoney(gains)}</b></div>
         <div><span class="eyebrow">Contributions share</span><b>${final > 0 ? ((contrib + start) / final * 100).toFixed(1) : '—'}%</b></div>
-        <div><span class="eyebrow">Yearly return (median)</span><b>${mid}% / yr</b></div>
+        <div><span class="eyebrow">Yearly return (median)</span><b>${mid}% / yr</b>${S.real ? `<small class="dim">≈ ${(((1 + mid / 100) / (1 + S.inflation / 100) - 1) * 100).toFixed(1)}% after inflation</small>` : ''}</div>
       </div>
       <div style="font-size:12px;opacity:.6;margin-top:10px;">${typed ? `For reference: the 5-year average returns you typed for your positions average <b>${typed.rate.toFixed(1)}%/yr</b> (weighted, ${Math.round(typed.coverage * 100)}% of your positions). Past returns don't predict future ones.` : 'Your own past return can\'t be measured honestly yet. Typing each position\'s 5-year average return (Investments) shows it here for reference.'}</div>
+    </div>`;
+}
+
+/* ---- Financial independence ---- */
+const FI_RATES = [3, 3.5, 4];
+function fiSettings() {
+  const s = data.settings.fi || {};
+  const real = (() => { // what you really spent a year: the average of your last 12 full months
+    const now = appToday(); let sum = 0, n = 0;
+    for (let i = 1; i <= 12; i++) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); if (d < budgetMinMonth()) break; sum += monthExpenses(d); n++; }
+    return { yearly: n ? sum / n * 12 : 0, months: n };
+  })();
+  const rate = FI_RATES.includes(+s.rate) ? +s.rate : 4;
+  return { rate, spend: s.spend != null && +s.spend > 0 ? +s.spend : Math.round(real.yearly), typed: s.spend != null && +s.spend > 0, real };
+}
+function setFi(key, v) {
+  const s = data.settings.fi = Object.assign({}, data.settings.fi);
+  if (key === 'rate') s.rate = +v;
+  if (key === 'spend') { const n = parseFloat(String(v).replace(',', '.')); if (isNaN(n) || n <= 0) delete s.spend; else s.spend = Math.round(n); }
+  save(); render();
+}
+function fiCardHtml() {
+  const F = fiSettings(), S = simSettings();
+  const have = typeof financialNetWorth === 'function' ? financialNetWorth() : netWorthTotal();
+  const need = fiNumber(F.spend, F.rate);
+  const pct = need > 0 ? Math.max(0, Math.min(100, have / need * 100)) : 0;
+  const months = fiMonthsToGo(have, S.monthly, S.rates[1], S.inflation, need, SIM_MAX_YEARS);
+  const when = months === 0 ? 'You have reached it.'
+    : months == null ? `Not within ${SIM_MAX_YEARS} years at ${fmtMoney(S.monthly)} a month and ${S.rates[1]}% a year.`
+    : `About <b>${months < 24 ? `${months} months` : `${Math.round(months / 12)} years`}</b> (${new Date(appToday().getFullYear(), appToday().getMonth() + months, 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}) at ${fmtMoney(S.monthly)} a month and the simulator's median ${S.rates[1]}% a year, in today's euros.`;
+  return `
+    <div class="card fi-card" style="margin-top:20px;">
+      <div class="row-flex" style="gap:8px;flex-wrap:wrap;">
+        <div><div class="eyebrow">Financial independence</div><div style="font-weight:700;font-size:18px;margin-top:2px;">Your number: ${need > 0 ? fmtMoney(need) : '—'}</div></div>
+        <button class="link-btn" onclick="ui.fiInfo=!ui.fiInfo;render()">${ic('info', 14)} ${ui.fiInfo ? 'Hide' : 'How it works'}</button>
+      </div>
+      ${ui.fiInfo ? `<div class="info-box">The money that could pay for your life without a salary: your yearly spending ÷ the share you'd take out each year. At 4% (the "4% rule", from US studies over 30 years), €${(25).toLocaleString('en-GB')} for every €1 you spend a year. 3 to 3.5% is safer for a longer time. What you have: your net worth without the things you own (a car doesn't pay the rent), and without the loan. A rule of thumb, not a promise.</div>` : ''}
+      ${need > 0 ? `
+      <div class="fi-bar" role="img" aria-label="${pct.toFixed(0)}% of your number"><i style="width:${pct.toFixed(1)}%"></i></div>
+      <div class="fi-line"><span><b>${fmtMoney(have)}</b> <span class="dim">you have</span></span><span><b>${pct.toFixed(0)}%</b></span><span class="dim">${have < need ? `${fmtMoney(need - have)} to go` : 'Reached'}</span></div>
+      <div class="fi-when">${when}</div>` : `<div class="dim" style="margin:10px 0;">Add your expenses in Budget, or type what you spend a year below.</div>`}
+      <div class="fi-inputs">
+        <label class="field"><span class="label-text">You spend a year (€)</span><input type="number" min="0" step="100" inputmode="decimal" value="${F.typed ? F.spend : ''}" placeholder="${Math.round(F.real.yearly)}" onchange="setFi('spend', this.value)">
+          <small class="dim">${F.typed ? `You typed it. Budget says ${fmtMoney(F.real.yearly)}; clear it to use that.` : F.real.months ? `From Budget: your last ${F.real.months} full month${F.real.months === 1 ? '' : 's'}, × 12.` : 'Nothing in Budget yet.'}</small></label>
+        <div class="field"><span class="label-text">Taken out each year</span><div class="seg-row" style="margin:0;">${FI_RATES.map(r => `<button class="seg ${F.rate === r ? 'on' : ''}" onclick="setFi('rate', ${r})">${r}%</button>`).join('')}</div></div>
+      </div>
     </div>`;
 }
 
@@ -354,3 +443,5 @@ function profileCardHtml() {
       </div>
     </div>`;
 }
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { simulate, simContrib, fiNumber, fiMonthsToGo };

@@ -118,8 +118,27 @@ Every update is kept with its date: broker page → **History** (what was new, c
 and what you held). The latest one has **Undo** while nothing has changed since; right after
 updating, the 10-second **Undo** does the same.
 
-After this update (connector 1.3.0): replace the function in Supabase (step 2 above) and paste the
+After this update (connector 1.3.1): replace the function in Supabase (step 2 above) and paste the
 *Trackr Investments* instructions again. No SQL change.
+
+## When Claude can't connect
+
+Claude shows "connection timed out" or a 503, and no Trackr tools.
+
+1. Open your connector link in a browser with `?check` at the end
+   (`…/functions/v1/trackr-inbox/<your key>?check`; connector 1.3.1 and later).
+   - `{"ok":true, …}`: the function runs and reaches the database with this key. In Claude,
+     remove the Trackr connector and add it again with the same link.
+   - `{"ok":false, "database": …}`: the function runs, but the database or the key says no
+     (the message says which: run the SQL again, or make a new key).
+   - An error page, nothing, or it never loads: the function doesn't start. Replace it
+     (Settings → Claude inbox → Copy the function → Supabase → Edge Functions → trackr-inbox →
+     paste over everything → Deploy), keep **Verify JWT** off. If Supabase says the project is
+     paused, restore it.
+2. Still failing: Supabase → Edge Functions → trackr-inbox → **Logs** at the time it failed.
+
+The server answers `initialize` and `tools/list` itself, without the database, in a few
+milliseconds; `tests/unit/inbox.test.js` runs it.
 
 ## Pockets
 

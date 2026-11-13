@@ -656,8 +656,8 @@ html.tx-dragging, html.tx-dragging * { cursor: grabbing !important; }
 .pkp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px; }
 .pkp-cell { position: relative; display: flex; min-width: 0; }
 .pkp-cell > .pkp-card { flex: 1; min-width: 0; padding-right: 40px; }
-.pkp-amt { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--fx-line); background: var(--fx-paper); color: inherit; cursor: pointer; }
-.pkp-amt:hover { border-color: var(--fx-line-strong); }
+.pkp-edit { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--fx-line); background: var(--fx-paper); color: inherit; cursor: pointer; }
+.pkp-edit:hover { border-color: var(--fx-line-strong); }
 .pkp-card { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: center; text-align: left; padding: 12px 14px; border-radius: var(--radius-lg); border: 1px solid var(--fx-line); background: var(--fx-paper); color: inherit; font: inherit; cursor: pointer; transition: border-color var(--dur-fast); }
 .pkp-card:hover { border-color: var(--fx-line-strong); }
 .pkp-card.on { border-color: var(--fx-ink); box-shadow: inset 0 0 0 1px var(--fx-ink); }
@@ -692,3 +692,61 @@ html.tx-dragging, html.tx-dragging * { cursor: grabbing !important; }
   .pkp-move { grid-template-columns: 26px minmax(0, 1fr) auto; }
   .pkp-del { display: none; }
 }
+
+/* Things you own (things.js) */
+.things-card { margin-top: 20px; }
+.things-empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.things-list { display: flex; flex-direction: column; margin-top: 12px; }
+.things-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: 0; border-top: 1px solid var(--fx-line); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.things-row:hover .things-main b { text-decoration: underline; text-underline-offset: 3px; }
+.things-ic { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--fx-line); }
+.things-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.things-main small, .things-val small { font-size: 12px; opacity: .65; }
+.things-val { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.things-bar { display: block; height: 4px; border-radius: 4px; background: var(--fx-line); overflow: hidden; max-width: 260px; }
+.things-bar > i { display: block; height: 100%; border-radius: 4px; background: var(--fx-ink); opacity: .7; }
+.things-sold { margin-top: 8px; font-size: 13px; }
+.things-sold summary { cursor: pointer; opacity: .7; padding: 6px 0; }
+.things-preview { margin: 8px 0 12px; }
+
+/* Where you spend (merchants.js) */
+.mer-top { display: flex; flex-direction: column; }
+.mer-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 0; border: 0; border-top: 1px solid var(--fx-line); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.mer-row:hover .mer-name b { text-decoration: underline; text-underline-offset: 3px; }
+.mer-logo { width: 30px; height: 30px; flex: none; display: grid; place-items: center; }
+.mer-letter { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--fx-line); font-weight: 700; font-size: 13px; }
+.mer-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mer-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mer-name small { font-size: 12px; opacity: .65; }
+.mer-total { white-space: nowrap; }
+.mer-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 4px 0 14px; }
+.mer-kpis > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--fx-line); }
+.mer-kpis b { font-size: 16px; }
+.mer-kpis small { font-size: 11.5px; }
+.mer-bars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; height: 120px; align-items: end; margin-bottom: 12px; }
+.mer-bar { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; }
+.mer-bar > i { display: block; width: 100%; max-width: 22px; height: var(--h); min-height: 1px; border-radius: 4px 4px 0 0; background: var(--chart-1); }
+.mer-bar > small { font-size: 10.5px; opacity: .6; }
+.mer-amt { display: none; position: absolute; top: -2px; font-size: 10.5px; white-space: nowrap; background: var(--fx-paper); padding: 1px 4px; border-radius: 4px; border: 1px solid var(--fx-line); z-index: 1; }
+.mer-bar:hover .mer-amt { display: block; }
+.mer-years { margin-bottom: 8px; }
+.mer-form-line { display: inline-flex; align-items: center; gap: 4px; margin: 2px 0 6px; font-size: 12.5px; }
+@media (max-width: 640px) { .mer-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Financial independence and today's euros (analysis.js) */
+.fi-bar { height: 10px; border-radius: 10px; background: var(--fx-line); overflow: hidden; margin: 14px 0 8px; }
+.fi-bar > i { display: block; height: 100%; border-radius: 10px; background: var(--fx-ink); }
+.fi-line { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+.fi-when { font-size: 13px; margin: 10px 0 4px; line-height: 1.5; }
+.fi-inputs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+.fi-inputs .field { display: flex; flex-direction: column; gap: 6px; margin: 0; font-size: 12px; }
+.fi-inputs small { font-size: 11.5px; }
+.sim-real { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 14px; font-size: 12px; }
+.sim-real > .label-text { opacity: .7; font-weight: 500; }
+.sim-real .sim-infl { margin-left: 8px; }
+.sim-real .sim-infl > span:first-child { min-width: 0; }
+.sim-real .sim-infl input { width: 64px; text-align: center; }
+.sim-kpis small.dim { font-size: 11.5px; }
+@media (max-width: 640px) { .fi-inputs { grid-template-columns: 1fr; } .sim-real .sim-infl { margin-left: 0; } }
+@media (prefers-reduced-motion: no-preference) { .fi-bar > i, .things-bar > i { transition: width var(--dur-med, .4s) var(--ease-out, ease); } }
+.fi-inputs .seg-row { display: inline-flex; width: auto; align-self: flex-start; }

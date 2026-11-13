@@ -164,6 +164,14 @@ const ICON_PATHS = {
   moon: '<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>',
   sun: '<path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/>',
   wallet: '<path d="M17 8v-3a1 1 0 0 0 -1 -1h-10a2 2 0 0 0 0 4h12a1 1 0 0 1 1 1v3m0 4v3a1 1 0 0 1 -1 1h-12a2 2 0 0 1 -2 -2v-12"/><path d="M20 12v4h-4a2 2 0 0 1 0 -4h4"/>',
+  // Things you own (things.js)
+  car: '<path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2 -5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/>',
+  moto: '<path d="M5 16m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M19 16m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M7.5 14h5l4 -4h-10.5m1.5 4l4 -4"/><path d="M13 6h2l1.5 3l2 4"/>',
+  bike: '<path d="M5 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M19 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/><path d="M12 19l0 -4l-3 -3l5 -4l2 3l3 0"/><path d="M17 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>',
+  phone: '<path d="M6 5a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2v-14z"/><path d="M11 4h2"/><path d="M12 17v.01"/>',
+  laptop: '<path d="M3 19l18 0"/><path d="M5 6m0 1a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v8a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1z"/>',
+  sofa: '<path d="M4 11a2 2 0 0 1 2 2v1h12v-1a2 2 0 1 1 4 0v5a1 1 0 0 1 -1 1h-18a1 1 0 0 1 -1 -1v-5a2 2 0 0 1 2 -2z"/><path d="M4 11v-3a3 3 0 0 1 3 -3h10a3 3 0 0 1 3 3v3"/><path d="M12 5v9"/>',
+  box: '<path d="M12 3l8 4.5l0 9l-8 4.5l-8 -4.5l0 -9l8 -4.5"/><path d="M12 12l8 -4.5"/><path d="M12 12l0 9"/><path d="M12 12l-8 -4.5"/>',
 };
 function ic(name, size) {
   size = size || 16;
@@ -552,6 +560,7 @@ function defaultData() {
     // Positions updates from broker screenshots (snapshots.js): [{ id, accountKey, account, date, at, source,
     // positions: [{ key, ticker, name, qty, avg, ccy }], changes: [{ key, kind, before, after, … }], made: [keys] }].
     positionSnapshots: [],
+    belongings: [], // things you own that lose value (things.js)
     // Logos chosen for crypto exchanges (Investments → an exchange → Edit): { 'name in lower case': url }.
     exchangeLogos: {},
     // Budget → Forecast: what-if scenarios [{ id, name, amount, direction 'in'|'out', date, repeat 'once'|'monthly', active, accountId }].
@@ -1342,7 +1351,7 @@ function recordHistorySnapshot() {
    snapshot above (from 16 Oct 2026; days before only have the totals), so Wealth can show each
    line's change over a period and Goals can measure how fast the money they follow grows.
    Keys: acc:<account> (balance without pockets), pk:<account>:<pocket>, e:<holding entry>,
-   c:<SYMBOL>@<exchange>, bc:<broker> (cash), cx:<exchange cash>. */
+   c:<SYMBOL>@<exchange>, bc:<broker> (cash), cx:<exchange cash>, b:<thing you own>. */
 function holdingValueMap() {
   const m = {};
   const put = (k, v) => { if (v && isFinite(v)) m[k] = Math.round(v * 100) / 100; };
@@ -1354,6 +1363,7 @@ function holdingValueMap() {
   (data.cryptoAssets || []).forEach(c => cryptoByExchange(c.symbol).forEach(x => put('c:' + c.symbol + '@' + x.exchange, x.valueEUR)));
   (data.brokers || []).forEach(b => { if (!brokerCashCountedInBank(b)) put('bc:' + b.id, toEUR(brokerCash(b), brokerCashCurrency(b))); });
   (data.cryptoExchangeCash || []).forEach(c => put('cx:' + c.id, toEUR(+c.amount || 0, c.currency)));
+  if (typeof thingNow === 'function') (data.belongings || []).forEach(t => put('b:' + t.id, thingNow(t)));
   return m;
 }
 function valueByAssetType() {
@@ -1908,7 +1918,8 @@ function portfolioPLPct() { const inv = investedTotal(); return inv ? (portfolio
 // Debts you added by hand (Wealth → Liabilities) are taken off. The bank loan isn't: the money
 // borrowed is invested apart and isn't yours, so neither the loan nor what it bought counts here.
 function manualLiabilitiesTotal() { return (data.liabilities || []).reduce((s, l) => s + toEUR(+l.amount || 0, l.currency || 'EUR'), 0); }
-function netWorthTotal() { return bankTotal() + portfolioValue() - manualLiabilitiesTotal(); }
+/* Things you own (things.js: a car, a computer) count too, losing value each day. */
+function netWorthTotal() { return bankTotal() + portfolioValue() - manualLiabilitiesTotal() + (typeof thingsTotal === 'function' ? thingsTotal() : 0); }
 
 /* Per-broker rows are entry-level (not asset-level): each row shows just that broker's own
    quantity/price for a ticker, so the broker sub-portfolio view reflects what's actually held
@@ -4951,7 +4962,8 @@ window.__modalRenderers.tx = function (p) {
       <label class="field"><span class="label-text">${p.type === 'income' ? 'From whom?' : 'Where / who?'} <span style="opacity:.6;">(start typing — past names are suggested)</span></span>
         <input id="tx-name" value="${escHtml(p.comment || '')}" placeholder="${p.type === 'income' ? 'e.g. Salary, Parents' : 'e.g. Albert Heijn'}" autocomplete="off" oninput="onTxNameInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();txNext();}">
       </label>
-      <div id="tx-suggestions" class="tx-suggestions">${txSuggestionsHtml()}</div>`}`;
+      <div id="tx-suggestions" class="tx-suggestions">${txSuggestionsHtml()}</div>
+      ${isEdit && typeof merchantFormLineHtml === 'function' ? merchantFormLineHtml(p) : ''}`}`;
   } else if (step === 2 && isTransfer) {
     const endpointSelect = (field, value) => `
       <select class="tx-big-select" onchange="updateTxField('${field}',this.value)">
@@ -5022,7 +5034,7 @@ window.__modalRenderers.tx = function (p) {
         </label>` : `
         <label class="field"><span class="label-text">Place</span><input value="${escHtml(p.location || '')}" placeholder="e.g. Maastricht" onchange="updateTxField('location',this.value)"></label>
         ${p.type === 'expense' ? `<div class="tx-toggle-row" onclick="updateTxField('business', ${p.business ? 'false' : 'true'})">
-          <div><div style="font-weight:600;">Business expense</div><div style="font-size:12px;opacity:.65;">Its VAT is taken off what you owe (Freelance → VAT)</div></div>
+          <div><div style="font-weight:600;">Business expense</div><div style="font-size:12px;opacity:.65;">Marked for your own records and taxes</div></div>
           <div class="toggle ${p.business ? 'on' : ''}"></div>
         </div>` : ''}
         ${p.type === 'expense' && typeof txReceiptsBlockHtml === 'function' ? txReceiptsBlockHtml(p) : ''}

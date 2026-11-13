@@ -79,7 +79,7 @@ if (typeof module !== 'undefined' && module.exports) {
       <span class="dim pkp-acc">${escHtml(a.name)}${p.finishedAt ? ' · Finished' : ''}</span>
       <span class="num pkp-val">${fmtMoney(+p.amountSaved || 0, a.currency)}${pct !== null ? `<span class="dim"> / ${fmtMoney(+p.targetAmount, a.currency)}</span>` : ''}</span>
       ${pct !== null ? `<span class="pkp-bar"><i style="width:${pct}%;background:${escHtml(p.color || 'var(--fx-ink)')};"></i></span>` : ''}
-    </button><button class="pkp-amt" aria-label="Change the amount in ${escHtml(p.name)}" title="Change the amount" onclick="pocketSetAmount('${q(ref)}')">${ic('edit', 13)}</button></div>`;
+    </button><button class="pkp-edit" aria-label="Change the amount in ${escHtml(p.name)}" title="Change the amount" onclick="pocketSetAmount('${q(ref)}')">${ic('edit', 13)}</button></div>`;
   }
   /* Change what a pocket holds (asked for on 13 Nov 2026). Only Budget moves balances: the
      difference becomes a "Balance correction" filled in the Budget form. */

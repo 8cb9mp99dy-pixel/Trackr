@@ -291,17 +291,24 @@ test('Test says when the connector is an older version', async ({ page }) => {
   await page.evaluate(() => { goPage('settings'); ui.settingsOpenSections = { claude: true }; render(); });
   await page.getByRole('button', { name: 'Make the key' }).click();
   await expect(page.getByRole('button', { name: 'Test', exact: true })).toBeVisible();
-  let tools = [{ name: 'get_trackr_context' }];
+  const latest = await page.evaluate(() => INBOX_FUNCTION_TEXT.match(/version: '([\d.]+)'/)[1]);
+  let tools = [{ name: 'get_trackr_context' }], version = '1.2.0', status = 200;
   await page.route(URL + '/functions/v1/trackr-inbox/*', route => {
+    if (status !== 200) return route.fulfill({ status, contentType: 'text/plain', body: 'Service Unavailable' });
     const m = JSON.parse(route.request().postData());
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: m.id, result: m.method === 'tools/list' ? { tools } : { content: [{ type: 'text', text: '{}' }] } }) });
+    const result = m.method === 'tools/list' ? { tools } : m.method === 'initialize' ? { serverInfo: { name: 'trackr-inbox', version } } : { content: [{ type: 'text', text: '{}' }] };
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) });
   });
   const said = [];
   page.on('dialog', d => { said.push(d.message()); d.accept(); });
   await page.evaluate(() => inboxTest());
-  expect(said.pop()).toMatch(/older version/);
-  tools = [{ name: 'update_inbox_item' }];
+  expect(said.pop()).toMatch(/older version \(1\.2\.0/);
+  tools = [{ name: 'update_inbox_item' }, { name: 'add_position_snapshots' }]; version = latest;
   await page.evaluate(() => inboxTest());
-  expect(said.pop()).toMatch(/It works/);
+  expect(said.pop()).toMatch(new RegExp('It works.*connector ' + latest.replace(/\./g, '\\.') + ', answered in'));
+  // Supabase can't start the function: say what to do.
+  status = 503;
+  await page.evaluate(() => inboxTest());
+  expect(said.pop()).toMatch(/doesn't start \(Supabase answered 503\).*Copy the function/);
   expect(errors).toEqual([]);
 });

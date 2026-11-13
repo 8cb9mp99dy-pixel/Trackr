@@ -285,7 +285,7 @@ const INBOX_FUNCTION_TEXT = String.raw`// @ts-nocheck
 // Deploy: Supabase → Edge Functions → Deploy a new function → Via editor → name "trackr-inbox",
 // paste this file, Deploy. Then in its settings turn OFF "Verify JWT" (Claude has no Supabase login).
 
-const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.3.0' };
+const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.3.1' };
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, authorization' };
 
@@ -518,6 +518,17 @@ async function handle(req, env, fetchFn) {
   const parts = new URL(req.url).pathname.split('/').filter(Boolean);
   const key = decodeURIComponent(parts[parts.length - 1] || '');
   if (!/^trk_[A-Za-z0-9_-]{20,200}$/.test(key)) return json(404, { error: 'The URL must end with your inbox key: …/trackr-inbox/<key> (Trackr → Settings → Claude inbox).' });
+  // Health check: open the connector link with ?check in a browser. Says the function runs, its
+  // version, and whether it reaches the database with this key (nothing else is shown).
+  if (req.method === 'GET' && new URL(req.url).searchParams.has('check')) {
+    const t0 = Date.now();
+    try {
+      await rpc(env, fetchFn, 'inbox_context', { inbox_key: key });
+      return json(200, { ok: true, server: SERVER.name, version: SERVER.version, database: 'reached, key accepted', ms: Date.now() - t0 });
+    } catch (e) {
+      return json(200, { ok: false, server: SERVER.name, version: SERVER.version, database: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0 });
+    }
+  }
   if (req.method !== 'POST') return new Response('Trackr inbox (MCP). Add this URL to Claude as a custom connector.', { status: 405, headers: Object.assign({ Allow: 'POST, OPTIONS' }, CORS) });
   let body;
   try { body = await req.json(); } catch (e) { return json(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); }
@@ -1373,23 +1384,36 @@ if (typeof module !== 'undefined' && module.exports) {
     const text = what === 'sql' ? INBOX_SQL_TEXT : what === 'function' ? INBOX_FUNCTION_TEXT : what === 'url' ? fnUrl(c) : inboxInstructions(ch);
     try { await navigator.clipboard.writeText(text || ''); if (typeof fxSuccess === 'function') fxSuccess('Copied'); } catch (e) { prompt('Copy this:', text || ''); }
   };
-  /* Calls the connector like Claude would (initialize, then the names), from here. */
+  /* Calls the connector like Claude would (initialize, then the names), from here: says what's
+     wrong in plain words (no function, Verify JWT on, the function doesn't start, no answer in
+     25 s like Claude's 30-s limit, an older version), else its version and how fast it answered. */
   window.inboxTest = async function () {
     const c = cfg(); if (!c || !keys.claude) return;
+    const latest = (INBOX_FUNCTION_TEXT.match(/version: '([\d.]+)'/) || [])[1];
+    const t0 = Date.now();
     const post = async (id, method, params) => {
-      const res = await fetch(fnUrl(c), { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id, method, params }) });
+      const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = ctl && setTimeout(() => ctl.abort(), 25000);
+      let res;
+      try { res = await fetch(fnUrl(c), { method: 'POST', signal: ctl ? ctl.signal : undefined, headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id, method, params }) }); }
+      catch (e) { throw new Error(e && e.name === 'AbortError' ? 'No answer within 25 seconds, so Claude gives up too. Supabase isn\'t starting the function: paste it again (step 2: Copy the function → Deploy), and check Edge Functions → trackr-inbox → Logs. If the project is paused, restore it.' : 'No answer from the function: is it deployed (step 2)?'); }
+      finally { if (timer) clearTimeout(timer); }
       const body = await res.json().catch(() => null);
-      if (!res.ok || !body) throw new Error(res.status === 401 ? 'Supabase asks for a login: turn off "Verify JWT" on the trackr-inbox function (step 2).' : res.status === 404 ? 'No trackr-inbox function yet (step 2).' : `The function answered ${res.status}.`);
+      if (!res.ok || !body) throw new Error(res.status === 401 ? 'Supabase asks for a login: turn off "Verify JWT" on the trackr-inbox function (step 2).' : res.status === 404 ? 'No trackr-inbox function yet (step 2).' : res.status >= 500 ? `The function doesn't start (Supabase answered ${res.status}). Paste it again (step 2: Copy the function → Deploy) and check Edge Functions → trackr-inbox → Logs. If the project is paused, restore it.` : `The function answered ${res.status}.`);
       return body;
     };
     try {
-      await post(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'trackr-test', version: '1' } });
+      const init = await post(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'trackr-test', version: '1' } });
+      const version = init.result && init.result.serverInfo && init.result.serverInfo.version;
       const r = await post(2, 'tools/call', { name: 'get_trackr_context', arguments: {} });
       if (r.result && r.result.isError) throw new Error(r.result.content[0].text);
       const tools = await post(3, 'tools/list', {});
-      const current = ((tools.result && tools.result.tools) || []).some(t => t.name === 'update_inbox_item');
-      alert(current ? 'It works: Claude can reach your Trackr inbox.' : 'Claude can reach your Trackr inbox, but the connector is an older version: redo step 2 to give it the new tools.');
-    } catch (e) { alert(e && e.message && !/Failed to fetch|NetworkError|Load failed/i.test(e.message) ? e.message : 'No answer from the function: is it deployed (step 2)?'); }
+      const names = ((tools.result && tools.result.tools) || []).map(t => t.name);
+      const old = !names.includes('add_position_snapshots') || (latest && version && version !== latest);
+      const ms = Date.now() - t0;
+      alert(old ? `Claude can reach your Trackr inbox, but the connector is an older version (${version || '?'}; this Trackr has ${latest}). Redo step 2 to give it the new tools, then remove and add the connector in Claude again.`
+        : `It works: Claude can reach your Trackr inbox (connector ${version}, answered in ${ms < 1000 ? ms + ' ms' : (ms / 1000).toFixed(1) + ' s'}). If Claude still can't connect, remove the Trackr connector in Claude and add it again.`);
+    } catch (e) { alert(e && e.message ? e.message : 'No answer from the function: is it deployed (step 2)?'); }
   };
   window.inboxCheck = async function () {
     const c = cfg(); if (!c) return;

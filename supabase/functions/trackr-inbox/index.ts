@@ -10,7 +10,7 @@
 // Deploy: Supabase → Edge Functions → Deploy a new function → Via editor → name "trackr-inbox",
 // paste this file, Deploy. Then in its settings turn OFF "Verify JWT" (Claude has no Supabase login).
 
-const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.3.0' };
+const SERVER = { name: 'trackr-inbox', title: 'Trackr', version: '1.3.1' };
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS', 'Access-Control-Allow-Headers': 'content-type, accept, mcp-protocol-version, mcp-session-id, authorization' };
 
@@ -243,6 +243,17 @@ async function handle(req, env, fetchFn) {
   const parts = new URL(req.url).pathname.split('/').filter(Boolean);
   const key = decodeURIComponent(parts[parts.length - 1] || '');
   if (!/^trk_[A-Za-z0-9_-]{20,200}$/.test(key)) return json(404, { error: 'The URL must end with your inbox key: …/trackr-inbox/<key> (Trackr → Settings → Claude inbox).' });
+  // Health check: open the connector link with ?check in a browser. Says the function runs, its
+  // version, and whether it reaches the database with this key (nothing else is shown).
+  if (req.method === 'GET' && new URL(req.url).searchParams.has('check')) {
+    const t0 = Date.now();
+    try {
+      await rpc(env, fetchFn, 'inbox_context', { inbox_key: key });
+      return json(200, { ok: true, server: SERVER.name, version: SERVER.version, database: 'reached, key accepted', ms: Date.now() - t0 });
+    } catch (e) {
+      return json(200, { ok: false, server: SERVER.name, version: SERVER.version, database: String(e && e.message || e).slice(0, 200), ms: Date.now() - t0 });
+    }
+  }
   if (req.method !== 'POST') return new Response('Trackr inbox (MCP). Add this URL to Claude as a custom connector.', { status: 405, headers: Object.assign({ Allow: 'POST, OPTIONS' }, CORS) });
   let body;
   try { body = await req.json(); } catch (e) { return json(400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); }

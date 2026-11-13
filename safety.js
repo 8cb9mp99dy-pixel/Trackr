@@ -56,7 +56,7 @@ function undoable(label, fn) {
   };
 }
 const UNDO_ACTIONS = {
-  deleteBudgetTx: 'Transaction deleted', deleteAccount: 'Account deleted', deletePocket: 'Pocket deleted', deleteBroker: 'Broker deleted',
+  deleteBudgetTx: 'Transaction deleted', deleteThing: 'Removed from your net worth', deleteAccount: 'Account deleted', deletePocket: 'Pocket deleted', deleteBroker: 'Broker deleted',
   deletePositionRow: 'Position deleted', deleteAssetEntryRow: 'Holding removed', deleteCryptoAsset: 'Crypto deleted', deleteCryptoLot: 'Purchase deleted',
   deleteSnapshotRow: 'Holding removed', deleteCryptoExchange: 'Exchange deleted', deleteCryptoExchangeCash: 'Exchange cash removed',
   removeCategory: 'Category deleted', removeSubcategory: 'Sub-category deleted', removePaymentMethod: 'Payment method deleted',

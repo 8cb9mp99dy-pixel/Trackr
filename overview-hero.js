@@ -59,6 +59,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // What it's made of.
     const avail = bankAvailable(), pockets = pocketsTotal(), invested = portfolioValue(), pl = portfolioPL();
     const parts = [['Main balances', avail, 'var(--ov-c1)', "goPage('accounts')"], ['Pockets', pockets, 'var(--ov-c2)', "goPage('accounts')"], ['Invested', invested, 'var(--ov-c3)', "goPage('investments')"]];
+    const things = typeof thingsTotal === 'function' ? thingsTotal() : 0;
+    if (things > 0) parts.push(['Things', things, 'var(--chart-4)', "goPage('wealth')"]);
     const pos = parts.reduce((s, p) => s + Math.max(0, p[1]), 0) || 1;
     return `
     <div class="card ov-hero ${anim() ? 'ov-anim' : ''}">

@@ -59,6 +59,8 @@
       (d.loans || []).flatMap(L => ((L.portfolio || {}).positions || []).map(p => [str(L.name), str(p.broker), str(p.name), str(p.isin), str(p.group), num(p.invested), num(p.value), str(p.valueDate), num(p.quantity), num(p.price), num(p.target), num(p.expectedReturn)]))]);
     S.push(['Debts', ['Name', 'Kind', 'Lender', 'Amount owed', 'Currency', 'Rate %', 'Note'],
       (d.liabilities || []).map(l => [l.name, str(l.kind), str(l.institution), num(l.amount), str(l.currency || 'EUR'), num(l.rate), str(l.note)])]);
+    S.push(['Things you own', ['Name', 'Kind', 'Price paid', 'Bought on', 'Loses % a year', 'Never below', 'Value set', 'Value set on', 'Sold on', 'Sold for'],
+      (d.belongings || []).map(t => [str(t.name), str(t.kind), num(t.price), str(t.boughtOn), num(t.rate), num(t.floor), num(t.reset && t.reset.value), str(t.reset && t.reset.date), str(t.soldOn), num(t.soldFor)])]);
     S.push(['Goals', ['Name', 'Target', 'Aim date', 'Monthly amount typed', 'Money that counts'],
       (d.goals || []).map(g => [g.name, num(g.target), str(g.targetDate), num(g.monthly), (g.links || []).join(', ')])
         .concat(d.emergencyFund && d.emergencyFund.enabled ? [['Emergency savings', '', '', '', `${d.emergencyFund.months} months of spending · ${(d.emergencyFund.links || []).join(', ')}`]] : [])]);

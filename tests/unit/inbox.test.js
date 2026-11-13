@@ -176,6 +176,25 @@ test('connector: errors come back to Claude, nothing is sent without a key or it
   assert.equal(method.body.error.code, -32601);
 });
 
+test('connector health check: ?check in a browser says it runs and reaches the database, nothing more', async () => {
+  const fn = loadFunction();
+  const get = async (rpcs, q) => {
+    const fetchFn = async u => { const r = rpcs[u.split('/rpc/')[1]]; return r instanceof Error ? new Response(JSON.stringify({ message: r.message }), { status: 400 }) : new Response(JSON.stringify(r), { status: 200 }); };
+    const res = await fn.handle(new Request('http://localhost/trackr-inbox/' + KEY + (q || '')), { url: 'https://demo.supabase.co', anon: 'test-anon-not-real' }, fetchFn);
+    return { status: res.status, text: await res.text() };
+  };
+  const ok = await get({ inbox_context: { categories: [{ name: 'Demo secret name' }] } }, '?check');
+  assert.equal(ok.status, 200);
+  const body = JSON.parse(ok.text);
+  assert.equal(body.ok, true);
+  assert.match(body.version, /^1\.3\.\d+$/);
+  assert.doesNotMatch(ok.text, /Demo secret name/); // only "it works"
+  const bad = JSON.parse((await get({ inbox_context: new Error('Unknown inbox key.') }, '?check')).text);
+  assert.equal(bad.ok, false);
+  assert.match(bad.database, /Unknown inbox key/);
+  assert.equal((await get({}, '')).status, 405); // a plain GET is still not MCP
+});
+
 test('the SQL and the function in the app are their files', () => {
   assert.equal(INBOX_SQL_TEXT, fs.readFileSync(path.join(__dirname, '../../supabase/migrations/003_trackr_inbox.sql'), 'utf8'));
   assert.equal(INBOX_FUNCTION_TEXT, fs.readFileSync(path.join(__dirname, '../../supabase/functions/trackr-inbox/index.ts'), 'utf8'));

@@ -62,6 +62,10 @@ function wealthAssetRows() {
     const ex = escHtml(c.exchange).replace(/'/g, "\\'");
     rows.push({ key: 'cx:' + c.id, group: 'cx:' + c.id, name: `${c.exchange} — cash`, sub: 'Not invested', type: 'Cash', institution: c.exchange, value: toEUR(+c.amount, c.currency), native: c.currency !== 'EUR' ? { amount: +c.amount, currency: c.currency } : null, cost: null, hist: ['cx:' + c.id], icon: logoImg(cryptoBrokerLogo(c.exchange), 26), edit: `openCryptoExchangeCashForm('${ex}')`, del: `deleteCryptoExchangeCash('${ex}')` });
   });
+  if (typeof thingNow === 'function') (data.belongings || []).forEach(t => {
+    const v = thingNow(t); if (!(v > 0)) return;
+    rows.push({ key: 'b:' + t.id, group: 'b:' + t.id, name: t.name || thingKind(t.kind).name, sub: `Loses ${+t.rate || 0}% a year`, type: 'Things you own', institution: 'Things you own', value: v, native: null, cost: toEUR(+t.price || 0, t.currency || 'EUR'), hist: ['b:' + t.id], icon: `<span aria-hidden="true" style="display:grid;place-items:center;width:26px;height:26px;">${ic(thingKind(t.kind).icon, 18)}</span>`, edit: `openThingForm('${t.id}')`, del: `deleteThing('${t.id}')` });
+  });
   if (ui.wealthShowLoan && typeof loanList === 'function') loanList().forEach(L => loanPositions(L).forEach(p => {
     rows.push({ key: 'lp:' + p.id, group: 'lp:' + p.id, name: p.name, sub: 'Bought with the loan — not your money', type: 'Loan portfolio', institution: p.broker || 'Loan', value: loanPosValue(p), native: null, cost: +p.invested || null, hist: [], icon: ic('bank', 20), edit: `goLoanPage()`, loan: true });
   }));
@@ -168,6 +172,7 @@ function renderWealth() {
       ${wealthAllocationCardHtml(tab === 'liabilities' ? liabilities : assets, tab)}
     </div>
     ${typeof nwMovesCardHtml === 'function' ? nwMovesCardHtml() : ''}
+    ${tab !== 'liabilities' && typeof thingsCardHtml === 'function' ? thingsCardHtml() : ''}
 
     ${tab === 'liabilities' ? `<div class="card" style="margin-top:20px;">
       <div class="eyebrow" style="margin-bottom:14px;">Debts</div>

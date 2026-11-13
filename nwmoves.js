@@ -51,7 +51,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const label = monthLabel(m);
     const nav = `<div style="display:flex;align-items:center;gap:8px;"><button class="icon-btn-round" aria-label="Previous month" onclick="nwShift(-1)">‹</button><div style="font-weight:700;min-width:120px;text-align:center;">${escHtml(label)}</div><button class="icon-btn-round" aria-label="Next month" onclick="nwShift(1)" ${ymOf(from) >= ymOf(todayYmd()) ? 'disabled' : ''}>›</button></div>`;
     if (!R) return `<div class="card nw-moves"><div class="row-flex" style="flex-wrap:wrap;gap:8px;"><div class="eyebrow" style="margin:0;">Why your net worth moved</div>${nav}</div><div class="dim" style="margin-top:10px;">Not enough history for ${escHtml(label)} yet: Trackr saves your net worth each day you open it.</div></div>`;
-    const parts = [['Saved', R.saved, 'What came in minus what you spent'], ['Markets', R.markets, 'Your investments, beyond the money you put in'], ['Other', R.other, 'Corrections, debts, exchange rates on cash']];
+    const parts = [['Saved', R.saved, 'What came in minus what you spent'], ['Markets', R.markets, 'Your investments, beyond the money you put in'], ['Other', R.other, 'Corrections, debts, exchange rates on cash, things losing value']];
     const big = Math.max(1, ...parts.map(p => Math.abs(p[1])));
     const sign = v => (v >= 0 ? '+' : '−') + fmtMoney(Math.abs(v));
     const main = parts.slice(0, 2).filter(p => Math.abs(p[1]) >= 0.5).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));

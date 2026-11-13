@@ -72,7 +72,7 @@
     const done = M.months.filter(m => m < thisMonth);
     const avg = (n, key) => { const ms = done.slice(-n); return ms.length ? r2(ms.reduce((s, m) => s + (key === 'net' ? M.by[m].income - M.by[m].expense : M.by[m][key]), 0) / ms.length) : ''; };
     add('Made on', todayYmd(), 'All amounts in EUR unless a column says otherwise.');
-    add('Net worth', r2(safe(() => netWorthTotal(), '')), 'Bank accounts + pockets + investments + crypto + broker/exchange cash − debts. The invested bank loan is NOT included (see below).');
+    add('Net worth', r2(safe(() => netWorthTotal(), '')), 'Bank accounts + pockets + investments + crypto + broker/exchange cash + things you own (losing value each year) − debts. The invested bank loan is NOT included (see below).');
     add('Bank accounts and pockets', r2(safe(() => bankTotal(), '')), 'Accounts counted in totals.');
     add('Investments (incl. crypto and broker cash)', r2(safe(() => portfolioValue(), '')), 'At the latest known prices.');
     add('Invested amount (cost)', r2(safe(() => investedTotal(), '')), 'What was paid for the holdings still owned.');
