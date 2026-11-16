@@ -87,22 +87,29 @@ test('an unedited first plan moves to the new order; an edited one is kept', asy
   expect(out.b).toEqual(['VAT', 'Invest', 'Day-to-day spending']);
 });
 
-test('VAT line: incl./excl., 9 %, 0 %, round up; unnamed parts take their place name', async ({ page }) => {
+test('VAT line: always 21 % rounded up to the euro, incl./excl., KOR; unnamed parts take their place name', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const errors = await openApp(page);
   await page.evaluate(() => { openIncomePlanEditor(); ui.ipDraft.vatOpen = true; render(); });
   const vat = page.locator('.ip-vat-amt');
-  await expect(vat).toHaveText('€174.00');                       // €1,000 incl. 21 % = €173.55, rounded up
-  await page.locator('.ip-check input').uncheck();
-  await expect(vat).toHaveText('€173.55');
+  await expect(vat).toHaveText('€174.00');                       // €1,000 incl. 21 % = €173.55, always rounded up
+  await expect(page.locator('.ip-vatline')).toContainText('€173.55 exactly');
+  await expect(page.getByRole('button', { name: '9%', exact: true })).toHaveCount(0); // one rate
+  await expect(page.locator('.ip-check')).toHaveCount(0);        // rounding up isn't optional
   await page.getByRole('button', { name: 'excl. VAT' }).click();
   await expect(vat).toHaveText('€210.00');
   await expect(page.locator('.ip-imp').first()).toContainText('+€250.00');
-  await page.getByRole('button', { name: '9%', exact: true }).click();
-  await expect(vat).toHaveText('€90.00');
-  await page.getByRole('button', { name: '0%', exact: true }).click();
+  await page.getByRole('button', { name: 'incl. VAT' }).click();
+  // KOR: no VAT, the whole amount split.
+  await page.getByRole('switch', { name: 'KOR (VAT exemption)' }).click();
   await expect(vat).toHaveText('€0.00');
-  await page.getByRole('button', { name: '21%', exact: true }).click();
+  await expect(page.locator('.ip-vatline')).toContainText('KOR · no VAT');
+  await expect(page.locator('.split-example .eyebrow')).toContainText('KOR · no VAT');
+  await expect(page.locator('.sd-center')).toContainText('€1,000.00');
+  expect(await page.evaluate(() => data.settings.korVatExempt)).toBe(true);
+  await page.getByRole('switch', { name: 'KOR (VAT exemption)' }).click();
+  await expect(vat).toHaveText('€174.00');
+  await expect(page.locator('.split-example .eyebrow')).toContainText('VAT included');
   // A part with no name is saved with its place's name.
   await page.getByRole('button', { name: '+ Add a part' }).click();
   await page.locator('.ip-part').nth(3).locator('.ip-place').click();
@@ -110,10 +117,10 @@ test('VAT line: incl./excl., 9 %, 0 %, round up; unnamed parts take their place 
   await page.locator('.ip-part').nth(1).locator('input[aria-label="Percent"]').fill('15');
   await page.locator('.ip-part').nth(1).locator('input[aria-label="Percent"]').dispatchEvent('change');
   await page.evaluate(() => ipCommit());
-  const p = await page.evaluate(() => ({ names: data.incomePlan.steps.map(s => s.label), modes: data.incomePlan.vatModes, round: data.incomePlan.vatRoundUp }));
+  const p = await page.evaluate(() => ({ names: data.incomePlan.steps.map(s => s.label), modes: data.incomePlan.vatModes, vatPct: data.incomePlan.steps.find(s => s.setAside).pct }));
   expect(p.names[4]).toBe(await page.evaluate(() => accountById('acc_demo1').pockets.find(x => x.id === 'pk_demo1').name));
   expect(p.names).not.toContain('Part');
-  expect(p.modes).toEqual({ inc_freelance: 'excl' });
-  expect(p.round).toBe(false);
+  expect(p.modes).toEqual({ inc_freelance: 'incl' });
+  expect(p.vatPct).toBe(21);
   expect(errors).toEqual([]);
 });

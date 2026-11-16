@@ -750,3 +750,7 @@ html.tx-dragging, html.tx-dragging * { cursor: grabbing !important; }
 @media (max-width: 640px) { .fi-inputs { grid-template-columns: 1fr; } .sim-real .sim-infl { margin-left: 0; } }
 @media (prefers-reduced-motion: no-preference) { .fi-bar > i, .things-bar > i { transition: width var(--dur-med, .4s) var(--ease-out, ease); } }
 .fi-inputs .seg-row { display: inline-flex; width: auto; align-self: flex-start; }
+/* KOR: no VAT (allocation.js) — the VAT line greyed, the switch under "Set VAT aside first". */
+.ip-kor { margin-top: 10px; align-items: flex-start; }
+.ip-kor .dim { font-size: 12.5px; }
+.ip-vat-sum.kor, .ip-vatline.kor { opacity: .55; }

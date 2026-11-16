@@ -1,7 +1,7 @@
 /* Income plan: how an income is split. */
 const test = require('node:test');
 const assert = require('node:assert');
-const { incomeSplit, vatSplit, largestRemainder, capPercents } = require('../../allocation.js');
+const { VAT_RATE, incomeSplit, vatSplit, largestRemainder, capPercents } = require('../../allocation.js');
 
 const plan = [
   { id: 'vat', label: 'VAT', pct: 21, setAside: true, onlyCat: 'inc_freelance' },
@@ -11,8 +11,8 @@ const plan = [
 const sum = a => Math.round(a.reduce((s, x) => s + x, 0) * 100) / 100;
 
 test('VAT included (a payment that landed): €1,210 at 21 % holds €210, €1,000 to split', () => {
-  assert.deepStrictEqual(vatSplit(1210, 21, 'incl', true), { vat: 210, exact: 210, splittable: 1000, received: 1210 });
-  assert.deepStrictEqual(vatSplit(1000, 21, 'incl', false), { vat: 173.55, exact: 173.55, splittable: 826.45, received: 1000 });
+  assert.deepStrictEqual(vatSplit(1210, 21, 'incl'), { vat: 210, exact: 210, splittable: 1000, received: 1210 });
+  assert.deepStrictEqual(vatSplit(1000, 21, 'incl'), { vat: 173.55, exact: 173.55, splittable: 826.45, received: 1000 });
   const S = incomeSplit(1210, 'inc_freelance', plan);
   assert.deepStrictEqual(S.lines.map(l => [l.step.id, l.amount]), [['vat', 210], ['inv', 250], ['day', 250]]);
   assert.strictEqual(S.base, 1000);
@@ -20,24 +20,73 @@ test('VAT included (a payment that landed): €1,210 at 21 % holds €210, €1,
 });
 
 test('VAT excluded (planning from an invoice): €1,000 + €210 VAT, the whole €1,000 to split', () => {
-  assert.deepStrictEqual(vatSplit(1000, 21, 'excl', true), { vat: 210, exact: 210, splittable: 1000, received: 1210 });
+  assert.deepStrictEqual(vatSplit(1000, 21, 'excl'), { vat: 210, exact: 210, splittable: 1000, received: 1210 });
   const S = incomeSplit(1000, 'inc_freelance', plan, { vatMode: 'excl' });
   assert.deepStrictEqual(S.lines.map(l => l.amount), [210, 250, 250]);
   assert.strictEqual(S.rest, 500);
 });
 
-test('0 % VAT (KOR) and 9 %', () => {
-  assert.deepStrictEqual(vatSplit(1000, 0, 'incl', true), { vat: 0, exact: 0, splittable: 1000, received: 1000 });
-  assert.deepStrictEqual(vatSplit(1090, 9, 'incl', true), { vat: 90, exact: 90, splittable: 1000, received: 1090 });
-});
-
-test('VAT is set aside rounded up to the whole euro (never too little); the split pays the cents', () => {
+test('VAT is always 21 %, always rounded up to the whole euro for the VAT pocket', () => {
+  assert.strictEqual(VAT_RATE, 21);
   assert.deepStrictEqual(vatSplit(1000, 21, 'incl', true), { vat: 174, exact: 173.55, splittable: 826, received: 1000 });
   assert.deepStrictEqual(vatSplit(1001, 21, 'excl', true), { vat: 211, exact: 210.21, splittable: 1000.21, received: 1211.21 });
   assert.strictEqual(vatSplit(0.5, 21, 'incl', true).vat, 0.5); // never more than what came in
   const S = incomeSplit(1000, 'inc_freelance', plan);
-  assert.strictEqual(S.vat, 174);
-  assert.strictEqual(incomeSplit(1000, 'inc_freelance', plan, { vatRoundUp: false }).vat, 173.55);
+  assert.deepStrictEqual([S.vat, S.vatExact], [174, 173.55]);
+  // Always: an old plan that had it off, or another rate on its VAT step, still gets 21 % rounded up.
+  assert.strictEqual(incomeSplit(1000, 'inc_freelance', plan, { vatRoundUp: false }).vat, 174);
+  assert.strictEqual(incomeSplit(1000, 'inc_freelance', [Object.assign({}, plan[0], { pct: 9 })]).vat, 174);
+});
+
+/* The user's own checks (16 Nov 2026): their plan's percentages, invented amounts. */
+const mine = [
+  { id: 'vat', label: 'VAT', pct: 21, setAside: true, onlyCat: 'inc_freelance', to: 'pk:rev:vat' },
+  { id: 'inv', label: 'Invest', pct: 25, to: 'brk:x' }, { id: 'day', label: 'Day-to-day spending', pct: 25, to: 'acc:rev' },
+  { id: 'keep', label: 'Keep', pct: 10, to: 'pk:a' }, { id: 'proj', label: 'Projects', pct: 10, to: 'pk:b' },
+  { id: 'clo', label: 'Clothes', pct: 10, to: 'pk:c' }, { id: 'sole', label: 'Sole Proprietorship', pct: 10, to: 'pk:d' },
+];
+const show = S => Object.fromEntries(S.lines.map(l => [l.step.id, l.amount]).concat([['stays', S.rest]]));
+const total = S => sum(S.lines.map(l => l.amount).concat([S.rest]));
+
+test('KOR off, €55.06: VAT €9.56 rounded up to €10.00, €45.06 split, the spare cents stay in the account', () => {
+  const S = incomeSplit(55.06, 'inc_freelance', mine, { kor: false });
+  assert.deepStrictEqual([S.vat, S.vatExact, S.base], [10, 9.56, 45.06]);
+  assert.deepStrictEqual(show(S), { vat: 10, inv: 11.26, day: 11.26, keep: 4.5, proj: 4.5, clo: 4.5, sole: 4.5, stays: 4.54 });
+  assert.strictEqual(total(S), 55.06);
+  assert.strictEqual(S.kor, false);
+});
+
+test('KOR off, €100: VAT €17.36 rounded up to €18.00, €82.00 split', () => {
+  const S = incomeSplit(100, 'inc_freelance', mine);
+  assert.deepStrictEqual([S.vat, S.vatExact, S.base, total(S)], [18, 17.36, 82, 100]);
+});
+
+test('KOR on, €55.06: no VAT line, the whole amount split, the spare cents stay in the account', () => {
+  const S = incomeSplit(55.06, 'inc_freelance', mine, { kor: true });
+  assert.strictEqual(S.lines.some(l => l.vat), false);
+  assert.deepStrictEqual([S.vat, S.base, S.kor], [0, 55.06, true]);
+  assert.deepStrictEqual(show(S), { inv: 13.76, day: 13.76, keep: 5.5, proj: 5.5, clo: 5.5, sole: 5.5, stays: 5.54 });
+  assert.strictEqual(total(S), 55.06);
+});
+
+test('€0.01, both ways: it all stays in the account', () => {
+  const off = incomeSplit(0.01, 'inc_freelance', mine), on = incomeSplit(0.01, 'inc_freelance', mine, { kor: true });
+  assert.deepStrictEqual([off.vat, off.rest, total(off)], [0, 0.01, 0.01]);
+  assert.deepStrictEqual([on.vat, on.rest, total(on), on.lines.some(l => l.vat)], [0, 0.01, 0.01, false]);
+});
+
+test('every part at 100 %: the spare cents go to the part that stays in the account', () => {
+  const S = incomeSplit(10, 'x', [{ id: 'a', pct: 33.3, to: 'pk:a' }, { id: 'b', pct: 33.3, to: 'stay' }, { id: 'c', pct: 33.4, to: 'pk:c' }]);
+  assert.deepStrictEqual(show(S), { a: 3.33, b: 3.33, c: 3.34, stays: 0 });
+  const T = incomeSplit(1, 'x', [{ id: 'a', pct: 33.3333, to: 'pk:a' }, { id: 'b', pct: 33.3333, to: 'stay' }, { id: 'c', pct: 33.3334, to: 'pk:c' }]);
+  assert.deepStrictEqual(show(T), { a: 0.33, b: 0.34, c: 0.33, stays: 0 });
+});
+
+test('a lot of amounts, both ways: always exactly the amount entered', () => {
+  for (let c = 1; c <= 20000; c += 37) {
+    const amt = c / 100;
+    for (const kor of [false, true]) assert.strictEqual(total(incomeSplit(amt, 'inc_freelance', mine, { kor })), amt, `${amt} ${kor}`);
+  }
 });
 
 test('salary: no VAT, 25 % + 25 % of the whole amount', () => {

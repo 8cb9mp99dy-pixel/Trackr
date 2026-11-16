@@ -43,9 +43,8 @@ test('acceptance: €1,210 incl. 21 % → VAT €210, €1,000 to split, 25 % = 
   await expect(page.locator('.sd-center')).toContainText('€1,000.00');
   await expect(page.locator('.ip-part[data-i="0"] .ip-impact')).toContainText('+€250.00');
   await page.getByRole('button', { name: 'incl. VAT' }).click();
-  await page.locator('.ip-check input').uncheck();                  // exact, not rounded up
-  await expect(page.locator('.ip-vat-amt')).toHaveText('€173.55');
-  await expect(page.locator('.sd-center')).toContainText('€826.45');
+  await expect(page.locator('.ip-vat-amt')).toHaveText('€174.00'); // €173.55, always rounded up to the euro
+  await expect(page.locator('.sd-center')).toContainText('€826.00');
   // Parts + what stays = what's split, to the cent, at awkward amounts.
   for (const v of [999.99, 1234.57, 77.77]) {
     await tryAmount(page, v);

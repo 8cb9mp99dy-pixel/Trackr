@@ -22,7 +22,7 @@ test('pick a pocket: its colour on the slice, the payment and the goal under the
   await expect(page.locator('.ip-pick')).toHaveCount(0);
   const color = await page.evaluate(() => accountById('acc_demo1').pockets.find(p => p.id === 'pk_demo1').color);
   await expect(page.locator('.sd-slice[data-i="0"] path')).toHaveAttribute('fill', color);
-  // €1,000 incl. VAT → €826 to split; 25 % = €206.50 into a pocket holding €420.00.
+  // €1,000 incl. VAT → €174 VAT (rounded up), €826 to split; 25 % = €206.50 into a pocket holding €420.00.
   await expect(row(page, 0).locator('.ip-impact')).toContainText('+€206.50 → ✈️ Trip fund: €420.00 → €626.50');
   await expect(row(page, 0).locator('.ip-goal')).toContainText('Goal reached after 1 more payment like this');
   // A part with no name shows its pocket's name; a broker gets a slice colour you choose.

@@ -438,6 +438,7 @@ function defaultData() {
       theme: 'default',
       defaultCurrency: 'EUR',
       showCents: true,
+      korVatExempt: false, // KOR: Dutch small-business VAT exemption (Income plan, allocation.js). Off until the user turns it on
       showPerformanceIndicators: true,
       compactMode: false,
       budgetLimitsBeta: false, // the old switch, kept: categoryBudgets replaced it
@@ -571,8 +572,8 @@ function defaultData() {
     incomePlan: {
       on: true, since: null, version: 2, triggerCats: ['inc_salary', 'inc_freelance'],
       // VAT: per income source, is the amount typed incl. or excl. VAT ({ catId: 'incl'|'excl' },
-      // 'incl' when missing: what lands in the bank holds its VAT); VAT set aside rounded up to the
-      // euro (the user's choice: €1 too much rather than too little). The VAT rate is the VAT step's pct.
+      // 'incl' when missing: what lands in the bank holds its VAT). VAT is 21 % to the cent
+      // (VAT_RATE in allocation.js, 16 Nov 2026); vatRoundUp is an old field, no longer used.
       vatModes: {}, vatRoundUp: true,
       // Your own split presets: [{ id, name, parts: [{ label, pct, to, color }] }].
       presets: [],
