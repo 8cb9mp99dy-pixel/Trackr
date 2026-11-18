@@ -17,7 +17,8 @@ test('add a card: the picture follows the form, and a pasted number keeps only i
   await expect(page.locator('#cf-preview .cw-bank')).toContainText('Revolut');
   await expect(page.locator('#cf-preview .cw-bank img')).toHaveAttribute('src', /Revolut/); // Trackr has that logo
   await page.locator('#cf-link').selectOption('pk:acc_demo1:pk_proj');
-  await expect(page.locator('#cf-preview .cw-money')).toContainText('250.00');
+  await expect(page.locator('#cf-preview .cw-money')).toContainText('Demo Projects');
+  await expect(page.locator('#cf-preview .cw-money b')).toHaveCount(0); // no balance on a card (the user's choice, 18 Nov 2026)
   await page.locator('#cf-last4').pressSequentially('4111111111113775');
   await expect(page.locator('#cf-last4')).toHaveValue('3775');
   await page.locator('.tx-chip', { hasText: 'Mastercard' }).click();
@@ -30,25 +31,26 @@ test('add a card: the picture follows the form, and a pasted number keeps only i
   const c = await page.evaluate(() => data.cards[0]);
   expect([c.bank, c.last4, c.network, c.finish, c.color, c.link]).toEqual(['Revolut', '3775', 'mastercard', 'color', '#ffe600', 'pk:acc_demo1:pk_proj']);
   expect(JSON.stringify(await page.evaluate(() => data.cards))).not.toContain('411111');
-  await expect(page.locator('.cw-track .cw-front .cw-money b')).toContainText('250.00');
+  await expect(page.locator('.cw-track .cw-front .cw-money')).toContainText('Demo Projects');
+  await expect(page.locator('.cw-track .cw-front')).not.toContainText('250.00');
   await expect(page.locator('.cw-track .cw-front .cw-id')).toContainText('•••• 3775');
   expect(errors).toEqual([]);
 });
 
-test('linked to a pocket, the amount follows every move by itself', async ({ page }) => {
+test('linked to a pocket, its moves show; no balance on the card', async ({ page }) => {
   const errors = await openApp(page);
   await pocket(page);
   await page.evaluate(() => { data.cards = [{ id: 'card_1', bank: 'Revolut', network: 'visa', last4: '3775', finish: 'black', link: 'pk:acc_demo1:pk_proj' }]; goPage('accounts'); render(); });
   await page.evaluate(() => { openTxForm(null, { type: 'transfer', amount: '40', from: 'pk:acc_demo1:pk_proj', to: 'acc:acc_demo1', comment: 'Demo move', date: '2026-10-18' }); saveTxForm(); if (ui.modal) closeModal(); });
-  await expect(page.locator('.cw-track .cw-front .cw-money b')).toContainText('210.00');
+  await expect(page.locator('.cw-track .cw-front')).not.toContainText('210.00');
   // Turned over: where it comes from and its last moves.
   await page.locator('.cw-card').click();
   await expect(page.locator('.cw-inner.flipped')).toHaveCount(1);
   await expect(page.locator('.cw-back')).toContainText('Demo Projects');
   await expect(page.locator('.cw-back')).toContainText('Demo move');
-  // A pocket that goes away leaves a card with no amount, not an error.
+  // A pocket that goes away leaves a card that says so, not an error.
   await page.evaluate(() => { const a = accountById('acc_demo1'); a.pockets = a.pockets.filter(p => p.id !== 'pk_proj'); save(); render(); });
-  await expect(page.locator('.cw-track .cw-front .cw-money b')).toHaveText('—');
+  await expect(page.locator('.cw-track .cw-front .cw-money')).toHaveText('Not linked');
   expect(errors).toEqual([]);
 });
 

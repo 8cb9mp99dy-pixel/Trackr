@@ -29,15 +29,14 @@ test('the cards sit at the top of Budget; tapping the front one opens its detail
   await expect(page.locator('.cw-inner.flipped')).toHaveCount(1);
   const detail = page.locator('.cw-detail');
   await expect(detail).toBeVisible();
-  const balance = await page.evaluate(() => fmtMoney(data.accounts.find(a => a.id === 'acc_demo1').balance, 'EUR'));
-  await expect(detail.locator('.cw-d-amount')).toContainText(balance);
+  await expect(detail.locator('.cw-d-amount')).toHaveCount(0); // no balance (the user's choice, 18 Nov 2026)
   await expect(detail).toContainText('Demo Projects');
   // A recent move opens it.
   await detail.locator('button.cw-d-row').first().click();
   await expect(page.locator('.modal')).toBeVisible();
   await page.locator('.modal .close-x').first().click();
 
-  // Another currency also says what it is in euros.
+  // The next card opens its own details.
   await page.evaluate(() => cardGo(1));
   await expect(page.locator('.cw-detail')).toBeHidden();
   await expect.poll(() => page.evaluate(() => ui.cardIndex)).toBe(1);
@@ -45,7 +44,7 @@ test('the cards sit at the top of Budget; tapping the front one opens its detail
   await expect.poll(() => page.evaluate(() => new Promise(r => { const t = document.querySelector('.cw-track'), a = t.scrollLeft; setTimeout(() => r(t.scrollLeft === a), 150); }))).toBe(true);
   await page.locator('.cw-card').nth(1).click();
   await expect(page.locator('.cw-inner.flipped')).toHaveCount(1);
-  await expect(page.locator('.cw-detail .cw-d-amount')).toContainText('≈');
+  await expect(page.locator('.cw-detail')).toBeVisible();
   expect(errors).toEqual([]);
 });
 

@@ -1,13 +1,13 @@
 /* ===================== Cards =====================
  * Its own file, loaded after goals.js. Your bank cards as a carousel you swipe through, at the top
  * of Budget and on Accounts. Tap the one in front: it turns over and its details open below
- * (balance, recent moves, its pockets). Long-press it (right-click on a computer): Edit, Copy the
+ * (recent moves, its pockets; no balance, the user's choice, 18 Nov 2026). Long-press it (right-click on a computer): Edit, Copy the
  * look, Arrange, Unlink, Delete. Arrange: drag the cards into your order (SortableJS, loaded the
  * first time, assets/vendor/sortable.min.js).
  *
  * A card is a picture, not a connection: nothing here talks to a bank (any bank works, by name).
- * Linked to an account or a pocket, it shows what Trackr holds there, read at every redraw, so it
- * follows each transaction and transfer by itself.
+ * Linked to an account or a pocket, it shows that place's name and its recent moves (never a
+ * balance on the card: removed at the user's request, 18 Nov 2026).
  * Only the last 4 digits are ever kept: never the full number, never the expiry or the code.
  *
  * data.cards = [{ id, name, bank, type, network, last4, finish, color, colors, photo, photoInk, logo, link }]
@@ -149,7 +149,7 @@ if (typeof module !== 'undefined' && module.exports) {
       <div class="cw-row"><span class="cw-bank">${logo ? `<img src="${escHtml(logo)}" alt="" onerror="this.remove()">` : ''}<b>${escHtml([c.bank, c.name].filter(Boolean).join(' · ') || 'Your card')}</b></span>${wave}</div>
       <span class="cw-chip"></span>
       <div class="cw-row cw-end">
-        <div class="cw-money"><span>${escHtml(place ? place.name : 'Not linked')}</span><b class="num">${place ? fmtMoney(place.amount, place.currency) : '—'}</b></div>
+        <div class="cw-money"><span>${escHtml(place ? place.name : 'Not linked')}</span></div>
         <div class="cw-id">${c.type ? `<span class="cw-type">${escHtml(c.type)}</span>` : ''}${c.last4 ? `<span>•••• ${escHtml(c.last4)}</span>` : ''}${mark(c.network)}</div>
       </div>
     </div>`;
@@ -159,7 +159,7 @@ if (typeof module !== 'undefined' && module.exports) {
     return `<div class="cw-face cw-back cw-f-${escHtml(c.finish || 'black')}" style="${faceStyle(c)}">
       <span class="cw-strip"></span>
       <div class="cw-back-in">
-        <div class="cw-sub">${escHtml(place ? `${place.name} · ${place.sub}` : 'Link it to an account or a pocket to see its amount')}</div>
+        <div class="cw-sub">${escHtml(place ? `${place.name} · ${place.sub}` : 'Link it to an account or a pocket to see its moves')}</div>
         ${moves.map(m => `<div class="cw-move"><span>${escHtml(shortDay(m.date))} · ${escHtml(m.text)}</span><b class="num">${m.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(m.amount), m.currency)}</b></div>`).join('')}
         <button class="cw-edit" onclick="event.stopPropagation();openCardForm('${escHtml(c.id)}')">${ic('edit', 13)} Edit</button>
       </div>
@@ -169,20 +169,18 @@ if (typeof module !== 'undefined' && module.exports) {
   function cardDetailHtml(c) {
     if (!c) return '';
     const place = cardPlace(c);
-    const eur = place && place.currency && place.currency !== 'EUR' ? `<span class="dim"> ≈ ${fmtMoney(toEUR(place.amount, place.currency))}</span>` : '';
     const moves = place ? place.moves(6) : [];
     const pockets = !place ? [] : place.pocket ? [{ name: place.name, amount: place.amount, here: true }]
       : (place.account.pockets || []).filter(p => !p.finishedAt).map(p => ({ name: p.name, amount: +p.amountSaved || 0 }));
     const row = m => `<${m.id ? `button type="button" onclick="openTxForm('${escHtml(m.id)}')"` : 'div'} class="cw-d-row"><span>${escHtml(shortDay(m.date))} · ${escHtml(m.text)}</span><b class="num">${m.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(m.amount), m.currency)}</b></${m.id ? 'button' : 'div'}>`;
     return `<div class="cw-d-head">
-        <div><div class="eyebrow">${escHtml([c.type, place ? `${place.name} · ${place.sub}` : 'Not linked'].filter(Boolean).join(' · '))}</div>
-          <div class="cw-d-amount num">${place ? fmtMoney(place.amount, place.currency) : '—'}${eur}</div></div>
+        <div><div class="eyebrow">${escHtml([c.type, place ? `${place.name} · ${place.sub}` : 'Not linked'].filter(Boolean).join(' · '))}</div></div>
         <div class="cw-d-actions"><button class="btn small" onclick="openCardForm('${escHtml(c.id)}')">${ic('edit', 14)} Edit</button><button class="btn small ghost" aria-label="Close the details" onclick="cardTap(ui.cardIndex || 0)">✕</button></div>
       </div>
       ${place ? `<div class="cw-d-cols">
         <div><div class="tx-label">Recent</div>${moves.length ? moves.map(row).join('') : '<div class="dim">Nothing yet.</div>'}</div>
         <div><div class="tx-label">${place.pocket ? 'This pocket' : 'Its pockets'}</div>${pockets.length ? pockets.map(p => `<div class="cw-d-row"><span>${escHtml(p.name)}</span><b class="num">${fmtMoney(p.amount, place.currency)}</b></div>`).join('') : '<div class="dim">No pockets.</div>'}</div>
-      </div>` : `<div class="dim">Link it to an account or a pocket: its balance and moves then show here. <button class="link-btn" onclick="openCardForm('${escHtml(c.id)}')">Link it</button></div>`}`;
+      </div>` : `<div class="dim">Link it to an account or a pocket: its moves then show here. <button class="link-btn" onclick="openCardForm('${escHtml(c.id)}')">Link it</button></div>`}`;
   }
   /* ---- The carousel ---- */
   window.cardsHtml = function () {
@@ -198,7 +196,7 @@ if (typeof module !== 'undefined' && module.exports) {
         : cards.length ? `<div class="cw-track" tabindex="-1" onscroll="cardsScroll(this)" onkeydown="if(event.key==='ArrowLeft')cardGo(-1);if(event.key==='ArrowRight')cardGo(1)">${cards.map(slot).join('')}</div>
         ${cards.length > 1 ? `<div class="cw-dots">${cards.map((c, i) => `<i class="${i === at ? 'on' : ''}"></i>`).join('')}</div>` : ''}
         <div class="cw-detail" ${open ? '' : 'hidden'}>${cardDetailHtml(open)}</div>`
-        : `<button class="cw-empty" onclick="openCardForm()"><span class="cw-ghost"></span><span><b>Show your cards here</b><span>Any bank. Link one to an account or a pocket and its amount stays up to date.</span></span></button>`}
+        : `<button class="cw-empty" onclick="openCardForm()"><span class="cw-ghost"></span><span><b>Show your cards here</b><span>Any bank. Link one to an account or a pocket to see its recent moves.</span></span></button>`}
     </section>`;
   };
   let paintQueued = false;
@@ -366,7 +364,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ui.modal = { type: 'cardForm', payload: Object.assign({ name: '', bank: '', type: '', network: 'visa', last4: '', finish: 'black', color: '#2f4f4f', colors: ['#2f4f4f', '#101820'], photo: '', photoInk: '#fff', logo: '', link: '' }, c ? JSON.parse(JSON.stringify(c)) : prefill || {}) };
     render();
   };
-  const places = p => [{ ref: '', label: 'Nothing: no amount on the card' }]
+  const places = p => [{ ref: '', label: 'Nothing' }]
     .concat(data.accounts.map(a => ({ ref: 'acc:' + a.id, label: `${a.name} · ${typeof mainBalanceName === 'function' ? mainBalanceName(a) : 'main balance'}` })))
     .concat(data.accounts.flatMap(a => (a.pockets || []).filter(k => !k.finishedAt || p.link === `pk:${a.id}:${k.id}`).map(k => ({ ref: `pk:${a.id}:${k.id}`, label: `${a.name} › ${k.name}` }))));
   window.__modalRenderers.cardForm = function (p) {
@@ -379,7 +377,7 @@ if (typeof module !== 'undefined' && module.exports) {
       <label class="field"><span class="label-text">Bank</span><input id="cf-bank" list="cf-banks" autocomplete="off" value="${escHtml(p.bank)}" placeholder="Any bank" oninput="cardField('bank',this.value)"><datalist id="cf-banks">${CARD_BANKS.map(b => `<option value="${escHtml(b)}"></option>`).join('')}</datalist></label>
       <label class="field"><span class="label-text">Name <span style="opacity:.6;">(optional)</span></span><input id="cf-name" value="${escHtml(p.name)}" placeholder="e.g. Projects card" oninput="cardField('name',this.value)"></label>
       <label class="field"><span class="label-text">Card type <span style="opacity:.6;">(optional)</span></span><input id="cf-type" value="${escHtml(p.type || '')}" placeholder="e.g. Revolut Metal, Debit" oninput="cardField('type',this.value)"></label>
-      <label class="field"><span class="label-text">Linked to <span style="opacity:.6;">(its amount follows by itself)</span></span><select id="cf-link" onchange="cardField('link',this.value)">${places(p).map(o => `<option value="${escHtml(o.ref)}" ${o.ref === p.link ? 'selected' : ''}>${escHtml(o.label)}</option>`).join('')}</select></label>
+      <label class="field"><span class="label-text">Linked to <span style="opacity:.6;">(its recent moves show under the card)</span></span><select id="cf-link" onchange="cardField('link',this.value)">${places(p).map(o => `<option value="${escHtml(o.ref)}" ${o.ref === p.link ? 'selected' : ''}>${escHtml(o.label)}</option>`).join('')}</select></label>
       <label class="field"><span class="label-text">Last 4 digits <span style="opacity:.6;">(optional. Never your full number, the expiry or the code on the back)</span></span><input id="cf-last4" inputmode="numeric" autocomplete="off" value="${escHtml(p.last4)}" placeholder="1234" oninput="cardDigits(this)"></label>
       <div class="tx-label">Network</div>
       <div class="tx-chips">${CARD_NETWORKS.map(([v, l]) => chip(p.network === v, `cardPick('network','${v}')`, l)).join('')}</div>
