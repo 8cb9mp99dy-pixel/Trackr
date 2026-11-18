@@ -214,7 +214,7 @@ function weekSummaryData(start) {
   const from = dateToYmd(start), to = dateToYmd(end), today = todayYmd();
   const inRange = (a, b) => (data.budgetTransactions || []).filter(t => t.date >= a && t.date <= b && !(t.nature === 'Fixed' && t.date > today));
   const txs = inRange(from, to).filter(t => t.type !== 'transfer');   // moving your own money isn't a transaction here
-  const sum = (list, type) => list.filter(t => t.type === type).reduce((s, t) => s + toEUR(t.amount, t.currency), 0);
+  const sum = (list, type) => list.filter(t => t.type === type).reduce((s, t) => s + txEUR(t), 0);
   const prevStart = new Date(start); prevStart.setDate(prevStart.getDate() - 7);
   const prevEnd = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1);
   const prev = inRange(dateToYmd(prevStart), dateToYmd(prevEnd)).filter(t => t.type !== 'transfer');
@@ -222,7 +222,7 @@ function weekSummaryData(start) {
   txs.filter(t => t.type === 'expense').forEach(t => {
     const c = categoryById('expense', t.categoryId), k = c ? c.id : '_none';
     byCat[k] = byCat[k] || { id: c ? c.id : null, label: c ? c.name : 'Uncategorized', icon: c ? c.icon : '', value: 0 };
-    byCat[k].value += toEUR(t.amount, t.currency);
+    byCat[k].value += txEUR(t);
   });
   const top = Object.values(byCat).map(x => Object.assign(x, { color: categoryChartColor('expense', x.id) })).sort((a, b) => b.value - a.value).slice(0, 3);
   const biggest = txs.filter(t => t.type === 'expense').sort((a, b) => toEUR(b.amount, b.currency) - toEUR(a.amount, a.currency))[0] || null;

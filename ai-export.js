@@ -36,7 +36,7 @@
     return ['Transactions', ['Date', 'Year', 'Month', 'Weekday', 'Type', 'Category', 'Sub-category', 'Name', 'Amount', 'Currency', 'Amount EUR', 'Signed EUR', 'Account', 'Pocket', 'Paid with', 'From', 'To', 'Recurring', 'Added by the app', 'Place', 'Note', 'Impact'],
       txs.map(t => {
         const [c, s] = catLabel(t), d = ymdToDate(t.date);
-        return [str(t.date), d.getFullYear(), str(t.date).slice(0, 7), WEEKDAYS[d.getDay()], t.type, c, s, str(t.comment), r2(t.amount), str(t.currency), r2(toEUR(+t.amount || 0, t.currency)), r2(signedEUR(t)),
+        return [str(t.date), d.getFullYear(), str(t.date).slice(0, 7), WEEKDAYS[d.getDay()], t.type, c, s, str(t.comment), r2(t.amount), str(t.currency), r2(txEUR(t)), r2(signedEUR(t)),
           t.accountId ? (accountById(t.accountId) || {}).name || '' : '', (txPocket(t) || {}).name || '', pm(t.paymentMethodId), placeLabel(t.from), placeLabel(t.to),
           t.recurringId || t.nature === 'Fixed' ? 'yes' : 'no', t.auto ? 'yes' : 'no', str(t.location), str(t.description), str(t.impact)];
       })];
@@ -46,7 +46,7 @@
     txs.forEach(t => {
       const m = str(t.date).slice(0, 7); if (!m) return;
       const o = by[m] = by[m] || { income: 0, expense: 0, invested: 0, count: 0 };
-      const eur = toEUR(+t.amount || 0, t.currency);
+      const eur = txEUR(t);
       o.count++;
       if (t.type === 'income') o.income += eur;
       else if (t.type === 'expense') o.expense += eur;
@@ -117,7 +117,7 @@
       safe(() => activeRecurringSeries(), []).map(x => {
         const t = x.model, [c] = catLabel(t);
         const st = typeof recurringMonthState === 'function' ? safe(() => recurringMonthState(x, ym), null) : null;
-        return [str(t.comment), t.type, c, r2(t.amount), str(t.currency), r2(toEUR(+t.amount || 0, t.currency)), recurLabel(x.st), r2(toEUR(+x.perMonth || 0, t.currency)), x.st.day,
+        return [str(t.comment), t.type, c, r2(t.amount), str(t.currency), r2(txEUR(t)), recurLabel(x.st), r2(toEUR(+x.perMonth || 0, t.currency)), x.st.day,
           t.type === 'transfer' ? `${placeLabel(t.from)} → ${placeLabel(t.to)}` : t.accountId ? (accountById(t.accountId) || {}).name || '' : '', str(x.next),
           st && typeof RECURRING_STATE_LABEL !== 'undefined' ? RECURRING_STATE_LABEL[st.state] : ''];
       })];

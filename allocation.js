@@ -760,7 +760,7 @@ if (typeof window !== 'undefined') {
   window.ipVatQuarter = function (ref) {
     if (!ref || typeof vatQuarterRange !== 'function') return null;
     const t = todayYmd(), Q = vatQuarterRange(+t.slice(0, 4), Math.floor((+t.slice(5, 7) - 1) / 3) + 1);
-    const sum = data.budgetTransactions.filter(x => x.type === 'transfer' && x.to === ref && x.date >= Q.from && x.date <= Q.to).reduce((s, x) => s + toEUR(+x.amount || 0, x.currency), 0);
+    const sum = data.budgetTransactions.filter(x => x.type === 'transfer' && x.to === ref && x.date >= Q.from && x.date <= Q.to).reduce((s, x) => s + txEUR(x), 0);
     return { key: Q.key.replace('-', ' '), sum: Math.round(sum * 100) / 100 };
   };
   /* Rows drag into order (SortableJS); the slices follow. */

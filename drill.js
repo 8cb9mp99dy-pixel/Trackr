@@ -77,7 +77,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!cat) list = list.filter(t => !categoryById(kind, t.categoryId));
     if (subId === '_none') list = list.filter(t => !((cat && cat.subcategories) || []).some(s => s.id === t.subCategoryId));
     const sub = subId && subId !== '_none' ? ((cat.subcategories || []).find(s => s.id === subId) || {}).name : '';
-    show(sub ? `${cat.name} · ${sub}` : cat ? cat.name : 'Uncategorized', list, { total: list.reduce((s, t) => s + toEUR(t.amount, t.currency), 0), tone: kind === 'income' ? 'positive' : 'negative', sub: r.label });
+    show(sub ? `${cat.name} · ${sub}` : cat ? cat.name : 'Uncategorized', list, { total: list.reduce((s, t) => s + txEUR(t), 0), tone: kind === 'income' ? 'positive' : 'negative', sub: r.label });
   };
 
   /* Budget → Recurring: what a monthly figure is made of. */

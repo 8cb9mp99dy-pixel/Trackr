@@ -56,7 +56,7 @@ if (typeof module !== 'undefined' && module.exports) {
 } else {
   /* Expenses (+) and refunds (−) with a name, in EUR. */
   const rows = () => data.budgetTransactions.filter(t => (t.type === 'expense' || t.type === 'income') && t.comment && t.date)
-    .map(t => ({ t, key: txNameKey(t.comment), name: t.comment, date: t.date, eur: (t.type === 'expense' ? 1 : -1) * toEUR(+t.amount || 0, t.currency) }));
+    .map(t => ({ t, key: txNameKey(t.comment), name: t.comment, date: t.date, eur: (t.type === 'expense' ? 1 : -1) * txEUR(t) }));
   // An income under a shop's name only counts as a refund if you also spend there.
   const shopRows = () => { const all = rows(), spentAt = new Set(all.filter(x => x.eur > 0).map(x => x.key)); return all.filter(x => x.key && (x.eur > 0 || spentAt.has(x.key))); };
   const trackedFrom = () => data.budgetTransactions.reduce((m, t) => (t.date && (!m || t.date < m) ? t.date : m), '');

@@ -704,9 +704,9 @@ function biMarkDuplicates(rows) {
   });
   rows.forEach(r => {
     if (r.duplicate) return;
-    const eur = toEUR(r.amount, r.currency);
+    const eur = txEUR(r);
     const t = pool.find(t => !used.has(t.id) && t.auto && t.type === r.type && ymOf(t.date) === ymOf(r.date)
-      && Math.abs(toEUR(t.amount, t.currency) - eur) <= 0.1 * toEUR(t.amount, t.currency) + 0.005
+      && Math.abs(txEUR(t) - eur) <= 0.1 * txEUR(t) + 0.005
       && (t.categoryId === r.categoryId || biNameSimilar(t.comment, r.name)));
     if (t) { used.add(t.id); r.replacesAuto = t; }
   });
@@ -845,15 +845,15 @@ async function biHandleFile(file) {
 function biSelectionSummary(st) {
   const sel = st.rows.filter(r => r.included && biTransferReady(r, st));
   const transfers = sel.filter(r => r.type === 'transfer');
-  const income = sel.filter(r => r.type === 'income').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
-  const expenses = sel.filter(r => r.type === 'expense').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
+  const income = sel.filter(r => r.type === 'income').reduce((s, r) => s + txEUR(r), 0);
+  const expenses = sel.filter(r => r.type === 'expense').reduce((s, r) => s + txEUR(r), 0);
   const dates = sel.map(r => r.date).sort();
   const newCats = new Set(), newSubs = new Set();
   sel.filter(r => r.type !== 'transfer').forEach(r => {
     if (r.newCategory) newCats.add(r.categoryName);
     if (r.newSub) newSubs.add(`${r.categoryName} › ${r.subName}`);
   });
-  return { count: sel.length, income, expenses, transfers: transfers.length, moved: transfers.reduce((s, r) => s + toEUR(r.amount, r.currency), 0), from: dates[0], to: dates[dates.length - 1], newCats: [...newCats], newSubs: [...newSubs], withAccount: sel.filter(r => r.accountId || st.defaultAccountId).length };
+  return { count: sel.length, income, expenses, transfers: transfers.length, moved: transfers.reduce((s, r) => s + txEUR(r), 0), from: dates[0], to: dates[dates.length - 1], newCats: [...newCats], newSubs: [...newSubs], withAccount: sel.filter(r => r.accountId || st.defaultAccountId).length };
 }
 const biFmt = ymd => fmtDate(ymdToDate(ymd)); // local day, never shifted by the time zone
 const needsOwn = st => st.rows.some(r => r.type === 'transfer' && r.ownSide && !r.accountId && !st.defaultAccountId && !r.duplicate);

@@ -1078,7 +1078,7 @@ if (typeof module !== 'undefined' && module.exports) {
       ? `${accountById(ends[0].accountId).name} · ${inner(d.from, 'from')} → ${inner(d.to, 'to')}` : `${place(d.from, 'from')} → ${place(d.to, 'to')}`;
     const pocket = asked('pocket') ? `${asked('pocket').name} ?` : (txPocket(d) || {}).name || '';
     return { title: d.comment || (d.type === 'income' ? 'Income' : d.type === 'transfer' ? 'Transfer' : 'Expense'),
-      amount: d.amount ? fmtEurFirst(d.amount, d.currency, d.type === 'income' ? '+' : d.type === 'expense' ? '-' : '') : '—', cls: d.type === 'income' ? 'positive' : d.type === 'expense' ? 'negative' : 'ib-move',
+      amount: d.amount ? fmtEurFirst(d, d.type === 'income' ? '+' : d.type === 'expense' ? '-' : '') : '—', cls: d.type === 'income' ? 'positive' : d.type === 'expense' ? 'negative' : 'ib-move',
       meta: (d.type === 'transfer' ? [move] : [cat ? `${cat.name}${sub ? ' · ' + sub.name : ''}` : '', acc ? acc.name : n.wallet && !n.wallet.linked ? 'No account' : '', pocket]).filter(Boolean).join(' · ') };
   }
   function avatarOf(n) {

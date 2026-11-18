@@ -26,7 +26,7 @@ function cashflowModel() {
   const node = (map, key, label, icon, color) => (map[key] = map[key] || { key, label, icon, color, value: 0, count: 0, subs: {} });
   let invested = 0;
   cashflowTxs().forEach(t => {
-    const eur = toEUR(t.amount, t.currency);
+    const eur = txEUR(t);
     const inv = txInvestSign(t);
     if (inv) { invested += inv * eur; return; } // only what you ticked "Count as investing"
     if (t.type === 'transfer') return;
@@ -269,7 +269,7 @@ function detectRecurring() {
     const list = by[k].sort((a, b) => (a.date < b.date ? -1 : 1));
     const months = new Set(list.map(t => ymOf(t.date)));
     if (months.size < 3) return null;
-    const amounts = list.map(t => toEUR(t.amount, t.currency)).sort((a, b) => a - b);
+    const amounts = list.map(t => txEUR(t)).sort((a, b) => a - b);
     const median = amounts[Math.floor(amounts.length / 2)];
     if (!amounts.every(a => Math.abs(a - median) <= median * 0.25)) return null;
     const daysOf = list.map(t => +t.date.slice(8, 10)).sort((a, b) => a - b);

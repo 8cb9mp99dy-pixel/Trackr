@@ -38,7 +38,7 @@ if (typeof module !== 'undefined' && module.exports) {
   const brokerSide = ref => /^(brk|cx):/.test(ref || '');
   window.nwMoveRows = function () {
     return (data.budgetTransactions || []).filter(t => t.date && t.date <= todayYmd()).map(t => {
-      const eur = toEUR(+t.amount || 0, t.currency);
+      const eur = txEUR(t);
       return { date: t.date, type: t.type, eur, flow: t.type === 'transfer' ? (brokerSide(t.to) && !brokerSide(t.from) ? eur : brokerSide(t.from) && !brokerSide(t.to) ? -eur : 0) : 0 };
     });
   };

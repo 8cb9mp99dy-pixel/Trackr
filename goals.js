@@ -131,7 +131,7 @@ function avgMonthlyExpenses(n, exclude) {
   }
   const spentIn = d => {
     const byCat = {};
-    monthTransactions(d).filter(t => t.type === 'expense').forEach(t => { const k = t.categoryId || '_none'; byCat[k] = (byCat[k] || 0) + toEUR(t.amount, t.currency); });
+    monthTransactions(d).filter(t => t.type === 'expense').forEach(t => { const k = t.categoryId || '_none'; byCat[k] = (byCat[k] || 0) + txEUR(t); });
     return byCat;
   };
   let used = months.map(spentIn).filter(m => Object.keys(m).length);
@@ -214,8 +214,8 @@ function goalTarget(g) {
 function pocketMoves(ref) {
   const paid = t => t.type !== 'transfer' && !!t.pocketId && `pk:${t.accountId}:${t.pocketId}` === ref;
   return (data.budgetTransactions || []).filter(t => (t.type === 'transfer' && (t.to === ref || t.from === ref)) || paid(t))
-    .map(t => (paid(t) ? { id: t.id, date: t.date, amount: (t.type === 'income' ? 1 : -1) * toEUR(t.amount, t.currency), other: '', comment: t.comment || '' }
-      : { id: t.id, date: t.date, amount: (t.to === ref ? 1 : -1) * toEUR(t.amount, t.currency), other: t.to === ref ? (t.fromLabel || '') : (t.toLabel || ''), comment: t.comment || '' }))
+    .map(t => (paid(t) ? { id: t.id, date: t.date, amount: (t.type === 'income' ? 1 : -1) * txEUR(t), other: '', comment: t.comment || '' }
+      : { id: t.id, date: t.date, amount: (t.to === ref ? 1 : -1) * txEUR(t), other: t.to === ref ? (t.fromLabel || '') : (t.toLabel || ''), comment: t.comment || '' }))
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 function goalColor(g) { return g.color || hashColor(g.name || 'goal'); }

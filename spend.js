@@ -78,7 +78,7 @@ if (typeof module !== 'undefined' && module.exports) {
   window.safeSpendNow = function () {
     const pd = paydayDay(), today = todayYmd(), payday = nextPayday(today, pd.day);
     const ss = safeToSpend({ available: bankAvailable(), bills: upcoming(), buffer: +data.settings.spendBuffer || 0, today, payday });
-    const spentToday = (data.budgetTransactions || []).filter(t => t.type === 'expense' && t.date === today && !t.auto).reduce((s, t) => s + toEUR(+t.amount || 0, t.currency), 0);
+    const spentToday = (data.budgetTransactions || []).filter(t => t.type === 'expense' && t.date === today && !t.auto).reduce((s, t) => s + txEUR(t), 0);
     return Object.assign(ss, { payday, pd, today, spentToday, available: bankAvailable(), buffer: +data.settings.spendBuffer || 0 });
   };
   const dayName = ymd => spendDate(ymd).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });

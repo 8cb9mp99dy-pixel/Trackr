@@ -57,7 +57,7 @@ if (typeof module !== 'undefined' && module.exports) {
     return `<div class="pkp-move" onclick="openTxForm('${q(t.id)}')" title="Change this move">
       <span class="pkp-dir ${tone}" aria-hidden="true">${x.sign > 0 ? '+' : x.sign < 0 ? '−' : '↔'}</span>
       <div class="pkp-txt"><b>${escHtml(name)}</b><span class="dim">${escHtml(shortDay(t.date))} · ${escHtml(route)}</span></div>
-      <b class="num pkp-amt ${tone}">${fmtEurFirst(t.amount, t.currency, x.sign > 0 ? '+' : x.sign < 0 ? '−' : '')}</b>
+      <b class="num pkp-amt ${tone}">${fmtEurFirst(t, x.sign > 0 ? '+' : x.sign < 0 ? '−' : '')}</b>
       <button class="icon-btn-round pkp-del" aria-label="Delete this move" title="Delete" onclick="event.stopPropagation();deleteBudgetTx('${q(t.id)}')">${ic('trash', 15)}</button>
     </div>`;
   }

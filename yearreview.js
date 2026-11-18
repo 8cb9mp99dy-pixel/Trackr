@@ -46,7 +46,7 @@ if (typeof module !== 'undefined' && module.exports) {
   const monthName = ym => new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1).toLocaleDateString('en-GB', { month: 'long' });
   window.yearReviewRows = function () {
     return (data.budgetTransactions || []).filter(t => t.date && t.date <= todayYmd()).map(t => {
-      const eur = toEUR(+t.amount || 0, t.currency);
+      const eur = txEUR(t);
       const c = t.type !== 'transfer' ? categoryById(t.type, t.categoryId) : null;
       return { date: t.date, type: t.type, eur, cat: c ? c.name : '', name: t.comment || '',
         invest: txInvestSign(t) * eur };

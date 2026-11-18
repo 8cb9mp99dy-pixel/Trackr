@@ -53,7 +53,7 @@ if (typeof window !== 'undefined') {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       if (d < min) continue;
       const byCat = {};
-      monthTransactions(d).filter(t => t.type === 'expense').forEach(t => { byCat[t.categoryId || '_'] = (byCat[t.categoryId || '_'] || 0) + toEUR(t.amount, t.currency); });
+      monthTransactions(d).filter(t => t.type === 'expense').forEach(t => { byCat[t.categoryId || '_'] = (byCat[t.categoryId || '_'] || 0) + txEUR(t); });
       months.push({ ym: `${d.getFullYear()}-${d.getMonth() + 1}`, byCat, d });
     }
     categorySpikes(months, 30, 25).slice(0, 2).forEach(s => {
@@ -62,7 +62,7 @@ if (typeof window !== 'undefined') {
     });
     // 2. Recurring payments that went up.
     (typeof activeRecurringSeries === 'function' ? activeRecurringSeries() : []).filter(x => x.model.type === 'expense').forEach(x => {
-      const occ = recurringOccurrences(x.id).map(t => ({ date: t.date, amount: toEUR(t.amount, t.currency) }));
+      const occ = recurringOccurrences(x.id).map(t => ({ date: t.date, amount: txEUR(t) }));
       const inc = priceIncrease(occ, today, 75, 2, 0.5);
       if (inc) out.push({ key: `price:${x.id}:${inc.date}`, icon: 'refresh', tone: 'warn', text: `${escHtml(x.model.comment || 'A recurring payment')} went up from ${fmtMoney(inc.from)} to ${fmtMoney(inc.to)} (${fmtMoney((inc.to - inc.from) * x.rhythm.perYear)} more a year).`, go: "goPage('budget');setBudgetTab('recurring')" });
     });

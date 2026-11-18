@@ -63,8 +63,8 @@ if (typeof window !== 'undefined') {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       if (d < min) break;
       const txs = monthTransactions(d).filter(t => t.nature !== 'Fixed' && t.type !== 'transfer');
-      inc += txs.filter(t => t.type === 'income').reduce((s, t) => s + toEUR(t.amount, t.currency), 0);
-      exp += txs.filter(t => t.type === 'expense').reduce((s, t) => s + toEUR(t.amount, t.currency), 0);
+      inc += txs.filter(t => t.type === 'income').reduce((s, t) => s + txEUR(t), 0);
+      exp += txs.filter(t => t.type === 'expense').reduce((s, t) => s + txEUR(t), 0);
       n++;
     }
     return n ? { income: inc / n, expense: exp / n, months: n } : { income: 0, expense: 0, months: 0 };
@@ -84,11 +84,11 @@ if (typeof window !== 'undefined') {
         const bank = ref => { const p = parseTransferRef(ref); return !!(p && p.kind === 'acc' && accs.some(a => a.id === p.accountId)); };
         const sign = (bank(t.to) ? 1 : 0) - (bank(t.from) ? 1 : 0);
         if (!sign) return;
-        amt = toEUR(+t.amount || 0, t.currency) * sign;
+        amt = txEUR(t) * sign;
       } else {
         if (t.type !== 'income' && t.type !== 'expense') return;
         if (!inScope(t.accountId) || t.pocketId) return; // paid from a pocket: no bank balance moves
-        amt = toEUR(+t.amount || 0, t.currency) * (t.type === 'income' ? 1 : -1);
+        amt = txEUR(t) * (t.type === 'income' ? 1 : -1);
       }
       // From the first month not logged yet (the series' lastMonth is already in your list).
       if (x.st.every) { recurDates(x.st, recurAddDays(recurLast(x.st), 1), to).forEach(d => events.push({ date: d < today ? fcAddDays(today, 1) : d, amount: amt, label: t.comment || 'Recurring', kind: 'recurring' })); return; }

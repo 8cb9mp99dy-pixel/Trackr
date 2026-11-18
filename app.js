@@ -46,7 +46,7 @@ function categoryChartColor(kind, catId) {
   const txs = data.budgetTransactions || [], key = txs.length + '|' + (data.updatedAt || '');
   if (!categorySlots || categorySlots.key !== key) {
     const tot = { expense: {}, income: {} };
-    txs.forEach(t => { if (tot[t.type]) { const k = t.categoryId || '_none'; tot[t.type][k] = (tot[t.type][k] || 0) + toEUR(+t.amount || 0, t.currency); } });
+    txs.forEach(t => { if (tot[t.type]) { const k = t.categoryId || '_none'; tot[t.type][k] = (tot[t.type][k] || 0) + txEUR(t); } });
     const rank = m => Object.fromEntries(Object.entries(m).sort((a, b) => b[1] - a[1]).map(([id], i) => [id, i]));
     categorySlots = { key, expense: rank(tot.expense), income: rank(tot.income) };
   }
@@ -1018,6 +1018,7 @@ async function load() {
   // already added instead of adding the same months again.
   startAppDayWatch();
   if (eurUsdRateIsStale()) fetchEurUsdRate(true);
+  fillFxDays();
   fetchCryptoPrices();
   fetchAssetPrices();
   startPriceRefresh();
@@ -1324,6 +1325,7 @@ async function save(opts) {
   recordHistorySnapshot();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
   catch (e) { console.error('save failed', e); }
+  if (typeof fxDaySoon === 'function' && fxDayState.tried) fxDaySoon(); // a new payment in another currency: its day's rate
   if (auto || !loadSupabaseSyncConfig()) return;
   syncEditSeq++;
   syncUpdateConfig({ pending: true });
@@ -1579,6 +1581,7 @@ function startPriceRefresh() {
     fetchCryptoPrices();
     fetchAssetPrices();
     if (eurUsdRateIsStale()) fetchEurUsdRate(true);
+    fillFxDays();
   };
   setInterval(tick, 5 * 60 * 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
@@ -1816,6 +1819,58 @@ function toEUR(amount, currency) {
   const r = fxRate(currency);
   return r ? amount / r : amount; // no rate known yet for that currency: face value, never 0
 }
+/* ---- The rate of the day you paid (asked for on 18 Nov 2026) ----
+   A Budget transaction in another currency keeps the euro rate of its own day:
+   t.fxDay = { ccy, date, rate, day } (1 € = rate ccy; day = the European Central Bank's business
+   day it comes from, the one before for a weekend or a holiday). It's looked up once that day is
+   over (fillFxDays, Frankfurter's daily ECB rates, one request for every day needed), so a rate
+   moving afterwards never changes what you paid in euros. Until then, and for anything that isn't
+   a Budget transaction, today's rate. Every euro figure of a transaction goes through txEUR(t). */
+function txFxDayOk(t) { const f = t && t.fxDay; return !!(f && f.rate > 0 && f.ccy === t.currency && f.date === t.date); }
+function txEUR(t) {
+  const a = +(t && t.amount) || 0;
+  if (!t || !t.currency || t.currency === 'EUR') return a;
+  return txFxDayOk(t) ? a / t.fxDay.rate : toEUR(a, t.currency);
+}
+/* The ECB rate of each day: rates = { 'YYYY-MM-DD': { CHF, USD, GBP } } → for one day, the latest
+   business day on or before it (pure, Node-tested). */
+function fxRateOnDay(rates, date, ccy) {
+  let best = null;
+  Object.keys(rates || {}).forEach(k => { if (k <= date && (!best || k > best) && rates[k] && rates[k][ccy] > 0) best = k; });
+  return best ? { day: best, rate: rates[best][ccy] } : null;
+}
+const fxDayState = { busy: false, retryAt: 0, tried: new Set(), timer: null };
+function fxDayNeeded() {
+  const today = todayYmd();
+  return (data.budgetTransactions || []).filter(t => t.currency && t.currency !== 'EUR' && CURRENCIES.includes(t.currency)
+    && /^\d{4}-\d{2}-\d{2}$/.test(t.date || '') && t.date < today && !txFxDayOk(t) && !fxDayState.tried.has(t.id + '|' + t.date + '|' + t.currency));
+}
+async function fillFxDays() {
+  if (fxDayState.busy || Date.now() < fxDayState.retryAt || typeof fetch !== 'function') return;
+  const need = fxDayNeeded();
+  if (!need.length) return;
+  fxDayState.busy = true;
+  try {
+    const dates = need.map(t => t.date).sort();
+    const start = new Date(Date.parse(dates[0] + 'T00:00:00Z') - 7 * 864e5).toISOString().slice(0, 10);
+    const res = await fetch(`https://api.frankfurter.dev/v1/${start}..${dates[dates.length - 1]}?base=EUR&symbols=USD,GBP,CHF`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const j = await res.json(), rates = j && j.rates;
+    if (!rates || typeof rates !== 'object') throw new Error('no rates');
+    let n = 0;
+    need.forEach(t => {
+      fxDayState.tried.add(t.id + '|' + t.date + '|' + t.currency);
+      const live = data.budgetTransactions.find(x => x.id === t.id);
+      const hit = live && live.date === t.date && live.currency === t.currency && fxRateOnDay(rates, t.date, t.currency);
+      if (hit) { live.fxDay = { ccy: t.currency, date: t.date, rate: hit.rate, day: hit.day }; n++; }
+    });
+    if (n) { save(); renderWhenIdle(); }
+  } catch (e) {
+    console.warn('Rates of the day unavailable, using today\'s rate for now', e);
+    fxDayState.retryAt = Date.now() + 10 * 60 * 1000;
+  } finally { fxDayState.busy = false; }
+}
+function fxDaySoon() { clearTimeout(fxDayState.timer); fxDayState.timer = setTimeout(fillFxDays, 1500); }
 /* Converts between any two of the app's currencies via EUR as the anchor (same rates as toEUR).
    Needed because a budget transaction's own currency can differ from the bank account it's
    linked to (see applyTxToAccountBalance). */
@@ -1960,7 +2015,7 @@ function cryptoExchangeCashFor(name) {
 }
 function cryptoExchangeCashValueEUR(name) {
   const entry = cryptoExchangeCashFor(name);
-  return entry ? toEUR(entry.amount, entry.currency) : 0;
+  return entry ? txEUR(entry) : 0;
 }
 // Same "uninvested cash counts toward value/net worth, never toward P&L" rule as broker cash.
 function totalCryptoExchangeCash() { return (data.cryptoExchangeCash || []).reduce((s, c) => s + toEUR(c.amount, c.currency), 0); }
@@ -2202,8 +2257,8 @@ function monthTransactions(monthDate) {
 }
 // Each transaction can carry its own currency (t.currency) — same mixed-currency summing bug
 // as accounts/positions applies here too, so each amount is converted to EUR before totaling.
-function monthIncome(monthDate) { return monthTransactions(monthDate).filter(t => t.type === 'income').reduce((s, t) => s + toEUR(t.amount, t.currency), 0); }
-function monthExpenses(monthDate) { return monthTransactions(monthDate).filter(t => t.type === 'expense').reduce((s, t) => s + toEUR(t.amount, t.currency), 0); }
+function monthIncome(monthDate) { return monthTransactions(monthDate).filter(t => t.type === 'income').reduce((s, t) => s + txEUR(t), 0); }
+function monthExpenses(monthDate) { return monthTransactions(monthDate).filter(t => t.type === 'expense').reduce((s, t) => s + txEUR(t), 0); }
 
 function categoryById(kind, id) { return (data.categories[kind] || []).find(c => c.id === id); }
 function paymentMethodById(id) { return data.paymentMethods.find(p => p.id === id); }
@@ -3045,7 +3100,7 @@ window.__modalRenderers.linkUnlinked = function (p) {
     <p class="dim" style="font-size:13px;margin:0 0 12px;">${list.length} income${list.length === 1 ? '' : 's'} / expense${list.length === 1 ? '' : 's'} ${list.length === 1 ? 'has' : 'have'} no account, so ${list.length === 1 ? 'it moves' : 'they move'} no balance. Each one is matched to the account used last time for the same name, or your main account. Ones dated before you last checked a balance are already in it, so they don't move it again.</p>
     <div class="row-flex" style="gap:8px;margin-bottom:10px;"><span style="font-size:13px;flex:1;">All to</span><select class="mini-select" onchange="linkUnlinkedAll(this.value)"><option value="">Choose…</option>${opts('')}</select></div>
     <div class="lu-list">${list.map(t => `<div class="lu-row"><div class="lu-txt"><b>${escHtml(t.comment || (categoryById(t.type, t.categoryId) || {}).name || 'Transaction')}</b><span class="dim">${escHtml(shortDay(t.date))}</span></div>
-      <b class="num ${t.type === 'income' ? 'positive' : 'negative'}">${fmtEurFirst(t.amount, t.currency, t.type === 'income' ? '+' : '−')}</b>
+      <b class="num ${t.type === 'income' ? 'positive' : 'negative'}">${fmtEurFirst(t, t.type === 'income' ? '+' : '−')}</b>
       <select class="mini-select" aria-label="Account" onchange="ui.modal.payload.picks['${t.id}']=this.value;render();">${opts(p.picks[t.id])}</select></div>`).join('')}</div>
     ${Object.keys(moves).length ? `<div class="lu-moves">${Object.entries(moves).map(([id, v]) => `<div class="row-flex"><span>${escHtml(accountById(id).name)}</span><b>${sg(v)}${fmtMoney(Math.abs(v), accountById(id).currency)}</b></div>`).join('')}</div>` : '<p class="dim" style="font-size:12.5px;">No balance changes: they are all older than your last balance checks.</p>'}
     <div class="modal-actions"><button class="btn" onclick="closeModal()">Later</button><button class="btn primary" onclick="linkUnlinkedApply()">Link ${list.length}</button></div>`;
@@ -3460,7 +3515,7 @@ function budgetLimitsOn() { return !!(data && data.settings) && data.settings.ca
 function budgetLimits() { if (!data.budgetLimits || typeof data.budgetLimits !== 'object') data.budgetLimits = {}; return data.budgetLimits; }
 function monthSpentByCategory(monthDate) {
   const out = {};
-  monthTransactions(monthDate).filter(t => t.type === 'expense').forEach(t => { out[t.categoryId || '_none'] = (out[t.categoryId || '_none'] || 0) + toEUR(t.amount, t.currency); });
+  monthTransactions(monthDate).filter(t => t.type === 'expense').forEach(t => { out[t.categoryId || '_none'] = (out[t.categoryId || '_none'] || 0) + txEUR(t); });
   return out;
 }
 /* Average monthly spending of a category over the 3 full months before this one — the suggested limit. */
@@ -3587,10 +3642,10 @@ function budgetCheckAfterSave(record, before) {
 const RECAP_SEEN_KEY = 'trackr-recap-seen';
 function monthRecapData(monthDate) {
   const txs = monthTransactions(monthDate);
-  const sum = type => txs.filter(t => t.type === type).reduce((s, t) => s + toEUR(t.amount, t.currency), 0);
+  const sum = type => txs.filter(t => t.type === type).reduce((s, t) => s + txEUR(t), 0);
   const income = sum('income'), expenses = sum('expense');
   const prev = new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1);
-  const prevExp = prev >= budgetMinMonth() ? monthTransactions(prev).filter(t => t.type === 'expense').reduce((s, t) => s + toEUR(t.amount, t.currency), 0) : null;
+  const prevExp = prev >= budgetMinMonth() ? monthTransactions(prev).filter(t => t.type === 'expense').reduce((s, t) => s + txEUR(t), 0) : null;
   const top = categorySpendingSegments(monthDate, 'expense').slice(0, 3);
   const biggest = txs.filter(t => t.type === 'expense').sort((a, b) => toEUR(b.amount, b.currency) - toEUR(a.amount, a.currency))[0] || null;
   const budgets = (data.categories.expense || []).map(c => ({ c, st: budgetStatus(c.id, monthDate) })).filter(x => x.st);
@@ -3674,7 +3729,7 @@ function budgetTotalsData(kind) {
     const cat = categoryById(kind, t.categoryId);
     const key = cat ? cat.id : '_none';
     const c = cats[key] || (cats[key] = { id: key, name: cat ? cat.name : 'Uncategorized', icon: cat ? cat.icon : '❓', total: 0, count: 0, subs: {} });
-    const eur = toEUR(t.amount, t.currency);
+    const eur = txEUR(t);
     c.total += eur; c.count++;
     const sub = cat ? (cat.subcategories || []).find(x => x.id === t.subCategoryId) : null;
     const sk = sub ? sub.id : '_none';
@@ -3832,8 +3887,8 @@ function monthInvested(monthDate) {
   let sent = 0, withdrawn = 0;
   monthTransactions(monthDate).forEach(t => {
     const k = txInvestSign(t);
-    if (k > 0) sent += toEUR(t.amount, t.currency);
-    else if (k < 0) withdrawn += toEUR(t.amount, t.currency);
+    if (k > 0) sent += txEUR(t);
+    else if (k < 0) withdrawn += txEUR(t);
   });
   return { sent, withdrawn, contributions: 0, net: sent - withdrawn };
 }
@@ -3914,7 +3969,7 @@ function budgetTimelineHtml(m) {
   for (let d = new Date(min); d <= max && months.length < 240; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push(d);
   const sums = months.map(d => {
     const txs = monthTransactions(d);
-    const sum = type => txs.filter(t => t.type === type).reduce((s, t) => s + toEUR(t.amount, t.currency), 0);
+    const sum = type => txs.filter(t => t.type === type).reduce((s, t) => s + txEUR(t), 0);
     return { d, inc: sum('income'), exp: sum('expense'), n: txs.length };
   });
   const top = Math.max(1, ...sums.map(x => Math.max(x.inc, x.exp)));
@@ -3977,7 +4032,7 @@ function monthCumulativeExpenses(monthDate, upToDay) {
   const dayTotals = {};
   monthTransactions(monthDate).filter(t => t.type === 'expense').forEach(t => {
     const d = ymdToDate(t.date).getDate();
-    dayTotals[d] = (dayTotals[d] || 0) + toEUR(t.amount, t.currency);
+    dayTotals[d] = (dayTotals[d] || 0) + txEUR(t);
   });
   let running = 0;
   const out = [];
@@ -4022,13 +4077,14 @@ function dayLabel(dateStr) {
   if (d.getTime() === yesterday.getTime()) return 'Yesterday';
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 }
-/* A transaction's amount in euros first, at today's rate, with what was really paid in small
-   under it when that was another currency (the user's choice, 18 Nov 2026: paying in CHF in
-   Switzerland, "je lis tout en euros"). sign: '+', '−', '-' or ''. Returns HTML. */
-function fmtEurFirst(amount, currency, sign) {
-  const s = sign || '', a = Math.abs(+amount || 0);
-  if (!currency || currency === 'EUR') return s + fmtMoney(a);
-  return `${s}${fmtMoney(toEUR(a, currency))}<span class="tx-orig">${s}${fmtMoney(a, currency)}</span>`;
+/* A transaction's amount in euros first, at the rate of its day (txEUR), with what was really paid
+   in small under it when that was another currency (the user's choice, 18 Nov 2026: paying in CHF
+   in Switzerland, "je lis tout en euros"). t: { amount, currency, date?, fxDay? }. sign: '+', '−',
+   '-' or ''. Returns HTML. */
+function fmtEurFirst(t, sign) {
+  const s = sign || '', a = Math.abs(+t.amount || 0);
+  if (!t.currency || t.currency === 'EUR') return s + fmtMoney(a);
+  return `${s}${fmtMoney(Math.abs(txEUR(t)))}<span class="tx-orig">${s}${fmtMoney(a, t.currency)}</span>`;
 }
 function dayGroupHtml(group, picking) {
   const netEUR = group.txs.reduce((s, t) => s + txNetEUR(t), 0);
@@ -4119,7 +4175,7 @@ function txRowDisplayHtml(t, picking) {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
-        <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);text-align:right;">${eurOnly ? il('amount', fmtMoney(Math.abs(t.amount)), 'Change the amount') : fmtEurFirst(t.amount, t.currency)}</div>
+        <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);text-align:right;">${eurOnly ? il('amount', fmtMoney(Math.abs(t.amount)), 'Change the amount') : fmtEurFirst(t)}</div>
         ${del}
       </div>
     </div>`;
@@ -4142,7 +4198,7 @@ function txRowDisplayHtml(t, picking) {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
-        <div class="${t.type === 'income' ? 'positive' : 'negative'}" style="font-weight:700;font-size:14.5px;text-align:right;">${eurOnly ? il('amount', `${t.type === 'income' ? '+' : '-'}${fmtMoney(Math.abs(t.amount))}`, 'Change the amount') : fmtEurFirst(t.amount, t.currency, t.type === 'income' ? '+' : '-')}</div>
+        <div class="${t.type === 'income' ? 'positive' : 'negative'}" style="font-weight:700;font-size:14.5px;text-align:right;">${eurOnly ? il('amount', `${t.type === 'income' ? '+' : '-'}${fmtMoney(Math.abs(t.amount))}`, 'Change the amount') : fmtEurFirst(t, t.type === 'income' ? '+' : '-')}</div>
         ${del}
       </div>
     </div>`;
@@ -4363,7 +4419,7 @@ function recurringMonthState(x, ym) {
   const t = here[here.length - 1];
   if (t.auto && !t.confirmed) return { state: 'expected', due, ym, t };
   const prev = occ.filter(o => ymOf(o.date) < ym).pop();
-  const ref = prev ? toEUR(+prev.amount || 0, prev.currency) : 0, amt = toEUR(+t.amount || 0, t.currency);
+  const ref = prev ? txEUR(prev) : 0, amt = txEUR(t);
   if (ref > 0 && Math.abs(amt - ref) > ref * RECURRING_TOLERANCE) return { state: 'different', due, ym, t, ref };
   return { state: 'paid', due, ym, t };
 }
@@ -4428,7 +4484,7 @@ window.__modalRenderers.recurringAmount = function (p) {
   if (!t) return '<div class="modal-head"><div class="modal-title">Not found</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>';
   return `
     <div class="modal-head"><div class="modal-title">How much was it?</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
-    <div style="font-size:13px;opacity:.7;margin-bottom:12px;">${escHtml(t.comment || 'Recurring')} · ${escHtml(shortDay(t.date))} · usually ${fmtMoney(toEUR(+t.amount || 0, t.currency))}${t.currency && t.currency !== 'EUR' ? ` (${fmtMoney(+t.amount || 0, t.currency)})` : ''}</div>
+    <div style="font-size:13px;opacity:.7;margin-bottom:12px;">${escHtml(t.comment || 'Recurring')} · ${escHtml(shortDay(t.date))} · usually ${fmtMoney(txEUR(t))}${t.currency && t.currency !== 'EUR' ? ` (${fmtMoney(+t.amount || 0, t.currency)})` : ''}</div>
     <label class="field"><span class="label-text">Amount (${escHtml(t.currency)})</span><input id="rec-amt" type="number" min="0" step="any" inputmode="decimal" value="${escHtml(p.amount)}" oninput="ui.modal.payload.amount=this.value"></label>
     <div class="seg-row" style="margin-top:12px;">
       <button class="seg ${p.scope === 'month' ? 'on' : ''}" onclick="ui.modal.payload.scope='month';render()">Only this month</button>
@@ -4518,7 +4574,7 @@ function categorySpendingSegments(monthDate, kind) {
     const cat = categoryById(kind, t.categoryId);
     const key = cat ? cat.id : 'uncategorized';
     if (!byCategory[key]) byCategory[key] = { id: cat ? cat.id : null, label: cat ? cat.name : 'Uncategorized', icon: cat ? cat.icon : '❓', value: 0 };
-    byCategory[key].value += toEUR(t.amount, t.currency);
+    byCategory[key].value += txEUR(t);
   });
   return Object.values(byCategory).map(x => ({ ...x, color: categoryChartColor(kind, x.id) })).sort((a, b) => b.value - a.value);
 }
@@ -4975,7 +5031,7 @@ window.__modalRenderers.tx = function (p) {
     const sub = cat && subcats.find(sc => sc.id === p.subCategoryId);
     const what = isTransfer ? [((transferEndpoint(p.from) || {}).label), ((transferEndpoint(p.to) || {}).label)].filter(Boolean).join(' → ')
       : [p.comment, cat ? `${cat.icon || ''} ${cat.name}${sub ? ' · ' + sub.name : ''}` : ''].filter(Boolean).join(' · ');
-    return `<div class="tx-summary"><span class="${p.type === 'income' ? 'positive' : p.type === 'expense' ? 'negative' : ''}">${p.type === 'income' ? '+' : p.type === 'expense' ? '−' : ''}${isNaN(amt) ? '—' : fmtMoney(p.currency && p.currency !== 'EUR' ? toEUR(Math.abs(amt), p.currency) : amt)}${!isNaN(amt) && p.currency && p.currency !== 'EUR' ? ` <small class="dim">(${fmtMoney(Math.abs(amt), p.currency)})</small>` : ''}</span>${what ? `<span>${escHtml(what)}</span>` : ''}</div>`;
+    return `<div class="tx-summary"><span class="${p.type === 'income' ? 'positive' : p.type === 'expense' ? 'negative' : ''}">${p.type === 'income' ? '+' : p.type === 'expense' ? '−' : ''}${isNaN(amt) ? '—' : fmtMoney(p.currency && p.currency !== 'EUR' ? txEUR({ amount: Math.abs(amt), currency: p.currency, date: p.date, fxDay: p.fxDay }) : amt)}${!isNaN(amt) && p.currency && p.currency !== 'EUR' ? ` <small class="dim">(${fmtMoney(Math.abs(amt), p.currency)})</small>` : ''}</span>${what ? `<span>${escHtml(what)}</span>` : ''}</div>`;
   };
   let body = '';
   if (step === 1) {
@@ -5129,12 +5185,15 @@ function txStepDone(p) {
   const amt = parseFloat(String(p.amount).replace(',', '.'));
   return { 1: amt > 0, 2: p.type === 'transfer' ? !!(p.from && p.to && p.from !== p.to) : !!p.categoryId, 3: true };
 }
-/* Under the amount in the form, for another currency: what it is in euros at today's rate. */
+/* Under the amount in the form, for another currency: what it is in euros, at the rate of its day
+   once known (txEUR), else today's. */
 function txEurLine(p) {
-  const a = parseFloat(p && p.amount);
   if (!p || !p.currency || p.currency === 'EUR') return '';
-  const r = p.currency === 'CHF' || p.currency === 'GBP' ? (data.settings.fxRates || {})[p.currency] : p.currency === 'USD' ? eurUsd() : null;
-  return `${isNaN(a) || !a ? '' : `= ${fmtMoney(toEUR(Math.abs(a), p.currency))} · `}today's rate${r ? `: 1 € = ${fmtMoney(r, p.currency)}` : ''}`;
+  const a = Math.abs(parseFloat(p.amount)) || 0;
+  const t = { amount: a, currency: p.currency, date: p.date, fxDay: p.fxDay };
+  const ok = txFxDayOk(t), rate = ok ? t.fxDay.rate : fxRate(p.currency);
+  const when = ok ? `rate of ${shortDay(t.fxDay.day)}` : p.date && p.date < todayYmd() ? "today's rate until that day's is found" : "today's rate";
+  return `${a ? `= ${fmtMoney(txEUR(t))} · ` : ''}${when}${rate ? `: 1 € = ${fmtMoney(rate, p.currency)}` : ''}`;
 }
 function txAmountInput(v) {
   if (!ui.modal) return;
@@ -5274,6 +5333,7 @@ function saveTxForm() {
   if (!isTransfer && p.pocketId) record.pocketId = p.pocketId;
   // Links and marks the form doesn't show are kept when you edit (an income's split, its invoice…).
   ['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil', 'warrantyNoted', 'tripId'].forEach(k => { if (p[k] != null && p[k] !== '') record[k] = p[k]; });
+  if (p.fxDay && p.fxDay.ccy === record.currency && p.fxDay.date === record.date) record.fxDay = p.fxDay; // its day's rate, while day and currency stay
   // "Count as investing": this transaction only, never others (the user's rule, 18 Nov 2026).
   if ((isTransfer || p.type === 'expense') && (p._invest != null ? p._invest : p.invest)) record.invest = true;
   if (p._extra) Object.assign(record, p._extra); // filled in by another page (budgetConfirm, balances.js)
@@ -5321,7 +5381,7 @@ function saveTxForm() {
   if (typeof fxSuccess === 'function') fxSuccess(p.type === 'transfer' ? 'Transfer saved' : 'Transaction saved');
   // A new salary / freelance income: offer to split it (Budget → Income plan).
   if (!prior && typeof incomePlanOffer === 'function') incomePlanOffer(record);
-  budgetCheckAfterSave(record, prior && prior.type === 'expense' && prior.categoryId === record.categoryId && ymOf(prior.date) === ymOf(record.date) ? toEUR(record.amount, record.currency) - toEUR(prior.amount, prior.currency) : toEUR(record.amount, record.currency));
+  budgetCheckAfterSave(record, prior && prior.type === 'expense' && prior.categoryId === record.categoryId && ymOf(prior.date) === ymOf(record.date) ? txEUR(record) - txEUR(prior) : txEUR(record));
 }
 /* ===================== Investments ===================== */
 function renderInvestments() {

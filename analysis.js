@@ -84,8 +84,8 @@ function passiveModel() {
   const logged = { dividends: 0, interest: 0 };
   data.budgetTransactions.forEach(t => {
     if (t.type !== 'income' || t.date < from || t.date > todayYmd()) return;
-    if (t.subCategoryId === 'sci_dividends') logged.dividends += toEUR(t.amount, t.currency);
-    if (t.subCategoryId === 'sci_interest') logged.interest += toEUR(t.amount, t.currency);
+    if (t.subCategoryId === 'sci_dividends') logged.dividends += txEUR(t);
+    if (t.subCategoryId === 'sci_interest') logged.interest += txEUR(t);
   });
   const projected = items.reduce((s, x) => s + x.yearly, 0) + logged.dividends;
   const base = portfolioValue() + bankTotal();

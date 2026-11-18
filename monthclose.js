@@ -63,7 +63,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const cats = {};
     (data.budgetTransactions || []).filter(t => t.type === 'expense' && String(t.date).slice(0, 7) === ym).forEach(t => {
       const c = categoryById('expense', t.categoryId), k = c ? c.name : 'Other';
-      cats[k] = (cats[k] || 0) + toEUR(+t.amount || 0, t.currency);
+      cats[k] = (cats[k] || 0) + txEUR(t);
     });
     return { inc, out, kept: inc > 0 ? (inc - out) / inc * 100 : null, outDiff: out - pout, inDiff: inc - pin, top: Object.entries(cats).sort((a, b) => b[1] - a[1]).slice(0, 4) };
   }
