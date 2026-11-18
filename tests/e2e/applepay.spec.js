@@ -76,7 +76,9 @@ test('Apple Pay: token, cards, then review and add what the Shortcut sent', asyn
   await expect(ah).toContainText('Groceries');
   await expect(ah).toContainText('Demo Bank Current');
   await expect(ah.locator('.ib-wallet')).toContainText('Apple Pay · Demo Main · 12:34');
-  await expect(page.locator('.ib-item', { hasText: 'Demo Coffee' }).locator('.ib-wallet')).toContainText('≈ €');
+  // Another currency: euros first, what was paid in small under it (18 Nov 2026).
+  await expect(page.locator('.ib-item', { hasText: 'Demo Coffee' }).locator('.ib-end .num')).toContainText('€');
+  await expect(page.locator('.ib-item', { hasText: 'Demo Coffee' }).locator('.tx-orig')).toContainText('$');
   await expect(page.locator('.ib-tabs .tab-btn', { hasText: 'To check' })).toContainText('3');
 
   // Add all ready: the two in New, the coffee in its pocket, in dollars.

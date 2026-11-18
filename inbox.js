@@ -1078,7 +1078,7 @@ if (typeof module !== 'undefined' && module.exports) {
       ? `${accountById(ends[0].accountId).name} · ${inner(d.from, 'from')} → ${inner(d.to, 'to')}` : `${place(d.from, 'from')} → ${place(d.to, 'to')}`;
     const pocket = asked('pocket') ? `${asked('pocket').name} ?` : (txPocket(d) || {}).name || '';
     return { title: d.comment || (d.type === 'income' ? 'Income' : d.type === 'transfer' ? 'Transfer' : 'Expense'),
-      amount: `${d.type === 'income' ? '+' : d.type === 'expense' ? '-' : ''}${d.amount ? fmtMoney(+d.amount, d.currency) : '—'}`, cls: d.type === 'income' ? 'positive' : d.type === 'expense' ? 'negative' : 'ib-move',
+      amount: d.amount ? fmtEurFirst(d.amount, d.currency, d.type === 'income' ? '+' : d.type === 'expense' ? '-' : '') : '—', cls: d.type === 'income' ? 'positive' : d.type === 'expense' ? 'negative' : 'ib-move',
       meta: (d.type === 'transfer' ? [move] : [cat ? `${cat.name}${sub ? ' · ' + sub.name : ''}` : '', acc ? acc.name : n.wallet && !n.wallet.linked ? 'No account' : '', pocket]).filter(Boolean).join(' · ') };
   }
   function avatarOf(n) {
@@ -1129,8 +1129,7 @@ if (typeof module !== 'undefined' && module.exports) {
   /* Apple Pay · the card · the time · what Wallet wrote, when Trackr cleaned it · ≈ € for another currency. */
   function walletLineHtml(n) {
     const w = n.wallet, d = n.draft, raw = String(w.merchant || '').trim();
-    const eur = d.currency && d.currency !== 'EUR' && +d.amount ? `≈ ${fmtMoney(toEUR(+d.amount, d.currency))}` : '';
-    const parts = ['Apple Pay', w.card, w.time, raw && raw !== d.comment ? `“${raw}”` : '', eur].filter(Boolean);
+    const parts = ['Apple Pay', w.card, w.time, raw && raw !== d.comment ? `“${raw}”` : ''].filter(Boolean);
     return `<span class="ib-wallet dim">${parts.map(escHtml).join(' · ')}</span>`;
   }
   function rejectedRowHtml({ x, n }) {

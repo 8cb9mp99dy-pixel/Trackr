@@ -83,7 +83,7 @@ function walletSectionHtml() {
       </div>
       ${recent.length ? `<div class="wallet-recent">${recent.map(t => `
         <div class="wallet-line"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(t.comment || (t.type === 'transfer' ? 'Transfer' : 'Cash'))} <span style="opacity:.5;">· ${escHtml(shortDay(t.date))}</span></span>
-          <span class="${signed(t) > 0 ? 'positive' : ''}" style="font-weight:600;white-space:nowrap;">${signed(t) > 0 ? '+' : '−'}${fmtMoney(t.amount, t.currency)}</span></div>`).join('')}</div>` : ''}
+          <span class="${signed(t) > 0 ? 'positive' : ''}" style="font-weight:600;white-space:nowrap;">${fmtEurFirst(t.amount, t.currency, signed(t) > 0 ? '+' : '−')}</span></div>`).join('')}</div>` : ''}
     </div>`;
 }
 

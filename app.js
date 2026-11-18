@@ -12,7 +12,7 @@ const THEMES = [
 ];
 
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'];
-const CURRENCY_SYMBOL = { EUR: '€', USD: '$', GBP: '£', CHF: 'Fr' };
+const CURRENCY_SYMBOL = { EUR: '€', USD: '$', GBP: '£', CHF: 'CHF\u00a0' }; // "CHF 18.80" (clearer than "Fr", 18 Nov 2026)
 
 const ACCOUNT_COLORS = ['#6C63FF', '#34C77B', '#E8963C', '#4FA6D9', '#E5484D', '#C79A5B', '#8FE0C9', '#EDE4D2', '#E0895A', '#C6E92F'];
 const POCKET_COLORS = ['#6C63FF', '#34C77B', '#E8963C', '#4FA6D9', '#E5484D', '#C79A5B', '#8FE0C9', '#EDE4D2'];
@@ -3045,7 +3045,7 @@ window.__modalRenderers.linkUnlinked = function (p) {
     <p class="dim" style="font-size:13px;margin:0 0 12px;">${list.length} income${list.length === 1 ? '' : 's'} / expense${list.length === 1 ? '' : 's'} ${list.length === 1 ? 'has' : 'have'} no account, so ${list.length === 1 ? 'it moves' : 'they move'} no balance. Each one is matched to the account used last time for the same name, or your main account. Ones dated before you last checked a balance are already in it, so they don't move it again.</p>
     <div class="row-flex" style="gap:8px;margin-bottom:10px;"><span style="font-size:13px;flex:1;">All to</span><select class="mini-select" onchange="linkUnlinkedAll(this.value)"><option value="">Choose…</option>${opts('')}</select></div>
     <div class="lu-list">${list.map(t => `<div class="lu-row"><div class="lu-txt"><b>${escHtml(t.comment || (categoryById(t.type, t.categoryId) || {}).name || 'Transaction')}</b><span class="dim">${escHtml(shortDay(t.date))}</span></div>
-      <b class="num ${t.type === 'income' ? 'positive' : 'negative'}">${t.type === 'income' ? '+' : '−'}${fmtMoney(+t.amount || 0, t.currency)}</b>
+      <b class="num ${t.type === 'income' ? 'positive' : 'negative'}">${fmtEurFirst(t.amount, t.currency, t.type === 'income' ? '+' : '−')}</b>
       <select class="mini-select" aria-label="Account" onchange="ui.modal.payload.picks['${t.id}']=this.value;render();">${opts(p.picks[t.id])}</select></div>`).join('')}</div>
     ${Object.keys(moves).length ? `<div class="lu-moves">${Object.entries(moves).map(([id, v]) => `<div class="row-flex"><span>${escHtml(accountById(id).name)}</span><b>${sg(v)}${fmtMoney(Math.abs(v), accountById(id).currency)}</b></div>`).join('')}</div>` : '<p class="dim" style="font-size:12.5px;">No balance changes: they are all older than your last balance checks.</p>'}
     <div class="modal-actions"><button class="btn" onclick="closeModal()">Later</button><button class="btn primary" onclick="linkUnlinkedApply()">Link ${list.length}</button></div>`;
@@ -4022,6 +4022,14 @@ function dayLabel(dateStr) {
   if (d.getTime() === yesterday.getTime()) return 'Yesterday';
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 }
+/* A transaction's amount in euros first, at today's rate, with what was really paid in small
+   under it when that was another currency (the user's choice, 18 Nov 2026: paying in CHF in
+   Switzerland, "je lis tout en euros"). sign: '+', '−', '-' or ''. Returns HTML. */
+function fmtEurFirst(amount, currency, sign) {
+  const s = sign || '', a = Math.abs(+amount || 0);
+  if (!currency || currency === 'EUR') return s + fmtMoney(a);
+  return `${s}${fmtMoney(toEUR(a, currency))}<span class="tx-orig">${s}${fmtMoney(a, currency)}</span>`;
+}
 function dayGroupHtml(group, picking) {
   const netEUR = group.txs.reduce((s, t) => s + txNetEUR(t), 0);
   return `
@@ -4094,6 +4102,8 @@ function txRowDisplayHtml(t, picking) {
   // Tap the name or the amount to change it right here (budget-live.js); the rest opens the form.
   const live = !picking && typeof txInline === 'function';
   const il = (field, html, label) => (live ? `<span class="il" onclick="txInline(event,'${t.id}','${field}')" title="${label}">${html}</span>` : html);
+  // Paid in another currency: shown in euros with the real amount under it; tapping it opens the form.
+  const eurOnly = !t.currency || t.currency === 'EUR';
   if (t.type === 'transfer') {
     // Live labels, so a renamed pocket/broker shows its new name; falls back to the saved
     // snapshot if the place has since been deleted.
@@ -4109,7 +4119,7 @@ function txRowDisplayHtml(t, picking) {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
-        <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);">${il('amount', fmtMoney(Math.abs(t.amount), t.currency), 'Change the amount')}</div>
+        <div style="font-weight:700;font-size:14.5px;color:var(--light-accent-1);text-align:right;">${eurOnly ? il('amount', fmtMoney(Math.abs(t.amount)), 'Change the amount') : fmtEurFirst(t.amount, t.currency)}</div>
         ${del}
       </div>
     </div>`;
@@ -4132,7 +4142,7 @@ function txRowDisplayHtml(t, picking) {
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:4px;">
-        <div class="${t.type === 'income' ? 'positive' : 'negative'}" style="font-weight:700;font-size:14.5px;">${il('amount', `${t.type === 'income' ? '+' : '-'}${fmtMoney(Math.abs(t.amount), t.currency)}`, 'Change the amount')}</div>
+        <div class="${t.type === 'income' ? 'positive' : 'negative'}" style="font-weight:700;font-size:14.5px;text-align:right;">${eurOnly ? il('amount', `${t.type === 'income' ? '+' : '-'}${fmtMoney(Math.abs(t.amount))}`, 'Change the amount') : fmtEurFirst(t.amount, t.currency, t.type === 'income' ? '+' : '-')}</div>
         ${del}
       </div>
     </div>`;
@@ -4418,7 +4428,7 @@ window.__modalRenderers.recurringAmount = function (p) {
   if (!t) return '<div class="modal-head"><div class="modal-title">Not found</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>';
   return `
     <div class="modal-head"><div class="modal-title">How much was it?</div><button class="close-x" aria-label="Close" onclick="closeModal()">✕</button></div>
-    <div style="font-size:13px;opacity:.7;margin-bottom:12px;">${escHtml(t.comment || 'Recurring')} · ${escHtml(shortDay(t.date))} · usually ${fmtMoney(+t.amount || 0, t.currency)}</div>
+    <div style="font-size:13px;opacity:.7;margin-bottom:12px;">${escHtml(t.comment || 'Recurring')} · ${escHtml(shortDay(t.date))} · usually ${fmtMoney(toEUR(+t.amount || 0, t.currency))}${t.currency && t.currency !== 'EUR' ? ` (${fmtMoney(+t.amount || 0, t.currency)})` : ''}</div>
     <label class="field"><span class="label-text">Amount (${escHtml(t.currency)})</span><input id="rec-amt" type="number" min="0" step="any" inputmode="decimal" value="${escHtml(p.amount)}" oninput="ui.modal.payload.amount=this.value"></label>
     <div class="seg-row" style="margin-top:12px;">
       <button class="seg ${p.scope === 'month' ? 'on' : ''}" onclick="ui.modal.payload.scope='month';render()">Only this month</button>
@@ -4965,7 +4975,7 @@ window.__modalRenderers.tx = function (p) {
     const sub = cat && subcats.find(sc => sc.id === p.subCategoryId);
     const what = isTransfer ? [((transferEndpoint(p.from) || {}).label), ((transferEndpoint(p.to) || {}).label)].filter(Boolean).join(' → ')
       : [p.comment, cat ? `${cat.icon || ''} ${cat.name}${sub ? ' · ' + sub.name : ''}` : ''].filter(Boolean).join(' · ');
-    return `<div class="tx-summary"><span class="${p.type === 'income' ? 'positive' : p.type === 'expense' ? 'negative' : ''}">${p.type === 'income' ? '+' : p.type === 'expense' ? '−' : ''}${isNaN(amt) ? '—' : fmtMoney(amt, p.currency)}</span>${what ? `<span>${escHtml(what)}</span>` : ''}</div>`;
+    return `<div class="tx-summary"><span class="${p.type === 'income' ? 'positive' : p.type === 'expense' ? 'negative' : ''}">${p.type === 'income' ? '+' : p.type === 'expense' ? '−' : ''}${isNaN(amt) ? '—' : fmtMoney(p.currency && p.currency !== 'EUR' ? toEUR(Math.abs(amt), p.currency) : amt)}${!isNaN(amt) && p.currency && p.currency !== 'EUR' ? ` <small class="dim">(${fmtMoney(Math.abs(amt), p.currency)})</small>` : ''}</span>${what ? `<span>${escHtml(what)}</span>` : ''}</div>`;
   };
   let body = '';
   if (step === 1) {
@@ -4977,6 +4987,7 @@ window.__modalRenderers.tx = function (p) {
         <input id="tx-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" value="${escHtml(String(p.amount == null ? '' : p.amount))}" oninput="txAmountInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();txNext();}">
         <select onchange="updateTxField('currency',this.value)">${CURRENCIES.map(c => `<option ${p.currency === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
       </div>
+      <div id="tx-eur" class="tx-eur dim" aria-live="polite">${txEurLine(p)}</div>
       ${isTransfer ? '' : `
       <label class="field"><span class="label-text">${p.type === 'income' ? 'From whom?' : 'Where / who?'} <span style="opacity:.6;">(start typing — past names are suggested)</span></span>
         <input id="tx-name" value="${escHtml(p.comment || '')}" placeholder="${p.type === 'income' ? 'e.g. Salary, Parents' : 'e.g. Albert Heijn'}" autocomplete="off" oninput="onTxNameInput(this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();txNext();}">
@@ -5118,9 +5129,18 @@ function txStepDone(p) {
   const amt = parseFloat(String(p.amount).replace(',', '.'));
   return { 1: amt > 0, 2: p.type === 'transfer' ? !!(p.from && p.to && p.from !== p.to) : !!p.categoryId, 3: true };
 }
+/* Under the amount in the form, for another currency: what it is in euros at today's rate. */
+function txEurLine(p) {
+  const a = parseFloat(p && p.amount);
+  if (!p || !p.currency || p.currency === 'EUR') return '';
+  const r = p.currency === 'CHF' || p.currency === 'GBP' ? (data.settings.fxRates || {})[p.currency] : p.currency === 'USD' ? eurUsd() : null;
+  return `${isNaN(a) || !a ? '' : `= ${fmtMoney(toEUR(Math.abs(a), p.currency))} · `}today's rate${r ? `: 1 € = ${fmtMoney(r, p.currency)}` : ''}`;
+}
 function txAmountInput(v) {
   if (!ui.modal) return;
   ui.modal.payload.amount = v.replace(',', '.');
+  const eurEl = document.getElementById('tx-eur');
+  if (eurEl) eurEl.innerHTML = txEurLine(ui.modal.payload);
   const btn = document.getElementById('tx-next');
   if (btn) btn.disabled = !txStepDone(ui.modal.payload)[1];
 }

@@ -754,3 +754,9 @@ html.tx-dragging, html.tx-dragging * { cursor: grabbing !important; }
 .ip-kor { margin-top: 10px; align-items: flex-start; }
 .ip-kor .dim { font-size: 12.5px; }
 .ip-vat-sum.kor, .ip-vatline.kor { opacity: .55; }
+
+/* Paid in another currency: euros first, what was really paid in small under it (18 Nov 2026). */
+.tx-orig { display: block; font-size: 11px; font-weight: 500; opacity: .6; text-align: right; color: var(--text, currentColor); }
+.positive .tx-orig, .negative .tx-orig { color: inherit; }
+.tx-eur { font-size: 12.5px; margin: -4px 0 10px; text-align: center; min-height: 1em; }
+.tx-eur:empty { display: none; }

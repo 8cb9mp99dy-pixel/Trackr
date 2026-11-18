@@ -160,7 +160,7 @@ if (typeof module !== 'undefined' && module.exports) {
       <span class="cw-strip"></span>
       <div class="cw-back-in">
         <div class="cw-sub">${escHtml(place ? `${place.name} · ${place.sub}` : 'Link it to an account or a pocket to see its moves')}</div>
-        ${moves.map(m => `<div class="cw-move"><span>${escHtml(shortDay(m.date))} · ${escHtml(m.text)}</span><b class="num">${m.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(m.amount), m.currency)}</b></div>`).join('')}
+        ${moves.map(m => `<div class="cw-move"><span>${escHtml(shortDay(m.date))} · ${escHtml(m.text)}</span><b class="num">${fmtEurFirst(m.amount, m.currency, m.amount >= 0 ? '+' : '−')}</b></div>`).join('')}
         <button class="cw-edit" onclick="event.stopPropagation();openCardForm('${escHtml(c.id)}')">${ic('edit', 13)} Edit</button>
       </div>
     </div>`;
@@ -172,7 +172,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const moves = place ? place.moves(6) : [];
     const pockets = !place ? [] : place.pocket ? [{ name: place.name, amount: place.amount, here: true }]
       : (place.account.pockets || []).filter(p => !p.finishedAt).map(p => ({ name: p.name, amount: +p.amountSaved || 0 }));
-    const row = m => `<${m.id ? `button type="button" onclick="openTxForm('${escHtml(m.id)}')"` : 'div'} class="cw-d-row"><span>${escHtml(shortDay(m.date))} · ${escHtml(m.text)}</span><b class="num">${m.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(m.amount), m.currency)}</b></${m.id ? 'button' : 'div'}>`;
+    const row = m => `<${m.id ? `button type="button" onclick="openTxForm('${escHtml(m.id)}')"` : 'div'} class="cw-d-row"><span>${escHtml(shortDay(m.date))} · ${escHtml(m.text)}</span><b class="num">${fmtEurFirst(m.amount, m.currency, m.amount >= 0 ? '+' : '−')}</b></${m.id ? 'button' : 'div'}>`;
     return `<div class="cw-d-head">
         <div><div class="eyebrow">${escHtml([c.type, place ? `${place.name} · ${place.sub}` : 'Not linked'].filter(Boolean).join(' · '))}</div></div>
         <div class="cw-d-actions"><button class="btn small" onclick="openCardForm('${escHtml(c.id)}')">${ic('edit', 14)} Edit</button><button class="btn small ghost" aria-label="Close the details" onclick="cardTap(ui.cardIndex || 0)">✕</button></div>
