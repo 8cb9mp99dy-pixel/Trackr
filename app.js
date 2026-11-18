@@ -2173,15 +2173,32 @@ function allPriceableHoldings() {
   return positions.concat(crypto).sort((a, b) => b.value - a.value);
 }
 
+/* 'YYYY-MM' of a transaction (read from the text, no date maths: this runs for every transaction
+   of every month drawn). */
+function txMonthKey(t) {
+  const s = String(t.date || '');
+  if (s.length >= 7 && s[4] === '-') return s.slice(0, 7);
+  const d = ymdToDate(s);
+  return isNaN(d) ? '' : d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+/* During one redraw only (render() sets it, then clears it): every month's transactions, sorted
+   into months once, so a page that draws many months doesn't read every transaction each time. */
+let monthTxIndex = null;
 function monthTransactions(monthDate) {
-  const m = monthDate.getMonth(), y = monthDate.getFullYear();
+  const key = monthDate.getFullYear() + '-' + String(monthDate.getMonth() + 1).padStart(2, '0');
   // A recurring entry only shows from its day on (see runRecurring) — even one typed in ahead.
   const today = todayYmd();
-  return data.budgetTransactions.filter(t => {
-    if (t.nature === 'Fixed' && t.date > today) return false;
-    const d = ymdToDate(t.date);
-    return d.getMonth() === m && d.getFullYear() === y;
-  });
+  const all = data.budgetTransactions;
+  const shown = t => !(t.nature === 'Fixed' && t.date > today);
+  if (monthTxIndex) {
+    if (monthTxIndex.all !== all || monthTxIndex.n !== all.length || monthTxIndex.today !== today) {
+      const by = new Map();
+      all.forEach(t => { if (!shown(t)) return; const k = txMonthKey(t); const l = by.get(k); if (l) l.push(t); else by.set(k, [t]); });
+      Object.assign(monthTxIndex, { all, n: all.length, today, by });
+    }
+    return (monthTxIndex.by.get(key) || []).slice();
+  }
+  return all.filter(t => shown(t) && txMonthKey(t) === key);
 }
 // Each transaction can carry its own currency (t.currency) — same mixed-currency summing bug
 // as accounts/positions applies here too, so each amount is converted to EUR before totaling.
@@ -2443,6 +2460,7 @@ function render() {
   const keepTicker = app && app.querySelector('.ticker');
   let kept = null;
   try { kept = renderKeep(app); } catch (e) { kept = null; }
+  monthTxIndex = {}; // filled on first use, dropped at the end of this redraw
   try {
     renderApp(app);
     try { renderRestore(app, kept); } catch (e) { /* keeping the place is a nicety, never a crash */ }
@@ -2463,7 +2481,7 @@ function render() {
   } catch (e) {
     console.error('Render failed', e);
     renderCrashScreen(app, e);
-  }
+  } finally { monthTxIndex = null; }
   hideSplash();
 }
 /* The loading screen (index.html) fades out after the first page is drawn — never earlier than
@@ -3091,10 +3109,6 @@ window.__modalRenderers.account = function (payload) {
         <span class="label-text" style="font-size:13px;">Visible in totals &amp; dashboard</span>
         <div class="toggle ${!acc || acc.visibleInTotals ? 'on' : ''}" id="af-visible" onclick="this.classList.toggle('on')"></div>
       </div>
-      <div class="row-flex" style="padding-top:4px;gap:10px;">
-        <span class="label-text" style="font-size:13px;">Money moved here counts as invested <span style="display:block;font-weight:400;opacity:.65;font-size:12px;">For an account where you invest or save long-term. Applies to every transfer to it, past ones too.</span></span>
-        <div class="toggle ${acc && acc.countsAsInvestment ? 'on' : ''}" id="af-invest" onclick="this.classList.toggle('on')"></div>
-      </div>
     </div>
     <div class="modal-actions">
       <button class="btn primary" onclick="saveAccountForm('${acc ? acc.id : ''}')">Save</button>
@@ -3142,18 +3156,17 @@ function saveAccountForm(id) {
   const selectedSwatch = document.querySelector('#app .modal .swatch-dot.selected');
   const color = selectedSwatch ? selectedSwatch.dataset.color : ACCOUNT_COLORS[0];
   const visibleInTotals = document.getElementById('af-visible').classList.contains('on');
-  const countsAsInvestment = !!(document.getElementById('af-invest') || { classList: { contains: () => false } }).classList.contains('on');
 
   if (id) {
     const acc = accountById(id);
     acc.balanceCheckedAt = new Date().toISOString(); // saving the form = you just looked at this balance
-    Object.assign(acc, { name, icon, currency, description, color, visibleInTotals, countsAsInvestment }, balancesFromTx() ? {} : { balance });
+    Object.assign(acc, { name, icon, currency, description, color, visibleInTotals }, balancesFromTx() ? {} : { balance });
     const mainEl = document.getElementById('af-main');
     if (mainEl) { if (mainEl.value.trim()) acc.mainName = mainEl.value.trim(); else delete acc.mainName; }
     if (logo) { acc.logo = logo; acc.logoKind = 'image'; } else { acc.logoKind = 'emoji'; }
   } else {
     const newLogo = logo || builtinLogoFor(name); // a brand-new account picks up its bundled logo automatically
-    data.accounts.push({ id: uid('acc'), icon, name, currency, balance, description, logo: newLogo || '', logoKind: newLogo ? 'image' : 'emoji', color, visibleInTotals, countsAsInvestment, pockets: [], balanceCheckedAt: new Date().toISOString() });
+    data.accounts.push({ id: uid('acc'), icon, name, currency, balance, description, logo: newLogo || '', logoKind: newLogo ? 'image' : 'emoji', color, visibleInTotals, pockets: [], balanceCheckedAt: new Date().toISOString() });
   }
   save(); closeModal();
 }
@@ -3789,37 +3802,40 @@ function categoryDonutCardHtml(title, segments, emptyText, animate, kind) {
    money was already invested. (Stock/ETF holdings have no purchase date in this app, so buys
    themselves can't be dated; the money you send to the broker is the honest monthly signal.) */
 const INVESTED_SUBCATEGORY_IDS = ['sc_investmentcontrib', 'sc_cryptobuy'];
-/* Money sent here counts as invested: a broker, an exchange, or a bank account you marked
-   "Money moved here counts as invested" (its form, or the transfer form). It's worked out each
-   time, so marking an account changes every past transfer to it too. */
+/* What counts as invested: ONLY the transactions you tick "Count as investing" on (t.invest),
+   one by one. Nothing is assumed from where the money went (a broker, an exchange, an account) or
+   from its category (the user's rule, 18 Nov 2026). Old marks (an account's countsAsInvestment,
+   the sub-categories above) stay in the data but no longer count by themselves. */
 function isInvestingEndpoint(ref) {
   const p = parseTransferRef(ref) || {};
-  if (p.kind === 'brk' || p.kind === 'cx') return true;
-  if (p.kind === 'acc' || p.kind === 'pk') { const a = accountById(p.accountId); return !!(a && a.countsAsInvestment); }
-  return false;
+  return p.kind === 'brk' || p.kind === 'cx';
 }
-/* In the transfer form, when the money goes to a bank account: count it as investing? */
-function transferInvestToggleHtml(p) {
-  const tp = parseTransferRef(p.to) || {};
-  const a = tp.kind === 'acc' && accountById(tp.accountId);
-  if (!a) return '';
-  const on = p._invest != null ? !!p._invest : !!a.countsAsInvestment;
-  return `<div class="tx-toggle-row" onclick="updateTxField('_invest', ${on ? 'false' : 'true'})">
-    <div><div style="font-weight:600;">Count as investing</div><div style="font-size:12px;opacity:.65;">Every transfer to ${escHtml(a.name)}, past ones too, counts as money invested (Budget, Totals, exports).</div></div>
+/* +1 money put into investing, −1 money taken back out of it, 0 not ticked. A ticked transfer
+   that comes out of a broker or an exchange (and doesn't go to another) is money taken back. */
+function txInvestSign(t) {
+  if (!t || !t.invest) return 0;
+  if (t.type === 'expense') return 1;
+  if (t.type !== 'transfer') return 0;
+  return isInvestingEndpoint(t.from) && !isInvestingEndpoint(t.to) ? -1 : 1;
+}
+/* In the transfer and expense forms: count this one transaction as investing? */
+function txInvestToggleHtml(p) {
+  if (p.type !== 'transfer' && p.type !== 'expense') return '';
+  const on = p._invest != null ? !!p._invest : !!p.invest;
+  const back = p.type === 'transfer' && txInvestSign({ type: 'transfer', invest: true, from: p.from, to: p.to }) < 0;
+  return `<div class="tx-toggle-row" role="switch" aria-checked="${on}" aria-label="Count as investing" onclick="updateTxField('_invest', ${on ? 'false' : 'true'})">
+    <div><div style="font-weight:600;">Count as investing</div><div style="font-size:12px;opacity:.65;">${back ? 'Only this transfer, as money taken back from investing' : 'Only this ' + (p.type === 'transfer' ? 'transfer' : 'expense') + ', as money invested'} (Budget, Totals, exports).</div></div>
     <div class="toggle ${on ? 'on' : ''}"></div>
   </div>`;
 }
 function monthInvested(monthDate) {
-  let sent = 0, withdrawn = 0, contributions = 0;
+  let sent = 0, withdrawn = 0;
   monthTransactions(monthDate).forEach(t => {
-    const eur = toEUR(t.amount, t.currency);
-    if (t.type === 'transfer') {
-      const toInv = isInvestingEndpoint(t.to), fromInv = isInvestingEndpoint(t.from);
-      if (toInv && !fromInv) sent += eur;
-      else if (fromInv && !toInv) withdrawn += eur;
-    } else if (t.type === 'expense' && INVESTED_SUBCATEGORY_IDS.includes(t.subCategoryId)) contributions += eur;
+    const k = txInvestSign(t);
+    if (k > 0) sent += toEUR(t.amount, t.currency);
+    else if (k < 0) withdrawn += toEUR(t.amount, t.currency);
   });
-  return { sent, withdrawn, contributions, net: sent + contributions - withdrawn };
+  return { sent, withdrawn, contributions: 0, net: sent - withdrawn };
 }
 function animateCountUp(elId, target, ms) {
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) { const e = document.getElementById(elId); if (e) e.textContent = fmtMoney(target); return; }
@@ -3849,7 +3865,7 @@ function investedCardHtml(monthDate) {
   const maxV = Math.max(...series.map(x => x.v), 1);
   const caption = cur.sent || cur.withdrawn || cur.contributions
     ? [cur.sent + cur.contributions ? `${fmtMoney(cur.sent + cur.contributions)} sent` : '', cur.withdrawn ? `${fmtMoney(cur.withdrawn)} taken back` : ''].filter(Boolean).join(' · ')
-    : 'Nothing sent to a broker or exchange yet — log a Transfer to one to track it here.';
+    : 'Nothing counted as investing this month. Tick "Count as investing" on a transfer or an expense to see it here.';
   if (anim) setTimeout(() => animateCountUp('inv-num', cur.net, 900), 0);
   return `
     <div class="card inv-card ${anim ? 'anim' : ''}" style="margin-bottom:20px;">
@@ -4978,7 +4994,7 @@ window.__modalRenderers.tx = function (p) {
       <label class="field"><span class="label-text">From</span>${endpointSelect('from', p.from)}</label>
       <div style="text-align:center;font-size:20px;opacity:.5;margin:2px 0;">↓</div>
       <label class="field"><span class="label-text">To</span>${endpointSelect('to', p.to)}</label>
-      ${transferInvestToggleHtml(p)}
+      ${txInvestToggleHtml(p)}
       <label class="field"><span class="label-text">Name <span style="opacity:.6;">(optional)</span></span><input id="tx-name" value="${escHtml(p.comment || '')}" placeholder="e.g. Monthly savings" autocomplete="off" onchange="updateTxField('comment',this.value)"></label>
       <div style="font-size:12px;opacity:.65;margin-top:10px;line-height:1.5;">Moves your own money between two places (bank, pocket, broker or exchange cash) — it isn't counted as income or spending. Currencies are converted automatically.</div>`;
   } else if (step === 2) {
@@ -5036,6 +5052,7 @@ window.__modalRenderers.tx = function (p) {
           ${logoPickerPopoverHtml('tf-logo')}
         </label>` : `
         <label class="field"><span class="label-text">Place</span><input value="${escHtml(p.location || '')}" placeholder="e.g. Maastricht" onchange="updateTxField('location',this.value)"></label>
+        ${p.type === 'expense' ? txInvestToggleHtml(p) : ''}
         ${p.type === 'expense' ? `<div class="tx-toggle-row" onclick="updateTxField('business', ${p.business ? 'false' : 'true'})">
           <div><div style="font-weight:600;">Business expense</div><div style="font-size:12px;opacity:.65;">Marked for your own records and taxes</div></div>
           <div class="toggle ${p.business ? 'on' : ''}"></div>
@@ -5163,7 +5180,6 @@ function updateTxField(field, value) {
   const p = ui.modal.payload;
   if (field === 'type') { p.categoryId = ''; p.subCategoryId = ''; }
   if (field === 'categoryId') { p.subCategoryId = ''; }
-  if (field === 'to') delete p._invest; // the switch belongs to the account it showed
   if (field === 'warrantyUntil') delete p.warrantyNoted; // a new date gets its reminder again
   // "Paid with: Cash" and the cash wallet pick each other (wallet.js).
   if (typeof walletLinkTxField === 'function') walletLinkTxField(p, field, value);
@@ -5238,6 +5254,8 @@ function saveTxForm() {
   if (!isTransfer && p.pocketId) record.pocketId = p.pocketId;
   // Links and marks the form doesn't show are kept when you edit (an income's split, its invoice…).
   ['invoiceId', 'split', 'confirmed', 'oneOff', 'receipts', 'warrantyUntil', 'warrantyNoted', 'tripId'].forEach(k => { if (p[k] != null && p[k] !== '') record[k] = p[k]; });
+  // "Count as investing": this transaction only, never others (the user's rule, 18 Nov 2026).
+  if ((isTransfer || p.type === 'expense') && (p._invest != null ? p._invest : p.invest)) record.invest = true;
   if (p._extra) Object.assign(record, p._extra); // filled in by another page (budgetConfirm, balances.js)
   if (p.type === 'expense' && p.business) { record.business = true; if (p.vatRate != null && p.vatRate !== '') record.vatRate = +p.vatRate; }
   // Edited by hand: its category is yours now (off the "To review" list).
@@ -5275,7 +5293,6 @@ function saveTxForm() {
   if (prior && !isTransfer && !prior.accountId) linkTxAccount(record, record.accountId);
   else applyTxToAccountBalance(record, 1);
   if (record.logo && record.comment) shareTxLogoByName(record.comment, record.logo);
-  if (isTransfer && p._invest != null) { const tp = parseTransferRef(record.to) || {}; const ta = tp.kind === 'acc' && accountById(tp.accountId); if (ta) ta.countsAsInvestment = !!p._invest; }
   attachToRecurringSeries(record, { setDay: !!prior && prior.nature === 'Fixed', every: p.every, days: p.every === 'twice' ? txRepeatSeries(p).days : undefined });
   runRecurring();
   save(); closeModal();

@@ -7,6 +7,8 @@ const sumRows = page => page.evaluate(() => ui.modal.payload.ids.map(id => data.
 
 test('In, Out, Balance and Invested each list what they add up to', async ({ page }) => {
   const errors = await openApp(page);
+  // Only what you tick counts as invested: tick one expense of this month.
+  await page.evaluate(() => { const m = ui.budgetMonth || appToday(); const t = monthTransactions(new Date(m.getFullYear(), m.getMonth(), 1)).find(x => x.type === 'expense'); t.invest = true; save(); });
   await openBudget(page, 'transactions');
   for (const [name, fn] of [['In', 'monthIncome'], ['Out', 'monthExpenses']]) {
     await page.locator('.bt-summary .drill', { hasText: name }).first().click();

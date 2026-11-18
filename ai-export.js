@@ -30,7 +30,6 @@
   }
   const placeLabel = ref => { if (!ref) return ''; const e = transferEndpoint(ref); return e ? e.label : ref; };
   const signedEUR = t => (t.type === 'transfer' ? 0 : toEUR(t.type === 'income' ? +t.amount || 0 : -(+t.amount || 0), t.currency));
-  const isInvestRef = ref => isInvestingEndpoint(ref);
 
   function transactionsSheet(txs) {
     const pm = id => ((data.paymentMethods || []).find(p => p.id === id) || {}).name || '';
@@ -51,7 +50,7 @@
       o.count++;
       if (t.type === 'income') o.income += eur;
       else if (t.type === 'expense') o.expense += eur;
-      else if (t.type === 'transfer') { if (isInvestRef(t.to) && !isInvestRef(t.from)) o.invested += eur; else if (isInvestRef(t.from) && !isInvestRef(t.to)) o.invested -= eur; }
+      if (txInvestSign(t)) o.invested += txInvestSign(t) * eur;
       if (t.type !== 'transfer') {
         const [c, s] = catLabel(t), k = [m, t.type, c, s].join('|');
         const x = byCat[k] = byCat[k] || { m, type: t.type, c, s, sum: 0, n: 0 };

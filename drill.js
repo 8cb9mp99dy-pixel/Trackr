@@ -60,7 +60,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (kind === 'in') show('In', txs.filter(t => t.type === 'income'), { total: inc, tone: 'positive', sub });
     if (kind === 'out') show('Out', txs.filter(t => t.type === 'expense'), { total: out, tone: 'negative', sub });
     if (kind === 'net') show('Balance', txs.filter(t => t.type !== 'transfer'), { total: inc - out, tone: inc >= out ? 'positive' : 'negative', sub });
-    if (kind === 'invested') show('Invested', txs.filter(t => (t.type === 'transfer' && isInvestingEndpoint(t.to) !== isInvestingEndpoint(t.from)) || (t.type === 'expense' && INVESTED_SUBCATEGORY_IDS.includes(t.subCategoryId))), { total: monthInvested(m).net, sub });
+    if (kind === 'invested') show('Invested', txs.filter(t => txInvestSign(t) !== 0), { total: monthInvested(m).net, sub });
   };
   /* Budget → Totals, for the period chosen there. */
   window.drillTotals = function (kind) {

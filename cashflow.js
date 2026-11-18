@@ -27,11 +27,9 @@ function cashflowModel() {
   let invested = 0;
   cashflowTxs().forEach(t => {
     const eur = toEUR(t.amount, t.currency);
-    if (t.type === 'transfer') {
-      const toInv = isInvestingEndpoint(t.to), fromInv = isInvestingEndpoint(t.from);
-      if (toInv && !fromInv) invested += eur; else if (fromInv && !toInv) invested -= eur;
-      return;
-    }
+    const inv = txInvestSign(t);
+    if (inv) { invested += inv * eur; return; } // only what you ticked "Count as investing"
+    if (t.type === 'transfer') return;
     const kind = t.type === 'income' ? 'income' : 'expense';
     const cat = categoryById(kind, t.categoryId);
     const sub = cat ? (cat.subcategories || []).find(s => s.id === t.subCategoryId) : null;
@@ -152,7 +150,7 @@ function cashflowCardHtml() {
         ${has ? cashflowControlsHtml() : ''}
       </div>
       ${has ? `<div class="cf-body">${sankeyHtml(M)}${cashflowDonutHtml(M)}</div>
-        <div style="font-size:11.5px;opacity:.5;margin-top:8px;">Transfers between your own accounts aren't counted. Money sent to a broker or exchange counts as Invested.</div>`
+        <div style="font-size:11.5px;opacity:.5;margin-top:8px;">Transfers between your own accounts aren't counted. Only what you ticked "Count as investing" counts as Invested.</div>`
         : `<div class="empty-state" style="padding:24px 10px;"><div class="title">No data yet</div><div class="sub">Log income and expenses for this period to see where your money goes.</div><button class="btn primary" style="margin-top:12px;" onclick="openTxForm()">${ic('plus', 15)} Add a transaction</button></div>`}
     </div>`;
 }
